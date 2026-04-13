@@ -19,6 +19,7 @@ import { Match, League } from '@/types/football';
 import { Loader2 } from 'lucide-react';
 
 export default function Index() {
+  const { user, onboardingCompleted } = useAuth();
   const dates = getDateRange();
   const todayStr = getToday();
   const [selectedDate, setSelectedDate] = useState(todayStr);
