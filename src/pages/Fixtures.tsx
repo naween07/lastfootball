@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
 import LeagueGroup from '@/components/LeagueGroup';
 import { useFavorites } from '@/hooks/useFavorites';
-import { getTodayMatches, getTomorrowMatches, getUpcomingMatches, getMatchesGroupedByLeague } from '@/services/mockData';
+import { fetchMatchesByDate, getMatchesGroupedByLeague, getToday, getTomorrow, formatDate } from '@/services/footballApi';
+import { Match, LeagueMatches } from '@/types/football';
+import { Loader2 } from 'lucide-react';
 
 const tabs = [
   { key: 'today', label: 'Today' },
@@ -14,15 +16,28 @@ type TabKey = typeof tabs[number]['key'];
 
 export default function Fixtures() {
   const [activeTab, setActiveTab] = useState<TabKey>('today');
+  const [matches, setMatches] = useState<Match[]>([]);
+  const [loading, setLoading] = useState(true);
   const { isFavorite, toggleFavorite } = useFavorites();
 
-  const matchesByTab = {
-    today: getTodayMatches(),
-    tomorrow: getTomorrowMatches(),
-    upcoming: getUpcomingMatches(),
-  };
+  useEffect(() => {
+    setLoading(true);
+    let date = getToday();
+    if (activeTab === 'tomorrow') {
+      date = getTomorrow();
+    } else if (activeTab === 'upcoming') {
+      const d = new Date();
+      d.setDate(d.getDate() + 2);
+      date = formatDate(d);
+    }
 
-  const groups = getMatchesGroupedByLeague(matchesByTab[activeTab]);
+    fetchMatchesByDate(date)
+      .then(setMatches)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [activeTab]);
+
+  const groups = getMatchesGroupedByLeague(matches);
 
   return (
     <div className="min-h-screen bg-background">
@@ -46,7 +61,12 @@ export default function Fixtures() {
       </div>
 
       <main className="container py-4">
-        {groups.length === 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            <span className="ml-2 text-sm text-muted-foreground">Loading fixtures...</span>
+          </div>
+        ) : groups.length === 0 ? (
           <div className="text-center py-20 text-muted-foreground">
             <p className="text-lg font-medium">No fixtures</p>
             <p className="text-sm mt-1">No matches scheduled for this period</p>

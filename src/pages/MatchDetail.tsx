@@ -1,15 +1,44 @@
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Loader2 } from 'lucide-react';
 import Header from '@/components/Header';
 import MatchTimeline from '@/components/MatchTimeline';
 import MatchStatsView from '@/components/MatchStatsView';
-import { getMatchById } from '@/services/mockData';
-import { useState } from 'react';
+import { fetchMatchDetails } from '@/services/footballApi';
+import { useState, useEffect } from 'react';
+import { Match } from '@/types/football';
 
 export default function MatchDetail() {
   const { id } = useParams<{ id: string }>();
-  const match = getMatchById(Number(id));
+  const [match, setMatch] = useState<Match | null>(null);
+  const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'events' | 'stats'>('events');
+
+  useEffect(() => {
+    if (!id) return;
+    setLoading(true);
+    fetchMatchDetails(Number(id))
+      .then(setMatch)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+
+    // Auto-refresh for live matches
+    const interval = setInterval(() => {
+      fetchMatchDetails(Number(id)).then(setMatch).catch(console.error);
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="w-6 h-6 animate-spin text-primary" />
+          <span className="ml-2 text-sm text-muted-foreground">Loading match details...</span>
+        </div>
+      </div>
+    );
+  }
 
   if (!match) {
     return (
@@ -30,7 +59,6 @@ export default function MatchDetail() {
     <div className="min-h-screen bg-background">
       <Header />
 
-      {/* Match header */}
       <div className="bg-card border-b border-border">
         <div className="container py-4">
           <Link to="/" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-3">
@@ -39,11 +67,15 @@ export default function MatchDetail() {
           </Link>
 
           <div className="text-center mb-2">
-            <span className="text-xs text-muted-foreground">{match.league.logo} {match.league.name}</span>
+            <div className="flex items-center justify-center gap-2">
+              {match.league.logo && <img src={match.league.logo} alt="" className="w-4 h-4" />}
+              <span className="text-xs text-muted-foreground">{match.league.name}</span>
+            </div>
           </div>
 
           <div className="flex items-center justify-center gap-6">
             <div className="text-center flex-1">
+              {match.homeTeam.logo && <img src={match.homeTeam.logo} alt="" className="w-8 h-8 mx-auto mb-1" />}
               <p className="text-base font-bold text-foreground">{match.homeTeam.shortName}</p>
               <p className="text-xs text-muted-foreground hidden sm:block">{match.homeTeam.name}</p>
             </div>
@@ -76,6 +108,7 @@ export default function MatchDetail() {
             </div>
 
             <div className="text-center flex-1">
+              {match.awayTeam.logo && <img src={match.awayTeam.logo} alt="" className="w-8 h-8 mx-auto mb-1" />}
               <p className="text-base font-bold text-foreground">{match.awayTeam.shortName}</p>
               <p className="text-xs text-muted-foreground hidden sm:block">{match.awayTeam.name}</p>
             </div>
@@ -83,11 +116,10 @@ export default function MatchDetail() {
         </div>
       </div>
 
-      {/* Tabs */}
-      {(match.events || match.stats) && (
+      {(match.events?.length || match.stats) && (
         <div className="border-b border-border bg-card">
           <div className="container flex gap-1 py-2">
-            {match.events && (
+            {match.events?.length && (
               <button
                 onClick={() => setTab('events')}
                 className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${
@@ -111,9 +143,8 @@ export default function MatchDetail() {
         </div>
       )}
 
-      {/* Content */}
       <main className="container py-4">
-        {tab === 'events' && match.events && (
+        {tab === 'events' && match.events?.length && (
           <div className="bg-card rounded-lg border border-border overflow-hidden">
             <MatchTimeline events={match.events} homeTeamName={match.homeTeam.name} awayTeamName={match.awayTeam.name} />
           </div>
