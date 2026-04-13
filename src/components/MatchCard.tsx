@@ -6,7 +6,7 @@ interface MatchCardProps {
   match: Match;
   isFavoriteHome?: boolean;
   isFavoriteAway?: boolean;
-  onToggleFavorite?: (teamId: number) => void;
+  onToggleFavorite?: (teamId: number, teamName?: string, teamLogo?: string) => void;
 }
 
 export default function MatchCard({ match, isFavoriteHome, isFavoriteAway, onToggleFavorite }: MatchCardProps) {
@@ -73,7 +73,7 @@ export default function MatchCard({ match, isFavoriteHome, isFavoriteAway, onTog
               e.preventDefault();
               e.stopPropagation();
               // Toggle favorite for whichever team — use home team as default
-              onToggleFavorite(match.homeTeam.id);
+              onToggleFavorite(match.homeTeam.id, match.homeTeam.name, match.homeTeam.logo);
             }}
             className="flex-shrink-0 p-1 ml-2"
           >

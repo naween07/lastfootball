@@ -5,7 +5,7 @@ import { ChevronRight } from 'lucide-react';
 interface LeagueGroupProps {
   group: LeagueMatches;
   isFavorite: (teamId: number) => boolean;
-  onToggleFavorite: (teamId: number) => void;
+  onToggleFavorite: (teamId: number, teamName?: string, teamLogo?: string) => void;
 }
 
 export default function LeagueGroup({ group, isFavorite, onToggleFavorite }: LeagueGroupProps) {
