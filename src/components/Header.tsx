@@ -24,6 +24,7 @@ export default function Header() {
           <NavItem to="/" label="Live" />
           <NavItem to="/fixtures" label="Fixtures" />
           <NavItem to="/favorites" label="Favorites" icon={<Star className="w-3.5 h-3.5" />} />
+          <NavItem to="/stats" label="Stats" icon={<BarChart3 className="w-3.5 h-3.5" />} />
           <NavItem to="/search" label="Search" icon={<Search className="w-3.5 h-3.5" />} />
           {user ? (
             <div className="flex items-center gap-1 ml-2">
@@ -67,6 +68,7 @@ export default function Header() {
           <NavItem to="/" label="Live" onClick={() => setMenuOpen(false)} />
           <NavItem to="/fixtures" label="Fixtures" onClick={() => setMenuOpen(false)} />
           <NavItem to="/favorites" label="Favorites" icon={<Star className="w-3.5 h-3.5" />} onClick={() => setMenuOpen(false)} />
+          <NavItem to="/stats" label="Stats" icon={<BarChart3 className="w-3.5 h-3.5" />} onClick={() => setMenuOpen(false)} />
           <NavItem to="/search" label="Search" icon={<Search className="w-3.5 h-3.5" />} onClick={() => setMenuOpen(false)} />
         </nav>
       )}
