@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import BottomTabBar from "@/components/BottomTabBar";
 import Index from "./pages/Index";
 import Fixtures from "./pages/Fixtures";
 import MatchDetail from "./pages/MatchDetail";
@@ -19,17 +20,20 @@ const App = () => (
     <TooltipProvider>
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/fixtures" element={<Fixtures />} />
-          <Route path="/match/:id" element={<MatchDetail />} />
-          <Route path="/favorites" element={<Favorites />} />
-          <Route path="/stats" element={<Stats />} />
-          <Route path="/search" element={<SearchPage />} />
-          <Route path="/auth" element={<Auth />} />
-          <Route path="/onboarding" element={<Onboarding />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <div className="pb-14 md:pb-0">
+          <Routes>
+            <Route path="/" element={<Index />} />
+            <Route path="/fixtures" element={<Fixtures />} />
+            <Route path="/match/:id" element={<MatchDetail />} />
+            <Route path="/favorites" element={<Favorites />} />
+            <Route path="/stats" element={<Stats />} />
+            <Route path="/search" element={<SearchPage />} />
+            <Route path="/auth" element={<Auth />} />
+            <Route path="/onboarding" element={<Onboarding />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </div>
+        <BottomTabBar />
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
