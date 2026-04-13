@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Search, Star, Menu, X } from 'lucide-react';
+import { Search, Star, Menu, X, BarChart3 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import NotificationBell from './NotificationBell';
