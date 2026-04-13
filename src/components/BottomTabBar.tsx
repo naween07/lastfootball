@@ -1,12 +1,12 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Zap, CalendarDays, Star, BarChart3, Search } from 'lucide-react';
+import { Zap, CalendarDays, Flame, Star, BarChart3, Search } from 'lucide-react';
 
 const TABS = [
   { to: '/', label: 'Live', icon: Zap },
   { to: '/fixtures', label: 'Fixtures', icon: CalendarDays },
+  { to: '/news', label: 'News', icon: Flame },
   { to: '/favorites', label: 'Favorites', icon: Star },
   { to: '/stats', label: 'Stats', icon: BarChart3 },
-  { to: '/search', label: 'Search', icon: Search },
 ];
 
 export default function BottomTabBar() {
