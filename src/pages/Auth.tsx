@@ -23,7 +23,16 @@ export default function Auth() {
     );
   }
 
-  if (user) return <Navigate to="/" replace />;
+  if (user) {
+    if (onboardingCompleted === false) return <Navigate to="/onboarding" replace />;
+    if (onboardingCompleted === true) return <Navigate to="/" replace />;
+    // Still loading onboarding status
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
