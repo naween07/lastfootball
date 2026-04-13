@@ -3,6 +3,7 @@ import { Search, Star, BarChart3, Flame } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import NotificationBell from './NotificationBell';
 import UserMenu from './UserMenu';
+import ThemeToggle from './ThemeToggle';
 
 export default function Header() {
   const { user } = useAuth();
@@ -25,6 +26,7 @@ export default function Header() {
           <NavItem to="/favorites" label="Favorites" icon={<Star className="w-3.5 h-3.5" />} />
           <NavItem to="/stats" label="Stats" icon={<BarChart3 className="w-3.5 h-3.5" />} />
           <NavItem to="/search" label="Search" icon={<Search className="w-3.5 h-3.5" />} />
+          <ThemeToggle />
           {user ? (
             <div className="flex items-center gap-1 ml-2">
               <NotificationBell />
@@ -42,6 +44,7 @@ export default function Header() {
 
         {/* Mobile right side — only auth/user actions */}
         <div className="md:hidden flex items-center gap-1">
+          <ThemeToggle />
           {user && <NotificationBell />}
           {user && <UserMenu />}
           {!user && (
