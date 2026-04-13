@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { Mail, Lock, User, Eye, EyeOff, Loader2 } from 'lucide-react';
 
 export default function Auth() {
-  const { user, loading } = useAuth();
+  const { user, loading, onboardingCompleted } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
