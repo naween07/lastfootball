@@ -19,7 +19,8 @@ export default function LeagueFilter({ leagues, selectedLeagueId, onSelect }: Le
           {leagues.map(league => (
             <FilterChip
               key={league.id}
-              label={`${league.logo} ${league.name}`}
+              label={league.name}
+              logo={league.logo}
               active={selectedLeagueId === league.id}
               onClick={() => onSelect(league.id)}
             />
