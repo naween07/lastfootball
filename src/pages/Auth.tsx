@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { Mail, Lock, User, Eye, EyeOff, Loader2 } from 'lucide-react';
 
 export default function Auth() {
-  const { user, loading } = useAuth();
+  const { user, loading, onboardingCompleted } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -23,7 +23,16 @@ export default function Auth() {
     );
   }
 
-  if (user) return <Navigate to="/" replace />;
+  if (user) {
+    if (onboardingCompleted === false) return <Navigate to="/onboarding" replace />;
+    if (onboardingCompleted === true) return <Navigate to="/" replace />;
+    // Still loading onboarding status
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();

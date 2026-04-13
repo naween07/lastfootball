@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Navigate } from 'react-router-dom';
 import Header from '@/components/Header';
+import { useAuth } from '@/hooks/useAuth';
 import LeagueFilter from '@/components/LeagueFilter';
 import LeagueGroup from '@/components/LeagueGroup';
 import DateNavigator from '@/components/DateNavigator';
@@ -17,6 +19,7 @@ import { Match, League } from '@/types/football';
 import { Loader2 } from 'lucide-react';
 
 export default function Index() {
+  const { user, onboardingCompleted } = useAuth();
   const dates = getDateRange();
   const todayStr = getToday();
   const [selectedDate, setSelectedDate] = useState(todayStr);
@@ -80,6 +83,11 @@ export default function Index() {
   const currentDateIdx = dates.indexOf(selectedDate);
   const canGoPrev = currentDateIdx > 0;
   const canGoNext = currentDateIdx < dates.length - 1;
+
+  // Redirect to onboarding if user is logged in but hasn't completed it
+  if (user && onboardingCompleted === false) {
+    return <Navigate to="/onboarding" replace />;
+  }
 
   return (
     <div className="min-h-screen bg-background">
