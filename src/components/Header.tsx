@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Search, Star, BarChart3 } from 'lucide-react';
+import { Search, Star, BarChart3, Flame } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import NotificationBell from './NotificationBell';
 import UserMenu from './UserMenu';
@@ -21,6 +21,7 @@ export default function Header() {
         <nav className="hidden md:flex items-center gap-1">
           <NavItem to="/" label="Live" />
           <NavItem to="/fixtures" label="Fixtures" />
+          <NavItem to="/news" label="News" icon={<Flame className="w-3.5 h-3.5" />} />
           <NavItem to="/favorites" label="Favorites" icon={<Star className="w-3.5 h-3.5" />} />
           <NavItem to="/stats" label="Stats" icon={<BarChart3 className="w-3.5 h-3.5" />} />
           <NavItem to="/search" label="Search" icon={<Search className="w-3.5 h-3.5" />} />

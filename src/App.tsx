@@ -9,6 +9,7 @@ import MatchDetail from "./pages/MatchDetail";
 import Favorites from "./pages/Favorites";
 import SearchPage from "./pages/SearchPage";
 import Stats from "./pages/Stats";
+import News from "./pages/News";
 import Auth from "./pages/Auth";
 import Onboarding from "./pages/Onboarding";
 import NotFound from "./pages/NotFound";
@@ -26,6 +27,7 @@ const App = () => (
             <Route path="/fixtures" element={<Fixtures />} />
             <Route path="/match/:id" element={<MatchDetail />} />
             <Route path="/favorites" element={<Favorites />} />
+            <Route path="/news" element={<News />} />
             <Route path="/stats" element={<Stats />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/auth" element={<Auth />} />
