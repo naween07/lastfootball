@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Navigate } from 'react-router-dom';
 import Header from '@/components/Header';
+import { useAuth } from '@/hooks/useAuth';
 import LeagueFilter from '@/components/LeagueFilter';
 import LeagueGroup from '@/components/LeagueGroup';
 import DateNavigator from '@/components/DateNavigator';
