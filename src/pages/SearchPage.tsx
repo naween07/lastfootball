@@ -1,15 +1,35 @@
-import { useState } from 'react';
-import { Search as SearchIcon } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Search as SearchIcon, Loader2 } from 'lucide-react';
 import Header from '@/components/Header';
 import LeagueGroup from '@/components/LeagueGroup';
 import { useFavorites } from '@/hooks/useFavorites';
-import { searchMatches, getMatchesGroupedByLeague } from '@/services/mockData';
+import { searchTeamsAndLeagues, getMatchesGroupedByLeague } from '@/services/footballApi';
+import { Match } from '@/types/football';
 
 export default function SearchPage() {
   const [query, setQuery] = useState('');
+  const [results, setResults] = useState<Match[]>([]);
+  const [loading, setLoading] = useState(false);
   const { isFavorite, toggleFavorite } = useFavorites();
 
-  const results = query.length >= 2 ? searchMatches(query) : [];
+  // Debounced search
+  useEffect(() => {
+    if (query.length < 3) {
+      setResults([]);
+      return;
+    }
+
+    setLoading(true);
+    const timeout = setTimeout(() => {
+      searchTeamsAndLeagues(query)
+        .then(setResults)
+        .catch(console.error)
+        .finally(() => setLoading(false));
+    }, 500);
+
+    return () => clearTimeout(timeout);
+  }, [query]);
+
   const groups = getMatchesGroupedByLeague(results);
 
   return (
@@ -28,10 +48,15 @@ export default function SearchPage() {
           />
         </div>
 
-        {query.length < 2 ? (
+        {query.length < 3 ? (
           <div className="text-center py-20 text-muted-foreground">
             <p className="text-3xl mb-3">🔍</p>
-            <p className="text-sm">Type at least 2 characters to search</p>
+            <p className="text-sm">Type at least 3 characters to search</p>
+          </div>
+        ) : loading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            <span className="ml-2 text-sm text-muted-foreground">Searching...</span>
           </div>
         ) : groups.length === 0 ? (
           <div className="text-center py-20 text-muted-foreground">

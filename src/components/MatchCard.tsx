@@ -48,6 +48,7 @@ export default function MatchCard({ match, isFavoriteHome, isFavoriteAway, onTog
           <TeamRow
             name={match.homeTeam.name}
             shortName={match.homeTeam.shortName}
+            logo={match.homeTeam.logo}
             score={match.homeScore}
             isWinning={match.homeScore !== null && match.awayScore !== null && match.homeScore > match.awayScore}
             isLive={isLive || isHT}
@@ -57,6 +58,7 @@ export default function MatchCard({ match, isFavoriteHome, isFavoriteAway, onTog
           <TeamRow
             name={match.awayTeam.name}
             shortName={match.awayTeam.shortName}
+            logo={match.awayTeam.logo}
             score={match.awayScore}
             isWinning={match.homeScore !== null && match.awayScore !== null && match.awayScore > match.homeScore}
             isLive={isLive || isHT}
@@ -72,6 +74,7 @@ export default function MatchCard({ match, isFavoriteHome, isFavoriteAway, onTog
 function TeamRow({
   name,
   shortName,
+  logo,
   score,
   isWinning,
   isLive,
@@ -80,6 +83,7 @@ function TeamRow({
 }: {
   name: string;
   shortName: string;
+  logo?: string;
   score: number | null;
   isWinning: boolean;
   isLive: boolean;
@@ -101,6 +105,7 @@ function TeamRow({
             />
           </button>
         )}
+        {logo && <img src={logo} alt="" className="w-4 h-4 flex-shrink-0" />}
         <span className={`text-sm truncate ${isWinning ? 'font-semibold text-foreground' : 'text-secondary-foreground'}`}>
           <span className="hidden sm:inline">{name}</span>
           <span className="sm:hidden">{shortName}</span>
