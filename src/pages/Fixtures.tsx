@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
 import LeagueGroup from '@/components/LeagueGroup';
+import DateNavigator from '@/components/DateNavigator';
 import { useFavorites } from '@/hooks/useFavorites';
 import {
   fetchMatchesByDate,
@@ -10,7 +11,7 @@ import {
   getToday,
 } from '@/services/footballApi';
 import { Match } from '@/types/football';
-import { Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 export default function Fixtures() {
   const dates = getDateRange();
@@ -29,49 +30,13 @@ export default function Fixtures() {
 
   const groups = getMatchesGroupedByLeague(matches);
 
-  const currentDateIdx = dates.indexOf(selectedDate);
-  const canGoPrev = currentDateIdx > 0;
-  const canGoNext = currentDateIdx < dates.length - 1;
-
   return (
     <div className="min-h-screen bg-background">
       <Header />
 
       {/* Date Navigation Bar */}
       <div className="sticky top-14 z-40 bg-background/95 backdrop-blur-md border-b border-border">
-        <div className="container flex items-center justify-between py-2.5 px-4">
-          <button
-            onClick={() => canGoPrev && setSelectedDate(dates[currentDateIdx - 1])}
-            disabled={!canGoPrev}
-            className="p-1 rounded-full text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-
-          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
-            {dates.map(date => (
-              <button
-                key={date}
-                onClick={() => setSelectedDate(date)}
-                className={`whitespace-nowrap px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                  selectedDate === date
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {getDateLabel(date)}
-              </button>
-            ))}
-          </div>
-
-          <button
-            onClick={() => canGoNext && setSelectedDate(dates[currentDateIdx + 1])}
-            disabled={!canGoNext}
-            className="p-1 rounded-full text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
-          >
-            <ChevronRight className="w-5 h-5" />
-          </button>
-        </div>
+        <DateNavigator dates={dates} selectedDate={selectedDate} onSelectDate={setSelectedDate} />
       </div>
 
       <main className="container py-4">
