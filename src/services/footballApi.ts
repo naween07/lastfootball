@@ -198,7 +198,223 @@ export async function searchTeamsAndLeagues(query: string): Promise<Match[]> {
 }
 
 // Top league IDs for prioritization
-const TOP_LEAGUE_IDS = [39, 2, 140, 135, 78, 61, 3, 94, 88, 253];
+export const TOP_LEAGUE_IDS = [39, 2, 140, 135, 78, 61, 3, 94, 88, 253];
+
+export const TOP_LEAGUES = [
+  { id: 39, name: 'Premier League', country: 'England' },
+  { id: 2, name: 'Champions League', country: 'World' },
+  { id: 140, name: 'La Liga', country: 'Spain' },
+  { id: 135, name: 'Serie A', country: 'Italy' },
+  { id: 78, name: 'Bundesliga', country: 'Germany' },
+  { id: 61, name: 'Ligue 1', country: 'France' },
+  { id: 3, name: 'Europa League', country: 'World' },
+  { id: 94, name: 'Primeira Liga', country: 'Portugal' },
+  { id: 88, name: 'Eredivisie', country: 'Netherlands' },
+  { id: 253, name: 'MLS', country: 'USA' },
+];
+
+export function getCurrentSeason(): number {
+  const now = new Date();
+  // Most leagues start in Aug, so if before Aug use previous year
+  return now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+}
+
+export function getSeasonOptions(): number[] {
+  const current = getCurrentSeason();
+  return [current, current - 1, current - 2, current - 3];
+}
+
+// ---- Stats API functions ----
+
+export interface StandingTeam {
+  rank: number;
+  team: { id: number; name: string; logo: string };
+  points: number;
+  goalsDiff: number;
+  played: number;
+  win: number;
+  draw: number;
+  lose: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  form: string;
+}
+
+export async function fetchStandings(leagueId: number, season: number): Promise<StandingTeam[]> {
+  try {
+    const data = await callApi("standings", { league: String(leagueId), season: String(season) });
+    if (!data.length) return [];
+    const standings = data[0]?.league?.standings;
+    if (!standings || !standings.length) return [];
+    // Take first group (some leagues have multiple groups)
+    return standings[0].map((s: any) => ({
+      rank: s.rank,
+      team: { id: s.team.id, name: s.team.name, logo: s.team.logo },
+      points: s.points,
+      goalsDiff: s.goalsDiff,
+      played: s.all.played,
+      win: s.all.win,
+      draw: s.all.draw,
+      lose: s.all.lose,
+      goalsFor: s.all.goals.for,
+      goalsAgainst: s.all.goals.against,
+      form: s.form || '',
+    }));
+  } catch (err) {
+    console.error("Failed to fetch standings:", err);
+    return [];
+  }
+}
+
+export interface PlayerStat {
+  rank: number;
+  player: { id: number; name: string; photo: string };
+  team: { id: number; name: string; logo: string };
+  goals: number;
+  penalties: number;
+  assists: number;
+  yellowCards: number;
+  redCards: number;
+  shots: number;
+  shotsOnTarget: number;
+  dribbles: number;
+  dribblesWon: number;
+  fouls: number;
+  keyPasses: number;
+  passes: number;
+  passAccuracy: number;
+  tackles: number;
+}
+
+function mapPlayerStat(p: any, index: number): PlayerStat {
+  const stats = p.statistics?.[0] || {};
+  return {
+    rank: index + 1,
+    player: { id: p.player.id, name: p.player.name, photo: p.player.photo },
+    team: { id: stats.team?.id || 0, name: stats.team?.name || '', logo: stats.team?.logo || '' },
+    goals: stats.goals?.total || 0,
+    penalties: stats.penalty?.scored || 0,
+    assists: stats.goals?.assists || 0,
+    yellowCards: stats.cards?.yellow || 0,
+    redCards: stats.cards?.red || 0,
+    shots: stats.shots?.total || 0,
+    shotsOnTarget: stats.shots?.on || 0,
+    dribbles: stats.dribbles?.attempts || 0,
+    dribblesWon: stats.dribbles?.success || 0,
+    fouls: stats.fouls?.committed || 0,
+    keyPasses: stats.passes?.key || 0,
+    passes: stats.passes?.total || 0,
+    passAccuracy: stats.passes?.accuracy || 0,
+    tackles: stats.tackles?.total || 0,
+  };
+}
+
+export async function fetchTopScorers(leagueId: number, season: number): Promise<PlayerStat[]> {
+  try {
+    const data = await callApi("players/topscorers", { league: String(leagueId), season: String(season) });
+    return data.map(mapPlayerStat);
+  } catch (err) {
+    console.error("Failed to fetch top scorers:", err);
+    return [];
+  }
+}
+
+export async function fetchTopAssists(leagueId: number, season: number): Promise<PlayerStat[]> {
+  try {
+    const data = await callApi("players/topassists", { league: String(leagueId), season: String(season) });
+    return data.map(mapPlayerStat);
+  } catch (err) {
+    console.error("Failed to fetch top assists:", err);
+    return [];
+  }
+}
+
+export async function fetchTopYellowCards(leagueId: number, season: number): Promise<PlayerStat[]> {
+  try {
+    const data = await callApi("players/topyellowcards", { league: String(leagueId), season: String(season) });
+    return data.map(mapPlayerStat);
+  } catch (err) {
+    console.error("Failed to fetch top yellow cards:", err);
+    return [];
+  }
+}
+
+export async function fetchTopRedCards(leagueId: number, season: number): Promise<PlayerStat[]> {
+  try {
+    const data = await callApi("players/topredcards", { league: String(leagueId), season: String(season) });
+    return data.map(mapPlayerStat);
+  } catch (err) {
+    console.error("Failed to fetch top red cards:", err);
+    return [];
+  }
+}
+
+export interface TeamStatSummary {
+  team: { id: number; name: string; logo: string };
+  form: string;
+  fixtures: { played: number; wins: number; draws: number; losses: number };
+  goals: { for: number; against: number };
+  cleanSheets: number;
+  failedToScore: number;
+}
+
+export async function fetchTeamsInLeague(leagueId: number, season: number): Promise<{ id: number; name: string; logo: string }[]> {
+  try {
+    const data = await callApi("teams", { league: String(leagueId), season: String(season) });
+    return data.map((t: any) => ({ id: t.team.id, name: t.team.name, logo: t.team.logo }));
+  } catch (err) {
+    console.error("Failed to fetch teams:", err);
+    return [];
+  }
+}
+
+export async function fetchTeamStatistics(teamId: number, leagueId: number, season: number): Promise<TeamStatSummary | null> {
+  try {
+    const data = await callApi("teams/statistics", { team: String(teamId), league: String(leagueId), season: String(season) });
+    if (!data) return null;
+    return {
+      team: { id: data.team?.id || teamId, name: data.team?.name || '', logo: data.team?.logo || '' },
+      form: data.form || '',
+      fixtures: {
+        played: data.fixtures?.played?.total || 0,
+        wins: data.fixtures?.wins?.total || 0,
+        draws: data.fixtures?.draws?.total || 0,
+        losses: data.fixtures?.loses?.total || 0,
+      },
+      goals: {
+        for: data.goals?.for?.total?.total || 0,
+        against: data.goals?.against?.total?.total || 0,
+      },
+      cleanSheets: data.clean_sheet?.total || 0,
+      failedToScore: data.failed_to_score?.total || 0,
+    };
+  } catch (err) {
+    console.error("Failed to fetch team statistics:", err);
+    return null;
+  }
+}
+
+export async function fetchLeagueFixtures(leagueId: number, season: number, round?: string): Promise<Match[]> {
+  try {
+    const params: Record<string, string> = { league: String(leagueId), season: String(season) };
+    if (round) params.round = round;
+    const data = await callApi("fixtures", params);
+    return data.map(mapFixtureToMatch);
+  } catch (err) {
+    console.error("Failed to fetch league fixtures:", err);
+    return [];
+  }
+}
+
+export async function fetchLeagueRounds(leagueId: number, season: number): Promise<string[]> {
+  try {
+    const data = await callApi("fixtures/rounds", { league: String(leagueId), season: String(season) });
+    return data || [];
+  } catch (err) {
+    console.error("Failed to fetch rounds:", err);
+    return [];
+  }
+}
 
 export function getMatchesGroupedByLeague(matches: Match[]): LeagueMatches[] {
   const groups = new Map<number, LeagueMatches>();
@@ -210,7 +426,6 @@ export function getMatchesGroupedByLeague(matches: Match[]): LeagueMatches[] {
   }
 
   const all = Array.from(groups.values());
-  // Sort: top leagues first (in priority order), then rest alphabetically
   all.sort((a, b) => {
     const aIdx = TOP_LEAGUE_IDS.indexOf(a.league.id);
     const bIdx = TOP_LEAGUE_IDS.indexOf(b.league.id);
