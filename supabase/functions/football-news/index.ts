@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.38/deno-dom-wasm.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,7 +11,6 @@ interface NewsItem {
   description: string;
   url: string;
   source: string;
-  sourceIcon: string;
   publishedAt: string;
   imageUrl?: string;
   category: string;
@@ -22,59 +20,47 @@ const RSS_FEEDS = [
   {
     url: "https://feeds.bbci.co.uk/sport/football/rss.xml",
     source: "BBC Sport",
-    sourceIcon: "https://www.bbc.co.uk/favicon.ico",
     category: "general",
   },
   {
     url: "https://www.espn.com/espn/rss/soccer/news",
     source: "ESPN FC",
-    sourceIcon: "https://www.espn.com/favicon.ico",
     category: "general",
   },
   {
     url: "https://www.skysports.com/rss/12040",
     source: "Sky Sports",
-    sourceIcon: "https://www.skysports.com/favicon.ico",
     category: "transfers",
-  },
-  {
-    url: "https://sportstar.thehindu.com/rss/football/feeder/default.rss",
-    source: "Sportstar",
-    sourceIcon: "https://sportstar.thehindu.com/favicon.ico",
-    category: "general",
   },
 ];
 
-function extractText(el: any, tag: string): string {
-  const child = el.querySelector(tag);
-  return child?.textContent?.trim() || "";
+function getTagContent(item: string, tag: string): string {
+  // Handle CDATA and regular content
+  const patterns = [
+    new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]></${tag}>`, "i"),
+    new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, "i"),
+  ];
+  for (const re of patterns) {
+    const m = item.match(re);
+    if (m) return m[1].trim();
+  }
+  return "";
 }
 
-function extractImage(el: any): string | undefined {
-  // Try media:content, media:thumbnail, enclosure, or image in description
-  const enclosure = el.querySelector("enclosure");
-  if (enclosure) {
-    const url = enclosure.getAttribute("url");
-    if (url && url.match(/\.(jpg|jpeg|png|webp|gif)/i)) return url;
-  }
-
-  const mediaContent = el.querySelector("media\\:content, content");
-  if (mediaContent) {
-    const url = mediaContent.getAttribute("url");
-    if (url) return url;
-  }
-
-  const mediaThumbnail = el.querySelector("media\\:thumbnail, thumbnail");
-  if (mediaThumbnail) {
-    const url = mediaThumbnail.getAttribute("url");
-    if (url) return url;
-  }
-
-  // Try to extract from description HTML
-  const desc = extractText(el, "description");
-  const imgMatch = desc.match(/<img[^>]+src="([^"]+)"/);
-  if (imgMatch) return imgMatch[1];
-
+function getImageUrl(item: string): string | undefined {
+  // media:thumbnail
+  const thumb = item.match(/<media:thumbnail[^>]+url="([^"]+)"/i);
+  if (thumb) return thumb[1];
+  // media:content
+  const media = item.match(/<media:content[^>]+url="([^"]+)"/i);
+  if (media) return media[1];
+  // enclosure
+  const enc = item.match(/<enclosure[^>]+url="([^"]+)"/i);
+  if (enc) return enc[1];
+  // img in description
+  const desc = getTagContent(item, "description");
+  const img = desc.match(/<img[^>]+src="([^"]+)"/i);
+  if (img) return img[1];
   return undefined;
 }
 
@@ -82,33 +68,39 @@ function normalizeTitle(title: string): string {
   return title.toLowerCase().replace(/[^a-z0-9]/g, "").substring(0, 60);
 }
 
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#039;/g, "'").trim();
+}
+
 async function fetchFeed(feed: typeof RSS_FEEDS[0]): Promise<NewsItem[]> {
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
     const res = await fetch(feed.url, {
-      headers: { "User-Agent": "LastFootball/1.0" },
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; LastFootball/1.0)" },
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
+
     if (!res.ok) {
-      console.warn(`Failed to fetch ${feed.source}: ${res.status}`);
+      console.warn(`Feed ${feed.source} returned ${res.status}`);
       return [];
     }
 
     const xml = await res.text();
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(xml, "text/html");
-    if (!doc) return [];
-
-    const items = doc.querySelectorAll("item");
+    
+    // Split by <item> tags using regex
+    const itemBlocks = xml.split(/<item[^>]*>/i).slice(1);
     const results: NewsItem[] = [];
 
-    for (let i = 0; i < Math.min(items.length, 15); i++) {
-      const item = items[i];
-      const title = extractText(item, "title");
-      const description = extractText(item, "description")
-        .replace(/<[^>]*>/g, "")
-        .substring(0, 200);
-      const link = extractText(item, "link");
-      const pubDate = extractText(item, "pubDate");
-      const image = extractImage(item);
+    for (let i = 0; i < Math.min(itemBlocks.length, 15); i++) {
+      const block = itemBlocks[i].split(/<\/item>/i)[0];
+      const title = stripHtml(getTagContent(block, "title"));
+      const description = stripHtml(getTagContent(block, "description")).substring(0, 200);
+      const link = getTagContent(block, "link").trim();
+      const pubDate = getTagContent(block, "pubDate");
+      const image = getImageUrl(block);
 
       if (!title || !link) continue;
 
@@ -118,13 +110,13 @@ async function fetchFeed(feed: typeof RSS_FEEDS[0]): Promise<NewsItem[]> {
         description,
         url: link,
         source: feed.source,
-        sourceIcon: feed.sourceIcon,
         publishedAt: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),
         imageUrl: image,
         category: feed.category,
       });
     }
 
+    console.log(`Fetched ${results.length} items from ${feed.source}`);
     return results;
   } catch (err) {
     console.error(`Error fetching ${feed.source}:`, err);
@@ -138,21 +130,18 @@ serve(async (req) => {
   }
 
   try {
-    // Fetch all feeds in parallel
     const allResults = await Promise.all(RSS_FEEDS.map(fetchFeed));
     const allNews = allResults.flat();
 
-    // Deduplicate by normalized title similarity
-    const seen = new Set<string>();
-    const unique: NewsItem[] = [];
-
-    // Sort by date first (newest first)
+    // Sort by date (newest first)
     allNews.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
 
+    // Deduplicate by normalized title
+    const seen = new Set<string>();
+    const unique: NewsItem[] = [];
     for (const item of allNews) {
-      const key = item.id;
-      if (!seen.has(key)) {
-        seen.add(key);
+      if (!seen.has(item.id)) {
+        seen.add(item.id);
         unique.push(item);
       }
     }
