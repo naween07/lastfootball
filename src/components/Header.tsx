@@ -45,6 +45,7 @@ export default function Header() {
         {/* Mobile right side — only auth/user actions */}
         <div className="md:hidden flex items-center gap-1">
           <ThemeToggle />
+          {user && <NotificationBell />}
           {user && <UserMenu />}
           {!user && (
             <Link
