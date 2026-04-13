@@ -18,13 +18,13 @@ export default function MatchCard({ match, isFavoriteHome, isFavoriteAway, onTog
   return (
     <Link
       to={`/match/${match.id}`}
-      className="group block bg-card hover:bg-secondary/50 transition-colors border-b border-border last:border-b-0"
+      className="group block bg-card hover:bg-secondary/50 transition-colors rounded-lg mx-3 mb-2"
     >
-      <div className="flex items-center px-4 py-3 gap-3">
+      <div className="flex items-center px-3 py-3">
         {/* Status / Time column */}
-        <div className="w-12 flex-shrink-0 text-center">
+        <div className="w-14 flex-shrink-0 text-center">
           {isLive && (
-            <div className="flex flex-col items-center gap-1">
+            <div className="flex flex-col items-center gap-0.5">
               <span className="inline-flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-live animate-pulse-live" />
                 <span className="text-[10px] font-bold text-live uppercase">Live</span>
@@ -36,36 +36,56 @@ export default function MatchCard({ match, isFavoriteHome, isFavoriteAway, onTog
             <span className="text-xs font-bold text-amber-400">HT</span>
           )}
           {isFinished && (
-            <span className="text-xs font-medium text-muted-foreground">FT</span>
+            <span className="text-sm font-semibold text-muted-foreground">FT</span>
           )}
           {isNotStarted && (
-            <span className="text-xs font-medium text-muted-foreground">{match.time}</span>
+            <span className="text-sm font-semibold text-primary">{match.time}</span>
           )}
         </div>
 
+        {/* Vertical divider */}
+        <div className="w-px h-10 bg-border flex-shrink-0" />
+
         {/* Teams & Score */}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 pl-3">
           <TeamRow
             name={match.homeTeam.name}
-            shortName={match.homeTeam.shortName}
             logo={match.homeTeam.logo}
             score={match.homeScore}
             isWinning={match.homeScore !== null && match.awayScore !== null && match.homeScore > match.awayScore}
             isLive={isLive || isHT}
-            isFavorite={isFavoriteHome}
-            onToggleFavorite={onToggleFavorite ? () => onToggleFavorite(match.homeTeam.id) : undefined}
+            isFinished={isFinished}
           />
           <TeamRow
             name={match.awayTeam.name}
-            shortName={match.awayTeam.shortName}
             logo={match.awayTeam.logo}
             score={match.awayScore}
             isWinning={match.homeScore !== null && match.awayScore !== null && match.awayScore > match.homeScore}
             isLive={isLive || isHT}
-            isFavorite={isFavoriteAway}
-            onToggleFavorite={onToggleFavorite ? () => onToggleFavorite(match.awayTeam.id) : undefined}
+            isFinished={isFinished}
           />
         </div>
+
+        {/* Favorite star */}
+        {onToggleFavorite && (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              // Toggle favorite for whichever team — use home team as default
+              onToggleFavorite(match.homeTeam.id);
+            }}
+            className="flex-shrink-0 p-1 ml-2"
+          >
+            <Star
+              className={`w-5 h-5 transition-colors ${
+                isFavoriteHome || isFavoriteAway
+                  ? 'fill-primary text-primary'
+                  : 'text-muted-foreground/40 hover:text-muted-foreground'
+              }`}
+            />
+          </button>
+        )}
       </div>
     </Link>
   );
@@ -73,48 +93,34 @@ export default function MatchCard({ match, isFavoriteHome, isFavoriteAway, onTog
 
 function TeamRow({
   name,
-  shortName,
   logo,
   score,
   isWinning,
   isLive,
-  isFavorite,
-  onToggleFavorite,
+  isFinished,
 }: {
   name: string;
-  shortName: string;
   logo?: string;
   score: number | null;
   isWinning: boolean;
   isLive: boolean;
-  isFavorite?: boolean;
-  onToggleFavorite?: () => void;
+  isFinished: boolean;
 }) {
   return (
     <div className="flex items-center justify-between py-0.5">
-      <div className="flex items-center gap-2 min-w-0">
-        {onToggleFavorite && (
-          <button
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggleFavorite(); }}
-            className="flex-shrink-0 p-0.5"
-          >
-            <Star
-              className={`w-3 h-3 transition-colors ${
-                isFavorite ? 'fill-primary text-primary' : 'text-muted-foreground/30 hover:text-muted-foreground'
-              }`}
-            />
-          </button>
-        )}
-        {logo && <img src={logo} alt="" className="w-4 h-4 flex-shrink-0" />}
-        <span className={`text-sm truncate ${isWinning ? 'font-semibold text-foreground' : 'text-secondary-foreground'}`}>
-          <span className="hidden sm:inline">{name}</span>
-          <span className="sm:hidden">{shortName}</span>
+      <div className="flex items-center gap-2.5 min-w-0">
+        {logo && <img src={logo} alt="" className="w-5 h-5 flex-shrink-0 object-contain" />}
+        <span className={`text-sm truncate ${
+          isWinning ? 'font-semibold text-foreground' : 'text-secondary-foreground'
+        }`}>
+          {name}
         </span>
       </div>
-      <span className={`text-sm font-bold tabular-nums min-w-[1.5rem] text-right ${
-        isLive && isWinning ? 'text-foreground' : isLive ? 'text-secondary-foreground' : 'text-muted-foreground'
+      <span className={`text-base font-bold tabular-nums min-w-[2rem] text-right ${
+        isLive && isWinning ? 'text-live' : isLive ? 'text-secondary-foreground' :
+        isFinished && isWinning ? 'text-foreground' : 'text-muted-foreground'
       }`}>
-        {score !== null ? score : '-'}
+        {score !== null ? score : ''}
       </span>
     </div>
   );
