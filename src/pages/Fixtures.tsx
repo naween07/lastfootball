@@ -2,61 +2,75 @@ import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
 import LeagueGroup from '@/components/LeagueGroup';
 import { useFavorites } from '@/hooks/useFavorites';
-import { fetchMatchesByDate, getMatchesGroupedByLeague, getToday, getTomorrow, formatDate } from '@/services/footballApi';
-import { Match, LeagueMatches } from '@/types/football';
-import { Loader2 } from 'lucide-react';
-
-const tabs = [
-  { key: 'today', label: 'Today' },
-  { key: 'tomorrow', label: 'Tomorrow' },
-  { key: 'upcoming', label: 'Upcoming' },
-] as const;
-
-type TabKey = typeof tabs[number]['key'];
+import {
+  fetchMatchesByDate,
+  getMatchesGroupedByLeague,
+  getDateRange,
+  getDateLabel,
+  getToday,
+} from '@/services/footballApi';
+import { Match } from '@/types/football';
+import { Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export default function Fixtures() {
-  const [activeTab, setActiveTab] = useState<TabKey>('today');
+  const dates = getDateRange();
+  const [selectedDate, setSelectedDate] = useState(getToday());
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const { isFavorite, toggleFavorite } = useFavorites();
 
   useEffect(() => {
     setLoading(true);
-    let date = getToday();
-    if (activeTab === 'tomorrow') {
-      date = getTomorrow();
-    } else if (activeTab === 'upcoming') {
-      const d = new Date();
-      d.setDate(d.getDate() + 2);
-      date = formatDate(d);
-    }
-
-    fetchMatchesByDate(date)
+    fetchMatchesByDate(selectedDate)
       .then(setMatches)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [activeTab]);
+  }, [selectedDate]);
 
   const groups = getMatchesGroupedByLeague(matches);
+
+  const currentDateIdx = dates.indexOf(selectedDate);
+  const canGoPrev = currentDateIdx > 0;
+  const canGoNext = currentDateIdx < dates.length - 1;
 
   return (
     <div className="min-h-screen bg-background">
       <Header />
+
+      {/* Date Navigation Bar */}
       <div className="sticky top-14 z-40 bg-background/95 backdrop-blur-md border-b border-border">
-        <div className="container flex gap-1 py-2">
-          {tabs.map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                activeTab === tab.key
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+        <div className="container flex items-center justify-between py-2.5 px-4">
+          <button
+            onClick={() => canGoPrev && setSelectedDate(dates[currentDateIdx - 1])}
+            disabled={!canGoPrev}
+            className="p-1 rounded-full text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+
+          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
+            {dates.map(date => (
+              <button
+                key={date}
+                onClick={() => setSelectedDate(date)}
+                className={`whitespace-nowrap px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                  selectedDate === date
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {getDateLabel(date)}
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={() => canGoNext && setSelectedDate(dates[currentDateIdx + 1])}
+            disabled={!canGoNext}
+            className="p-1 rounded-full text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
         </div>
       </div>
 
@@ -69,7 +83,7 @@ export default function Fixtures() {
         ) : groups.length === 0 ? (
           <div className="text-center py-20 text-muted-foreground">
             <p className="text-lg font-medium">No fixtures</p>
-            <p className="text-sm mt-1">No matches scheduled for this period</p>
+            <p className="text-sm mt-1">No matches scheduled for {getDateLabel(selectedDate).toLowerCase()}</p>
           </div>
         ) : (
           groups.map(group => (

@@ -197,6 +197,9 @@ export async function searchTeamsAndLeagues(query: string): Promise<Match[]> {
   }
 }
 
+// Top league IDs for prioritization
+const TOP_LEAGUE_IDS = [39, 2, 140, 135, 78, 61, 3, 94, 88, 253];
+
 export function getMatchesGroupedByLeague(matches: Match[]): LeagueMatches[] {
   const groups = new Map<number, LeagueMatches>();
   for (const match of matches) {
@@ -205,7 +208,18 @@ export function getMatchesGroupedByLeague(matches: Match[]): LeagueMatches[] {
     }
     groups.get(match.league.id)!.matches.push(match);
   }
-  return Array.from(groups.values());
+
+  const all = Array.from(groups.values());
+  // Sort: top leagues first (in priority order), then rest alphabetically
+  all.sort((a, b) => {
+    const aIdx = TOP_LEAGUE_IDS.indexOf(a.league.id);
+    const bIdx = TOP_LEAGUE_IDS.indexOf(b.league.id);
+    if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+    if (aIdx !== -1) return -1;
+    if (bIdx !== -1) return 1;
+    return a.league.name.localeCompare(b.league.name);
+  });
+  return all;
 }
 
 // Format date as YYYY-MM-DD
@@ -221,4 +235,34 @@ export function getTomorrow(): string {
   const d = new Date();
   d.setDate(d.getDate() + 1);
   return formatDate(d);
+}
+
+export function getYesterday(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return formatDate(d);
+}
+
+export function getDateLabel(dateStr: string): string {
+  const today = getToday();
+  const tomorrow = getTomorrow();
+  const yesterday = getYesterday();
+
+  if (dateStr === today) return 'Today';
+  if (dateStr === tomorrow) return 'Tomorrow';
+  if (dateStr === yesterday) return 'Yesterday';
+
+  const d = new Date(dateStr + 'T12:00:00');
+  return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+/** Get an array of date strings from yesterday to +5 days */
+export function getDateRange(): string[] {
+  const dates: string[] = [];
+  for (let i = -1; i <= 5; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() + i);
+    dates.push(formatDate(d));
+  }
+  return dates;
 }
