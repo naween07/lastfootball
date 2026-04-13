@@ -38,6 +38,38 @@ export default function Onboarding() {
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+        const query = new URLSearchParams({ endpoint: 'teams', search: searchQuery }).toString();
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/football-api?${query}`, {
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+        });
+        const data = await res.json();
+        const teams = (data.response || []).map((r: any) => ({
+          id: r.team.id,
+          name: r.team.name,
+          logo: r.team.logo,
+        }));
+        setSearchResults(teams.slice(0, 12));
+      } catch {
+        toast.error('Search failed');
+      } finally {
+        setSearching(false);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -58,40 +90,6 @@ export default function Onboarding() {
   };
 
   const isSelected = (teamId: number) => selectedTeams.some(t => t.id === teamId);
-
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      return;
-    }
-    setSearching(true);
-    try {
-      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-      const query = new URLSearchParams({ endpoint: 'teams', search: searchQuery }).toString();
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/football-api?${query}`, {
-        headers: {
-          'Content-Type': 'application/json',
-          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-        },
-      });
-      const data = await res.json();
-      const teams = (data.response || []).map((r: any) => ({
-        id: r.team.id,
-        name: r.team.name,
-        logo: r.team.logo,
-      }));
-      setSearchResults(teams.slice(0, 12));
-    } catch {
-      toast.error('Search failed');
-    } finally {
-      setSearching(false);
-    }
-  };
-
-  useEffect(() => {
-    const timer = setTimeout(handleSearch, 400);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
 
   const handleContinue = async () => {
     setSaving(true);
