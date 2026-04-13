@@ -3,11 +3,21 @@ import Header from '@/components/Header';
 import LeagueFilter from '@/components/LeagueFilter';
 import LeagueGroup from '@/components/LeagueGroup';
 import { useFavorites } from '@/hooks/useFavorites';
-import { fetchLiveMatches, fetchMatchesByDate, getMatchesGroupedByLeague, getToday } from '@/services/footballApi';
-import { Match, LeagueMatches, League } from '@/types/football';
-import { Loader2 } from 'lucide-react';
+import {
+  fetchLiveMatches,
+  fetchMatchesByDate,
+  getMatchesGroupedByLeague,
+  getDateRange,
+  getDateLabel,
+  getToday,
+} from '@/services/footballApi';
+import { Match, League } from '@/types/football';
+import { Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export default function Index() {
+  const dates = getDateRange();
+  const todayStr = getToday();
+  const [selectedDate, setSelectedDate] = useState(todayStr);
   const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
   const [matches, setMatches] = useState<Match[]>([]);
   const [leagues, setLeagues] = useState<League[]>([]);
@@ -17,45 +27,99 @@ export default function Index() {
 
   const load = useCallback(async () => {
     try {
-      // Fetch both live and today's matches
-      const [live, today] = await Promise.all([
-        fetchLiveMatches(),
-        fetchMatchesByDate(getToday()),
-      ]);
+      const isToday = selectedDate === todayStr;
 
-      // Merge: live matches + today's non-live matches
-      const liveIds = new Set(live.map(m => m.id));
-      const merged = [...live, ...today.filter(m => !liveIds.has(m.id))];
+      if (isToday) {
+        const [live, today] = await Promise.all([
+          fetchLiveMatches(),
+          fetchMatchesByDate(selectedDate),
+        ]);
+        const liveIds = new Set(live.map(m => m.id));
+        const merged = [...live, ...today.filter(m => !liveIds.has(m.id))];
+        setMatches(merged);
+        setLiveCount(live.length);
+      } else {
+        const data = await fetchMatchesByDate(selectedDate);
+        setMatches(data);
+        setLiveCount(0);
+      }
 
-      setMatches(merged);
-      setLiveCount(live.length);
-
-      // Extract unique leagues
-      const leagueMap = new Map<number, League>();
-      merged.forEach(m => leagueMap.set(m.league.id, m.league));
-      setLeagues(Array.from(leagueMap.values()));
+      // Extract unique leagues after setting matches
     } catch (err) {
       console.error("Failed to load matches:", err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedDate, todayStr]);
 
   useEffect(() => {
+    setLoading(true);
     load();
-    const interval = setInterval(load, 15000);
-    return () => clearInterval(interval);
-  }, [load]);
+    // Only auto-refresh for today
+    if (selectedDate === todayStr) {
+      const interval = setInterval(load, 15000);
+      return () => clearInterval(interval);
+    }
+  }, [load, selectedDate, todayStr]);
+
+  // Extract leagues from matches
+  useEffect(() => {
+    const leagueMap = new Map<number, League>();
+    matches.forEach(m => leagueMap.set(m.league.id, m.league));
+    setLeagues(Array.from(leagueMap.values()));
+  }, [matches]);
 
   const filtered = selectedLeagueId
     ? matches.filter(m => m.league.id === selectedLeagueId)
     : matches;
   const groups = getMatchesGroupedByLeague(filtered);
 
+  // Date navigation
+  const currentDateIdx = dates.indexOf(selectedDate);
+  const canGoPrev = currentDateIdx > 0;
+  const canGoNext = currentDateIdx < dates.length - 1;
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
       <LeagueFilter leagues={leagues} selectedLeagueId={selectedLeagueId} onSelect={setSelectedLeagueId} />
+
+      {/* Date Navigation Bar */}
+      <div className="sticky top-[6.5rem] z-30 bg-background/95 backdrop-blur-md border-b border-border">
+        <div className="container flex items-center justify-between py-2.5 px-4">
+          <button
+            onClick={() => canGoPrev && setSelectedDate(dates[currentDateIdx - 1])}
+            disabled={!canGoPrev}
+            className="p-1 rounded-full text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+
+          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
+            {dates.map(date => (
+              <button
+                key={date}
+                onClick={() => setSelectedDate(date)}
+                className={`whitespace-nowrap px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                  selectedDate === date
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {getDateLabel(date)}
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={() => canGoNext && setSelectedDate(dates[currentDateIdx + 1])}
+            disabled={!canGoNext}
+            className="p-1 rounded-full text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
 
       <main className="container py-4">
         {loading ? (
@@ -65,7 +129,7 @@ export default function Index() {
           </div>
         ) : (
           <>
-            {liveCount > 0 && (
+            {liveCount > 0 && selectedDate === todayStr && (
               <div className="flex items-center gap-2 mb-4 px-1">
                 <span className="w-2 h-2 rounded-full bg-live animate-pulse-live" />
                 <span className="text-sm font-semibold text-live">{liveCount} Live</span>
@@ -76,7 +140,7 @@ export default function Index() {
             {groups.length === 0 ? (
               <div className="text-center py-20 text-muted-foreground">
                 <p className="text-lg font-medium">No matches found</p>
-                <p className="text-sm mt-1">Try selecting a different league or check back later</p>
+                <p className="text-sm mt-1">No matches scheduled for {getDateLabel(selectedDate).toLowerCase()}</p>
               </div>
             ) : (
               groups.map(group => (
