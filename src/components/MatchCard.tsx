@@ -105,6 +105,7 @@ function TeamRow({
             />
           </button>
         )}
+        {logo && <img src={logo} alt="" className="w-4 h-4 flex-shrink-0" />}
         <span className={`text-sm truncate ${isWinning ? 'font-semibold text-foreground' : 'text-secondary-foreground'}`}>
           <span className="hidden sm:inline">{name}</span>
           <span className="sm:hidden">{shortName}</span>
