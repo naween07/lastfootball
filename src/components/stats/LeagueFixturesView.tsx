@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Match, fetchLeagueFixtures, fetchLeagueRounds } from '@/services/footballApi';
+import { fetchLeagueFixtures, fetchLeagueRounds } from '@/services/footballApi';
+import { Match } from '@/types/football';
 import MatchCard from '@/components/MatchCard';
 
 interface LeagueFixturesViewProps {
