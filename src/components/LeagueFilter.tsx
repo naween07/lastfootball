@@ -31,16 +31,21 @@ export default function LeagueFilter({ leagues, selectedLeagueId, onSelect }: Le
   );
 }
 
-function FilterChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+function FilterChip({ label, logo, active, onClick }: { label: string; logo?: string; active: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className={`whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+      className={`flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
         active
           ? 'bg-primary text-primary-foreground'
           : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
       }`}
     >
+      {logo?.startsWith('http') ? (
+        <img src={logo} alt="" className="w-3.5 h-3.5" />
+      ) : logo ? (
+        <span>{logo}</span>
+      ) : null}
       {label}
     </button>
   );
