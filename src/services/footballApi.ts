@@ -198,7 +198,7 @@ export async function searchTeamsAndLeagues(query: string): Promise<Match[]> {
 }
 
 // Top league IDs for prioritization
-export const TOP_LEAGUE_IDS = [39, 2, 140, 135, 78, 61, 3, 94, 88, 253];
+export const TOP_LEAGUE_IDS = [39, 2, 140, 135, 78, 61, 3, 94, 88, 307, 253];
 
 export const TOP_LEAGUES = [
   { id: 39, name: 'Premier League', country: 'England' },
@@ -210,8 +210,12 @@ export const TOP_LEAGUES = [
   { id: 3, name: 'Europa League', country: 'World' },
   { id: 94, name: 'Primeira Liga', country: 'Portugal' },
   { id: 88, name: 'Eredivisie', country: 'Netherlands' },
+  { id: 307, name: 'Saudi Pro League', country: 'Saudi Arabia' },
   { id: 253, name: 'MLS', country: 'USA' },
 ];
+
+// Cup/knockout competition IDs
+export const CUP_LEAGUE_IDS = [2, 3, 848]; // Champions League, Europa League, Conference League
 
 export function getCurrentSeason(): number {
   const now = new Date();

@@ -11,6 +11,7 @@ const TOP_LEAGUES: { id: number; name: string; logo: string }[] = [
   { id: 3,   name: 'Europa League',        logo: 'https://media.api-sports.io/football/leagues/3.png' },
   { id: 94,  name: 'Primeira Liga',        logo: 'https://media.api-sports.io/football/leagues/94.png' },
   { id: 88,  name: 'Eredivisie',           logo: 'https://media.api-sports.io/football/leagues/88.png' },
+  { id: 307, name: 'Saudi Pro League',     logo: 'https://media.api-sports.io/football/leagues/307.png' },
   { id: 253, name: 'MLS',                  logo: 'https://media.api-sports.io/football/leagues/253.png' },
 ];
 
