@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import { Match, League, LeagueMatches, MatchEvent, MatchStats } from "@/types/football";
+import { Match, League, LeagueMatches, MatchEvent, MatchStats, TeamLineup, LineupPlayer } from "@/types/football";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
