@@ -115,6 +115,27 @@ function mapStats(stats: any[]): MatchStats | undefined {
   };
 }
 
+function mapLineup(lineup: any): TeamLineup | undefined {
+  if (!lineup) return undefined;
+  return {
+    formation: lineup.formation || '',
+    startXI: (lineup.startXI || []).map((p: any) => ({
+      id: p.player?.id || 0,
+      name: p.player?.name || 'Unknown',
+      number: p.player?.number || 0,
+      pos: p.player?.pos || '',
+      grid: p.player?.grid || undefined,
+    })),
+    substitutes: (lineup.substitutes || []).map((p: any) => ({
+      id: p.player?.id || 0,
+      name: p.player?.name || 'Unknown',
+      number: p.player?.number || 0,
+      pos: p.player?.pos || '',
+    })),
+    coach: { id: lineup.coach?.id || 0, name: lineup.coach?.name || 'Unknown', photo: lineup.coach?.photo },
+  };
+}
+
 // ---- Public API functions ----
 
 export async function fetchLiveMatches(): Promise<Match[]> {
