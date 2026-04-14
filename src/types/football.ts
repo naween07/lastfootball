@@ -27,6 +27,21 @@ export interface MatchStats {
   offsides: [number, number];
 }
 
+export interface LineupPlayer {
+  id: number;
+  name: string;
+  number: number;
+  pos: string;
+  grid?: string;
+}
+
+export interface TeamLineup {
+  formation: string;
+  startXI: LineupPlayer[];
+  substitutes: LineupPlayer[];
+  coach: { id: number; name: string; photo?: string };
+}
+
 export interface Match {
   id: number;
   homeTeam: Team;
@@ -40,6 +55,7 @@ export interface Match {
   league: League;
   events?: MatchEvent[];
   stats?: MatchStats;
+  lineups?: { home: TeamLineup; away: TeamLineup };
 }
 
 export interface League {
