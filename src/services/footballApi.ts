@@ -160,10 +160,11 @@ export async function fetchMatchesByDate(date: string): Promise<Match[]> {
 
 export async function fetchMatchDetails(fixtureId: number): Promise<Match | null> {
   try {
-    const [fixtures, events, stats] = await Promise.all([
+    const [fixtures, events, stats, lineups] = await Promise.all([
       callApi("fixtures", { id: String(fixtureId) }),
       callApi("fixtures/events", { fixture: String(fixtureId) }),
       callApi("fixtures/statistics", { fixture: String(fixtureId) }),
+      callApi("fixtures/lineups", { fixture: String(fixtureId) }),
     ]);
 
     if (!fixtures.length) return null;
@@ -194,6 +195,16 @@ export async function fetchMatchDetails(fixtureId: number): Promise<Match | null
     }
 
     match.stats = mapStats(stats);
+
+    // Map lineups
+    if (lineups && lineups.length >= 2) {
+      const homeLineup = mapLineup(lineups[0]);
+      const awayLineup = mapLineup(lineups[1]);
+      if (homeLineup && awayLineup) {
+        match.lineups = { home: homeLineup, away: awayLineup };
+      }
+    }
+
     return match;
   } catch (err) {
     console.error("Failed to fetch match details:", err);
