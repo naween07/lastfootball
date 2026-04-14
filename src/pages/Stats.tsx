@@ -1,14 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
 import StandingsTable from '@/components/stats/StandingsTable';
 import PlayerStatsView from '@/components/stats/PlayerStatsView';
 import TeamStatsView from '@/components/stats/TeamStatsView';
 import LeagueFixturesView from '@/components/stats/LeagueFixturesView';
-import { TOP_LEAGUES, getCurrentSeason, getSeasonOptions, fetchStandings, StandingTeam } from '@/services/footballApi';
-import { useEffect } from 'react';
+import KnockoutBracket from '@/components/stats/KnockoutBracket';
+import { TOP_LEAGUES, CUP_LEAGUE_IDS, getCurrentSeason, getSeasonOptions, fetchStandings, StandingTeam } from '@/services/footballApi';
 
-const TABS = ['Tables', 'Player', 'Team', 'Fixtures'] as const;
-type Tab = typeof TABS[number];
+const BASE_TABS = ['Tables', 'Player', 'Team', 'Fixtures'] as const;
+type Tab = 'Tables' | 'Player' | 'Team' | 'Fixtures' | 'Bracket';
 
 export default function Stats() {
   const [activeLeague, setActiveLeague] = useState(TOP_LEAGUES[0].id);
@@ -16,6 +16,14 @@ export default function Stats() {
   const [activeTab, setActiveTab] = useState<Tab>('Tables');
   const [standings, setStandings] = useState<StandingTeam[]>([]);
   const [standingsLoading, setStandingsLoading] = useState(true);
+
+  const isCup = CUP_LEAGUE_IDS.includes(activeLeague);
+  const tabs: Tab[] = isCup ? [...BASE_TABS, 'Bracket'] : [...BASE_TABS];
+
+  // Reset tab if switching away from cup and on Bracket tab
+  useEffect(() => {
+    if (!isCup && activeTab === 'Bracket') setActiveTab('Tables');
+  }, [isCup, activeTab]);
 
   useEffect(() => {
     if (activeTab !== 'Tables') return;
@@ -32,7 +40,6 @@ export default function Stats() {
     <div className="min-h-screen bg-background">
       <Header />
 
-      {/* League tabs - horizontal scroll */}
       <div className="sticky top-14 z-40 bg-background/95 backdrop-blur-md border-b border-border">
         <div className="container overflow-x-auto">
           <div className="flex items-center gap-0 min-w-max">
@@ -54,7 +61,6 @@ export default function Stats() {
       </div>
 
       <main className="container py-4">
-        {/* Season selector + Sub-tabs */}
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <div className="flex items-center gap-1">
             <select
@@ -69,7 +75,7 @@ export default function Stats() {
           </div>
 
           <div className="flex items-center bg-secondary rounded-lg p-0.5">
-            {TABS.map(tab => (
+            {tabs.map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -85,7 +91,6 @@ export default function Stats() {
           </div>
         </div>
 
-        {/* Content */}
         <div className="bg-card rounded-xl border border-border overflow-hidden">
           {activeTab === 'Tables' && (
             <StandingsTable standings={standings} loading={standingsLoading} />
@@ -98,6 +103,9 @@ export default function Stats() {
           )}
           {activeTab === 'Fixtures' && (
             <LeagueFixturesView leagueId={activeLeague} season={season} />
+          )}
+          {activeTab === 'Bracket' && isCup && (
+            <KnockoutBracket leagueId={activeLeague} season={season} />
           )}
         </div>
       </main>

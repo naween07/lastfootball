@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import { Match, League, LeagueMatches, MatchEvent, MatchStats } from "@/types/football";
+import { Match, League, LeagueMatches, MatchEvent, MatchStats, TeamLineup, LineupPlayer } from "@/types/football";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
@@ -115,6 +115,27 @@ function mapStats(stats: any[]): MatchStats | undefined {
   };
 }
 
+function mapLineup(lineup: any): TeamLineup | undefined {
+  if (!lineup) return undefined;
+  return {
+    formation: lineup.formation || '',
+    startXI: (lineup.startXI || []).map((p: any) => ({
+      id: p.player?.id || 0,
+      name: p.player?.name || 'Unknown',
+      number: p.player?.number || 0,
+      pos: p.player?.pos || '',
+      grid: p.player?.grid || undefined,
+    })),
+    substitutes: (lineup.substitutes || []).map((p: any) => ({
+      id: p.player?.id || 0,
+      name: p.player?.name || 'Unknown',
+      number: p.player?.number || 0,
+      pos: p.player?.pos || '',
+    })),
+    coach: { id: lineup.coach?.id || 0, name: lineup.coach?.name || 'Unknown', photo: lineup.coach?.photo },
+  };
+}
+
 // ---- Public API functions ----
 
 export async function fetchLiveMatches(): Promise<Match[]> {
@@ -139,10 +160,11 @@ export async function fetchMatchesByDate(date: string): Promise<Match[]> {
 
 export async function fetchMatchDetails(fixtureId: number): Promise<Match | null> {
   try {
-    const [fixtures, events, stats] = await Promise.all([
+    const [fixtures, events, stats, lineups] = await Promise.all([
       callApi("fixtures", { id: String(fixtureId) }),
       callApi("fixtures/events", { fixture: String(fixtureId) }),
       callApi("fixtures/statistics", { fixture: String(fixtureId) }),
+      callApi("fixtures/lineups", { fixture: String(fixtureId) }),
     ]);
 
     if (!fixtures.length) return null;
@@ -173,6 +195,16 @@ export async function fetchMatchDetails(fixtureId: number): Promise<Match | null
     }
 
     match.stats = mapStats(stats);
+
+    // Map lineups
+    if (lineups && lineups.length >= 2) {
+      const homeLineup = mapLineup(lineups[0]);
+      const awayLineup = mapLineup(lineups[1]);
+      if (homeLineup && awayLineup) {
+        match.lineups = { home: homeLineup, away: awayLineup };
+      }
+    }
+
     return match;
   } catch (err) {
     console.error("Failed to fetch match details:", err);
@@ -198,7 +230,7 @@ export async function searchTeamsAndLeagues(query: string): Promise<Match[]> {
 }
 
 // Top league IDs for prioritization
-export const TOP_LEAGUE_IDS = [39, 2, 140, 135, 78, 61, 3, 94, 88, 253];
+export const TOP_LEAGUE_IDS = [39, 2, 140, 135, 78, 61, 3, 94, 88, 307, 253];
 
 export const TOP_LEAGUES = [
   { id: 39, name: 'Premier League', country: 'England' },
@@ -210,8 +242,12 @@ export const TOP_LEAGUES = [
   { id: 3, name: 'Europa League', country: 'World' },
   { id: 94, name: 'Primeira Liga', country: 'Portugal' },
   { id: 88, name: 'Eredivisie', country: 'Netherlands' },
+  { id: 307, name: 'Saudi Pro League', country: 'Saudi Arabia' },
   { id: 253, name: 'MLS', country: 'USA' },
 ];
+
+// Cup/knockout competition IDs
+export const CUP_LEAGUE_IDS = [2, 3, 848]; // Champions League, Europa League, Conference League
 
 export function getCurrentSeason(): number {
   const now = new Date();

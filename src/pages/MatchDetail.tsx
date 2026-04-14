@@ -3,6 +3,7 @@ import { ArrowLeft, Loader2 } from 'lucide-react';
 import Header from '@/components/Header';
 import MatchTimeline from '@/components/MatchTimeline';
 import MatchStatsView from '@/components/MatchStatsView';
+import LineupView from '@/components/LineupView';
 import { fetchMatchDetails } from '@/services/footballApi';
 import { useState, useEffect } from 'react';
 import { Match } from '@/types/football';
@@ -11,7 +12,7 @@ export default function MatchDetail() {
   const { id } = useParams<{ id: string }>();
   const [match, setMatch] = useState<Match | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'events' | 'stats'>('events');
+  const [tab, setTab] = useState<'events' | 'stats' | 'lineups'>('events');
 
   useEffect(() => {
     if (!id) return;
@@ -21,7 +22,6 @@ export default function MatchDetail() {
       .catch(console.error)
       .finally(() => setLoading(false));
 
-    // Auto-refresh for live matches
     const interval = setInterval(() => {
       fetchMatchDetails(Number(id)).then(setMatch).catch(console.error);
     }, 15000);
@@ -54,6 +54,9 @@ export default function MatchDetail() {
 
   const isLive = match.status === 'LIVE' || match.status === '1H' || match.status === '2H';
   const isHT = match.status === 'HT';
+  const hasEvents = !!match.events?.length;
+  const hasStats = !!match.stats;
+  const hasLineups = !!match.lineups;
 
   return (
     <div className="min-h-screen bg-background">
@@ -116,10 +119,10 @@ export default function MatchDetail() {
         </div>
       </div>
 
-      {(match.events?.length || match.stats) && (
+      {(hasEvents || hasStats || hasLineups) && (
         <div className="border-b border-border bg-card">
           <div className="container flex gap-1 py-2">
-            {match.events?.length && (
+            {hasEvents && (
               <button
                 onClick={() => setTab('events')}
                 className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${
@@ -129,7 +132,17 @@ export default function MatchDetail() {
                 Events
               </button>
             )}
-            {match.stats && (
+            {hasLineups && (
+              <button
+                onClick={() => setTab('lineups')}
+                className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                  tab === 'lineups' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'
+                }`}
+              >
+                Lineups
+              </button>
+            )}
+            {hasStats && (
               <button
                 onClick={() => setTab('stats')}
                 className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${
@@ -144,14 +157,19 @@ export default function MatchDetail() {
       )}
 
       <main className="container py-4">
-        {tab === 'events' && match.events?.length && (
+        {tab === 'events' && hasEvents && (
           <div className="bg-card rounded-lg border border-border overflow-hidden">
-            <MatchTimeline events={match.events} homeTeamName={match.homeTeam.name} awayTeamName={match.awayTeam.name} />
+            <MatchTimeline events={match.events!} homeTeamName={match.homeTeam.name} awayTeamName={match.awayTeam.name} />
           </div>
         )}
-        {tab === 'stats' && match.stats && (
+        {tab === 'lineups' && hasLineups && (
+          <div className="bg-card rounded-lg border border-border overflow-hidden">
+            <LineupView lineups={match.lineups!} homeTeamName={match.homeTeam.name} awayTeamName={match.awayTeam.name} />
+          </div>
+        )}
+        {tab === 'stats' && hasStats && (
           <div className="bg-card rounded-lg border border-border py-4">
-            <MatchStatsView stats={match.stats} homeTeam={match.homeTeam.name} awayTeam={match.awayTeam.name} />
+            <MatchStatsView stats={match.stats!} homeTeam={match.homeTeam.name} awayTeam={match.awayTeam.name} />
           </div>
         )}
       </main>
