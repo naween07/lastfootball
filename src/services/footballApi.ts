@@ -247,7 +247,7 @@ export const TOP_LEAGUES = [
 ];
 
 // Cup/knockout competition IDs
-export const CUP_LEAGUE_IDS = [2, 3, 848]; // Champions League, Europa League, Conference League
+export const CUP_LEAGUE_IDS = [2, 3, 848, 45, 1, 4, 5, 6, 9, 15, 16]; // UCL, UEL, UECL, FA Cup, World Cup, Euro, Nations League, etc.
 
 export function getCurrentSeason(): number {
   const now = new Date();
