@@ -3,8 +3,39 @@ import { Match, League, LeagueMatches, MatchEvent, MatchStats, TeamLineup, Lineu
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
+// In-memory cache with TTL
+const apiCache = new Map<string, { data: any; expiry: number }>();
+
+function getCached(key: string): any | null {
+  const entry = apiCache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiry) {
+    apiCache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+function setCache(key: string, data: any, ttlMs: number) {
+  apiCache.set(key, { data, expiry: Date.now() + ttlMs });
+  // Prevent unbounded growth
+  if (apiCache.size > 200) {
+    const oldest = apiCache.keys().next().value;
+    if (oldest) apiCache.delete(oldest);
+  }
+}
+
 async function callApi(endpoint: string, params: Record<string, string> = {}) {
   const query = new URLSearchParams({ endpoint, ...params }).toString();
+  const cacheKey = query;
+
+  // Live endpoints get short cache (30s), others get longer (5min)
+  const isLive = params.live === "all";
+  const ttl = isLive ? 30_000 : 300_000;
+
+  const cached = getCached(cacheKey);
+  if (cached) return cached;
+
   const response = await fetch(`${SUPABASE_URL}/functions/v1/football-api?${query}`, {
     headers: {
       "Content-Type": "application/json",
@@ -13,7 +44,9 @@ async function callApi(endpoint: string, params: Record<string, string> = {}) {
   });
   if (!response.ok) throw new Error(`API error: ${response.status}`);
   const data = await response.json();
-  return data.response || [];
+  const result = data.response || [];
+  setCache(cacheKey, result, ttl);
+  return result;
 }
 
 // Status mapping from API-Football to our types
