@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
+import SEOHead from '@/components/SEOHead';
 import LeagueGroup from '@/components/LeagueGroup';
 import DateNavigator from '@/components/DateNavigator';
 import { useFavorites } from '@/hooks/useFavorites';
@@ -32,6 +33,11 @@ export default function Fixtures() {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEOHead
+        title="Football Fixtures & Schedule"
+        description="Upcoming football fixtures and match schedule for all major leagues. Never miss a game."
+        path="/fixtures"
+      />
       <Header />
 
       {/* Date Navigation Bar */}

@@ -1,6 +1,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import Header from '@/components/Header';
+import SEOHead, { buildMatchJsonLd } from '@/components/SEOHead';
 import MatchTimeline from '@/components/MatchTimeline';
 import MatchStatsView from '@/components/MatchStatsView';
 import LineupView from '@/components/LineupView';
@@ -60,6 +61,12 @@ export default function MatchDetail() {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEOHead
+        title={`${match.homeTeam.name} vs ${match.awayTeam.name} - ${match.league.name}`}
+        description={`${match.homeTeam.name} vs ${match.awayTeam.name} live score, stats, and lineups. ${match.league.name} ${match.league.country}.`}
+        path={`/match/${match.id}`}
+        jsonLd={buildMatchJsonLd(match)}
+      />
       <Header />
 
       <div className="bg-card border-b border-border">

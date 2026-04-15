@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
+import SEOHead from '@/components/SEOHead';
 import StandingsTable from '@/components/stats/StandingsTable';
 import PlayerStatsView from '@/components/stats/PlayerStatsView';
 import TeamStatsView from '@/components/stats/TeamStatsView';
@@ -38,6 +39,11 @@ export default function Stats() {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEOHead
+        title={`${TOP_LEAGUES.find(l => l.id === activeLeague)?.name || 'League'} Standings & Stats`}
+        description={`Football standings, player stats, team stats, and fixtures for ${TOP_LEAGUES.find(l => l.id === activeLeague)?.name || 'top leagues'}.`}
+        path="/stats"
+      />
       <Header />
 
       <div className="sticky top-14 z-40 bg-background/95 backdrop-blur-md border-b border-border">
