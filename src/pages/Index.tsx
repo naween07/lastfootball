@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Navigate } from 'react-router-dom';
 import Header from '@/components/Header';
+import SEOHead, { buildWebsiteJsonLd } from '@/components/SEOHead';
 import { useAuth } from '@/hooks/useAuth';
 import LeagueFilter from '@/components/LeagueFilter';
 import LeagueGroup from '@/components/LeagueGroup';
@@ -91,6 +92,12 @@ export default function Index() {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEOHead
+        title="Live Football Scores & Results"
+        description="Real-time football live scores, fixtures, results, and match stats from top leagues worldwide. Track your favorite teams."
+        path="/"
+        jsonLd={buildWebsiteJsonLd()}
+      />
       <Header />
       <LeagueFilter leagues={leagues} selectedLeagueId={selectedLeagueId} onSelect={setSelectedLeagueId} />
 

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Header from '@/components/Header';
+import SEOHead from '@/components/SEOHead';
 import { fetchFootballNews, NewsItem } from '@/services/newsApi';
 import { Flame, ExternalLink, Clock, Loader2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -25,6 +26,11 @@ export default function News() {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEOHead
+        title="Football News & Transfers"
+        description="Latest football news, transfer rumors, and trending stories from top leagues worldwide."
+        path="/news"
+      />
       <Header />
 
       {/* Fire header */}
