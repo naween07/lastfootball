@@ -90,13 +90,29 @@ type EventIcon = {
   minute: number;
 };
 
+// Normalize name: remove accents, lowercase
+function normalizeName(name: string): string {
+  return name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+// Extract last name for fuzzy matching
+function getLastName(name: string): string {
+  const parts = normalizeName(name).split(/\s+/);
+  return parts[parts.length - 1];
+}
+
 function buildPlayerEventMap(events: MatchEvent[]): Map<string, EventIcon[]> {
-  const map = new Map<string, EventIcon[]>();
+  // Store events by both full normalized name AND last name for fuzzy matching
+  const byFull = new Map<string, EventIcon[]>();
+  const byLast = new Map<string, EventIcon[]>();
 
   const addEvent = (name: string, icon: EventIcon) => {
-    const key = name.toLowerCase();
-    if (!map.has(key)) map.set(key, []);
-    map.get(key)!.push(icon);
+    const full = normalizeName(name);
+    const last = getLastName(name);
+    if (!byFull.has(full)) byFull.set(full, []);
+    byFull.get(full)!.push(icon);
+    if (!byLast.has(last)) byLast.set(last, []);
+    byLast.get(last)!.push(icon);
   };
 
   events.forEach(e => {
@@ -107,7 +123,6 @@ function buildPlayerEventMap(events: MatchEvent[]): Map<string, EventIcon[]> {
     } else if (e.type === 'red_card') {
       addEvent(e.playerName, { type: 'red_card', minute: e.minute });
     } else if (e.type === 'substitution') {
-      // The player listed is the one subbed out, assist is the one coming in
       addEvent(e.playerName, { type: 'sub_out', minute: e.minute });
       if (e.assistName) {
         addEvent(e.assistName, { type: 'sub_in', minute: e.minute });
@@ -115,11 +130,15 @@ function buildPlayerEventMap(events: MatchEvent[]): Map<string, EventIcon[]> {
     }
   });
 
-  return map;
+  return new Map([...byFull, ...byLast]);
 }
 
 function getPlayerIcons(playerName: string, playerEvents: Map<string, EventIcon[]>): EventIcon[] {
-  return playerEvents.get(playerName.toLowerCase()) || [];
+  // Try full name first, then last name
+  const full = normalizeName(playerName);
+  if (playerEvents.has(full)) return playerEvents.get(full)!;
+  const last = getLastName(playerName);
+  return playerEvents.get(last) || [];
 }
 
 function EventIcons({ icons }: { icons: EventIcon[] }) {
