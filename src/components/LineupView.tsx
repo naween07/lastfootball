@@ -1,41 +1,34 @@
-import { TeamLineup, LineupPlayer } from '@/types/football';
+import { TeamLineup, LineupPlayer, MatchEvent } from '@/types/football';
 import { useState } from 'react';
 
 interface LineupViewProps {
   lineups: { home: TeamLineup; away: TeamLineup };
   homeTeamName: string;
   awayTeamName: string;
+  events?: MatchEvent[];
 }
 
-export default function LineupView({ lineups, homeTeamName, awayTeamName }: LineupViewProps) {
+export default function LineupView({ lineups, homeTeamName, awayTeamName, events = [] }: LineupViewProps) {
   const [showSubs, setShowSubs] = useState(false);
+
+  // Build a map: playerName -> list of event icons
+  const playerEvents = buildPlayerEventMap(events);
 
   return (
     <div className="space-y-4">
       {/* Pitch */}
       <div className="relative w-full overflow-hidden rounded-lg" style={{ aspectRatio: '68/105' }}>
-        {/* Pitch background */}
         <div className="absolute inset-0 bg-[#2d6a30]" />
-
-        {/* Pitch markings */}
         <PitchMarkings />
 
         {/* Home team (top half) */}
         <div className="absolute inset-x-0 top-0 bottom-1/2">
-          <TeamFormation
-            teamName={homeTeamName}
-            lineup={lineups.home}
-            isHome={true}
-          />
+          <TeamFormation lineup={lineups.home} isHome={true} playerEvents={playerEvents} />
         </div>
 
         {/* Away team (bottom half) */}
         <div className="absolute inset-x-0 top-1/2 bottom-0">
-          <TeamFormation
-            teamName={awayTeamName}
-            lineup={lineups.away}
-            isHome={false}
-          />
+          <TeamFormation lineup={lineups.away} isHome={false} playerEvents={playerEvents} />
         </div>
 
         {/* Formation labels */}
@@ -63,30 +56,26 @@ export default function LineupView({ lineups, homeTeamName, awayTeamName }: Line
 
       {showSubs && (
         <div className="px-4 pb-4">
+          <h4 className="text-xs font-bold text-muted-foreground text-center mb-3 uppercase tracking-wide">Substitutes</h4>
           <div className="grid grid-cols-2 gap-x-6 gap-y-0">
-            {/* Home subs */}
             <div>
-              <h4 className="text-xs font-bold text-muted-foreground mb-2">{homeTeamName}</h4>
               {lineups.home.substitutes.map(p => (
-                <SubRow key={p.id || p.name} player={p} />
+                <SubRow key={p.id || p.name} player={p} playerEvents={playerEvents} />
               ))}
             </div>
-            {/* Away subs */}
             <div>
-              <h4 className="text-xs font-bold text-muted-foreground mb-2">{awayTeamName}</h4>
               {lineups.away.substitutes.map(p => (
-                <SubRow key={p.id || p.name} player={p} />
+                <SubRow key={p.id || p.name} player={p} align="right" playerEvents={playerEvents} />
               ))}
             </div>
           </div>
 
           {/* Coaches */}
-          <div className="border-t border-border mt-3 pt-3 flex justify-between">
-            <div className="text-xs text-muted-foreground">
-              <span className="font-semibold">Coach:</span> {lineups.home.coach.name}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              <span className="font-semibold">Coach:</span> {lineups.away.coach.name}
+          <div className="border-t border-border mt-3 pt-3">
+            <h4 className="text-xs font-bold text-muted-foreground text-center mb-2 uppercase tracking-wide">Manager</h4>
+            <div className="flex justify-between px-1">
+              <span className="text-sm text-muted-foreground">{lineups.home.coach.name}</span>
+              <span className="text-sm text-muted-foreground">{lineups.away.coach.name}</span>
             </div>
           </div>
         </div>
@@ -95,27 +84,81 @@ export default function LineupView({ lineups, homeTeamName, awayTeamName }: Line
   );
 }
 
+/* ---------- Event icon types ---------- */
+type EventIcon = {
+  type: 'goal' | 'yellow_card' | 'red_card' | 'sub_in' | 'sub_out';
+  minute: number;
+};
+
+function buildPlayerEventMap(events: MatchEvent[]): Map<string, EventIcon[]> {
+  const map = new Map<string, EventIcon[]>();
+
+  const addEvent = (name: string, icon: EventIcon) => {
+    const key = name.toLowerCase();
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(icon);
+  };
+
+  events.forEach(e => {
+    if (e.type === 'goal') {
+      addEvent(e.playerName, { type: 'goal', minute: e.minute });
+    } else if (e.type === 'yellow_card') {
+      addEvent(e.playerName, { type: 'yellow_card', minute: e.minute });
+    } else if (e.type === 'red_card') {
+      addEvent(e.playerName, { type: 'red_card', minute: e.minute });
+    } else if (e.type === 'substitution') {
+      // The player listed is the one subbed out, assist is the one coming in
+      addEvent(e.playerName, { type: 'sub_out', minute: e.minute });
+      if (e.assistName) {
+        addEvent(e.assistName, { type: 'sub_in', minute: e.minute });
+      }
+    }
+  });
+
+  return map;
+}
+
+function getPlayerIcons(playerName: string, playerEvents: Map<string, EventIcon[]>): EventIcon[] {
+  return playerEvents.get(playerName.toLowerCase()) || [];
+}
+
+function EventIcons({ icons }: { icons: EventIcon[] }) {
+  if (!icons.length) return null;
+  return (
+    <div className="flex items-center gap-0.5 flex-wrap justify-center">
+      {icons.map((icon, i) => (
+        <span key={i} className="inline-flex items-center" title={`${icon.minute}'`}>
+          {icon.type === 'goal' && (
+            <span className="text-[8px] sm:text-[10px]">⚽</span>
+          )}
+          {icon.type === 'yellow_card' && (
+            <span className="inline-block w-2 h-2.5 sm:w-2.5 sm:h-3 rounded-[1px] bg-yellow-400 border border-yellow-500" />
+          )}
+          {icon.type === 'red_card' && (
+            <span className="inline-block w-2 h-2.5 sm:w-2.5 sm:h-3 rounded-[1px] bg-red-500 border border-red-600" />
+          )}
+          {icon.type === 'sub_in' && (
+            <span className="text-[8px] sm:text-[10px] text-emerald-400">▲</span>
+          )}
+          {icon.type === 'sub_out' && (
+            <span className="text-[8px] sm:text-[10px] text-red-400">▼</span>
+          )}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 /* ---------- Pitch markings ---------- */
 function PitchMarkings() {
   return (
     <div className="absolute inset-0 pointer-events-none">
-      {/* Border */}
       <div className="absolute inset-[3%] border-2 border-white/40 rounded-sm" />
-
-      {/* Center line */}
       <div className="absolute left-[3%] right-[3%] top-1/2 h-0.5 bg-white/40 -translate-y-px" />
-
-      {/* Center circle */}
       <div className="absolute left-1/2 top-1/2 w-[18%] aspect-square rounded-full border-2 border-white/40 -translate-x-1/2 -translate-y-1/2" />
-
-      {/* Center dot */}
       <div className="absolute left-1/2 top-1/2 w-1.5 h-1.5 rounded-full bg-white/50 -translate-x-1/2 -translate-y-1/2" />
-
-      {/* Top penalty box */}
       <div className="absolute top-[3%] left-1/2 -translate-x-1/2 w-[44%] h-[16%] border-2 border-white/40 border-t-0" />
       <div className="absolute top-[3%] left-1/2 -translate-x-1/2 w-[20%] h-[6%] border-2 border-white/40 border-t-0" />
-
-      {/* Bottom penalty box */}
       <div className="absolute bottom-[3%] left-1/2 -translate-x-1/2 w-[44%] h-[16%] border-2 border-white/40 border-b-0" />
       <div className="absolute bottom-[3%] left-1/2 -translate-x-1/2 w-[20%] h-[6%] border-2 border-white/40 border-b-0" />
     </div>
@@ -123,31 +166,49 @@ function PitchMarkings() {
 }
 
 /* ---------- Team formation on half pitch ---------- */
-function TeamFormation({ teamName, lineup, isHome }: { teamName: string; lineup: TeamLineup; isHome: boolean }) {
+function TeamFormation({ lineup, isHome, playerEvents }: { lineup: TeamLineup; isHome: boolean; playerEvents: Map<string, EventIcon[]> }) {
   const positions = getFormationPositions(lineup.formation, lineup.startXI, isHome);
 
   return (
     <div className="relative w-full h-full">
-      {positions.map((pos, i) => (
-        <div
-          key={pos.player.id || pos.player.name + i}
-          className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-10"
-          style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
-        >
-          {/* Jersey circle */}
-          <div className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold shadow-lg ${
-            isHome
-              ? 'bg-red-600 text-white border-2 border-red-400'
-              : 'bg-blue-600 text-white border-2 border-blue-400'
-          } ${pos.player.pos === 'G' ? '!bg-amber-500 !border-amber-300' : ''}`}>
-            {pos.player.number}
+      {positions.map((pos, i) => {
+        const icons = getPlayerIcons(pos.player.name, playerEvents);
+        return (
+          <div
+            key={pos.player.id || pos.player.name + i}
+            className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-10"
+            style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
+          >
+            {/* Jersey number + event badges */}
+            <div className="relative">
+              <div className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold shadow-lg ${
+                isHome
+                  ? 'bg-red-600 text-white border-2 border-red-400'
+                  : 'bg-blue-600 text-white border-2 border-blue-400'
+              } ${pos.player.pos === 'G' ? '!bg-amber-500 !border-amber-300' : ''}`}>
+                {pos.player.number}
+              </div>
+              {/* Event icons positioned top-right of the circle */}
+              {icons.length > 0 && (
+                <div className="absolute -top-1 -right-2 flex gap-0.5">
+                  {icons.map((icon, idx) => (
+                    <span key={idx} className="inline-flex" title={`${icon.minute}'`}>
+                      {icon.type === 'goal' && <span className="text-[8px] sm:text-[10px]">⚽</span>}
+                      {icon.type === 'yellow_card' && <span className="inline-block w-2 h-2.5 rounded-[1px] bg-yellow-400 border border-yellow-500" />}
+                      {icon.type === 'red_card' && <span className="inline-block w-2 h-2.5 rounded-[1px] bg-red-500 border border-red-600" />}
+                      {icon.type === 'sub_out' && <span className="text-[8px] text-red-400">▼</span>}
+                      {icon.type === 'sub_in' && <span className="text-[8px] text-emerald-400">▲</span>}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <span className="mt-0.5 text-[8px] sm:text-[10px] font-semibold text-white text-center leading-tight drop-shadow-md max-w-[60px] sm:max-w-[80px] truncate">
+              {getShortName(pos.player.name)}
+            </span>
           </div>
-          {/* Player name */}
-          <span className="mt-0.5 text-[8px] sm:text-[10px] font-semibold text-white text-center leading-tight drop-shadow-md max-w-[60px] sm:max-w-[80px] truncate">
-            {getShortName(pos.player.name)}
-          </span>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -155,24 +216,18 @@ function TeamFormation({ teamName, lineup, isHome }: { teamName: string; lineup:
 /* ---------- Formation position calculator ---------- */
 interface PlayerPosition {
   player: LineupPlayer;
-  x: number; // percentage from left
-  y: number; // percentage from top (within half)
+  x: number;
+  y: number;
 }
 
 function getFormationPositions(formation: string, players: LineupPlayer[], isHome: boolean): PlayerPosition[] {
-  // Try using grid data first
   const hasGrid = players.some(p => p.grid);
-  if (hasGrid) {
-    return getPositionsFromGrid(players, isHome);
-  }
-  // Fallback: parse formation string
+  if (hasGrid) return getPositionsFromGrid(players, isHome);
   return getPositionsFromFormation(formation, players, isHome);
 }
 
 function getPositionsFromGrid(players: LineupPlayer[], isHome: boolean): PlayerPosition[] {
   const positions: PlayerPosition[] = [];
-  
-  // Grid format: "row:col" where row 1 = GK
   let maxRow = 1;
   players.forEach(p => {
     if (p.grid) {
@@ -181,7 +236,6 @@ function getPositionsFromGrid(players: LineupPlayer[], isHome: boolean): PlayerP
     }
   });
 
-  // Group by row
   const rows = new Map<number, LineupPlayer[]>();
   players.forEach(p => {
     if (!p.grid) return;
@@ -193,12 +247,9 @@ function getPositionsFromGrid(players: LineupPlayer[], isHome: boolean): PlayerP
   rows.forEach((rowPlayers, row) => {
     const totalInRow = rowPlayers.length;
     rowPlayers.forEach((player, colIdx) => {
-      // Spread across x-axis
       const x = totalInRow === 1 ? 50 : 15 + (colIdx / (totalInRow - 1)) * 70;
-      // Spread across y-axis within half, with padding
       const yBase = 8 + ((row - 1) / Math.max(maxRow - 1, 1)) * 80;
       const y = isHome ? yBase : 100 - yBase;
-
       positions.push({ player, x, y });
     });
   });
@@ -207,13 +258,10 @@ function getPositionsFromGrid(players: LineupPlayer[], isHome: boolean): PlayerP
 }
 
 function getPositionsFromFormation(formation: string, players: LineupPlayer[], isHome: boolean): PlayerPosition[] {
-  // Parse formation like "4-3-3" or "4-2-3-1"
   const lines = formation.split('-').map(Number).filter(n => !isNaN(n));
   if (!lines.length) {
-    // Fallback: just space them out
     return players.map((player, i) => ({
-      player,
-      x: 50,
+      player, x: 50,
       y: isHome ? 10 + (i / players.length) * 80 : 90 - (i / players.length) * 80,
     }));
   }
@@ -221,19 +269,15 @@ function getPositionsFromFormation(formation: string, players: LineupPlayer[], i
   const positions: PlayerPosition[] = [];
   let playerIdx = 0;
 
-  // GK first
   if (playerIdx < players.length) {
-    const y = isHome ? 8 : 92;
-    positions.push({ player: players[playerIdx], x: 50, y });
+    positions.push({ player: players[playerIdx], x: 50, y: isHome ? 8 : 92 });
     playerIdx++;
   }
 
-  // Outfield lines
   const totalLines = lines.length;
   lines.forEach((count, lineIdx) => {
     const yBase = 20 + (lineIdx / Math.max(totalLines - 1, 1)) * 65;
     const y = isHome ? yBase : 100 - yBase;
-
     for (let col = 0; col < count && playerIdx < players.length; col++) {
       const x = count === 1 ? 50 : 15 + (col / (count - 1)) * 70;
       positions.push({ player: players[playerIdx], x, y });
@@ -248,23 +292,20 @@ function getPositionsFromFormation(formation: string, players: LineupPlayer[], i
 function getShortName(fullName: string): string {
   const parts = fullName.split(' ');
   if (parts.length <= 1) return fullName;
-  // First initial + last name
   return `${parts[0][0]}. ${parts[parts.length - 1]}`;
 }
 
-function SubRow({ player }: { player: LineupPlayer }) {
+function SubRow({ player, align = 'left', playerEvents }: { player: LineupPlayer; align?: 'left' | 'right'; playerEvents: Map<string, EventIcon[]> }) {
+  const icons = getPlayerIcons(player.name, playerEvents);
   const posColor = {
-    G: 'text-amber-400',
-    D: 'text-blue-400',
-    M: 'text-emerald-400',
-    F: 'text-red-400',
+    G: 'text-amber-400', D: 'text-blue-400', M: 'text-emerald-400', F: 'text-red-400',
   }[player.pos] || 'text-muted-foreground';
 
   return (
-    <div className="flex items-center gap-2 py-1 px-1">
+    <div className={`flex items-center gap-2 py-1 px-1 ${align === 'right' ? 'flex-row-reverse text-right' : ''}`}>
       <span className="text-xs font-bold text-muted-foreground w-5 text-center tabular-nums">{player.number}</span>
-      <span className={`text-[10px] font-bold uppercase w-4 text-center ${posColor}`}>{player.pos}</span>
       <span className="text-sm text-foreground truncate">{player.name}</span>
+      {icons.length > 0 && <EventIcons icons={icons} />}
     </div>
   );
 }
