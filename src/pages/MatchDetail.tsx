@@ -171,7 +171,7 @@ export default function MatchDetail() {
         )}
         {tab === 'lineups' && hasLineups && (
           <div className="bg-card rounded-lg border border-border overflow-hidden">
-            <LineupView lineups={match.lineups!} homeTeamName={match.homeTeam.name} awayTeamName={match.awayTeam.name} />
+            <LineupView lineups={match.lineups!} homeTeamName={match.homeTeam.name} awayTeamName={match.awayTeam.name} events={match.events} />
           </div>
         )}
         {tab === 'stats' && hasStats && (
