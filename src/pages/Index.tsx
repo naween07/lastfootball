@@ -17,7 +17,7 @@ import {
   formatDate,
 } from '@/services/footballApi';
 import { Match, League } from '@/types/football';
-import { Loader2 } from 'lucide-react';
+import { MatchListSkeleton } from '@/components/MatchListSkeleton';
 
 export default function Index() {
   const { user, onboardingCompleted } = useAuth();
@@ -108,10 +108,7 @@ export default function Index() {
 
       <main className="container py-4">
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-6 h-6 animate-spin text-primary" />
-            <span className="ml-2 text-sm text-muted-foreground">Loading matches...</span>
-          </div>
+          <MatchListSkeleton groups={4} />
         ) : (
           <>
             {liveCount > 0 && selectedDate === todayStr && (
