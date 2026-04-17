@@ -1,8 +1,12 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
 import { getDateLabel, formatDate } from '@/services/footballApi';
+
+const LazyCalendar = lazy(async () => {
+  const module = await import('@/components/ui/calendar');
+  return { default: module.Calendar };
+});
 
 interface DateNavigatorProps {
   dates: string[];
@@ -92,12 +96,14 @@ export default function DateNavigator({ dates, selectedDate, onSelectDate }: Dat
             </button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="end">
-            <Calendar
-              mode="single"
-              selected={selectedAsDate}
-              onSelect={handleCalendarSelect}
-              initialFocus
-            />
+            <Suspense fallback={<div className="p-4 text-xs text-muted-foreground">Loading calendar...</div>}>
+              <LazyCalendar
+                mode="single"
+                selected={selectedAsDate}
+                onSelect={handleCalendarSelect}
+                initialFocus
+              />
+            </Suspense>
           </PopoverContent>
         </Popover>
       </div>

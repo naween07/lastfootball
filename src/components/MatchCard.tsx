@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Match } from '@/types/football';
 import { Star } from 'lucide-react';
+import OptimizedImage from './OptimizedImage';
 
 interface MatchCardProps {
   match: Match;
@@ -109,7 +110,7 @@ function TeamRow({
   return (
     <div className="flex items-center justify-between py-0.5">
       <div className="flex items-center gap-2.5 min-w-0">
-        {logo && <img src={logo} alt="" className="w-5 h-5 flex-shrink-0 object-contain" />}
+        {logo && <OptimizedImage src={logo} alt="" className="w-5 h-5 flex-shrink-0 object-contain" />}
         <span className={`text-sm truncate ${
           isWinning ? 'font-semibold text-foreground' : 'text-secondary-foreground'
         }`}>

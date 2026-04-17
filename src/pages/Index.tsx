@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import Header from '@/components/Header';
 import SEOHead, { buildWebsiteJsonLd } from '@/components/SEOHead';
@@ -14,10 +14,17 @@ import {
   getDateRange,
   getDateLabel,
   getToday,
-  formatDate,
 } from '@/services/footballApi';
-import { Match, League } from '@/types/football';
+import { Match } from '@/types/football';
 import { MatchListSkeleton } from '@/components/MatchListSkeleton';
+
+const INITIAL_GROUP_BATCH = 6;
+const GROUP_BATCH = 6;
+
+function mergeLiveMatches(liveMatches: Match[], scheduledMatches: Match[]) {
+  const liveIds = new Set(liveMatches.map((match) => match.id));
+  return [...liveMatches, ...scheduledMatches.filter((match) => !liveIds.has(match.id))];
+}
 
 export default function Index() {
   const { user, onboardingCompleted } = useAuth();
@@ -26,59 +33,125 @@ export default function Index() {
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
   const [matches, setMatches] = useState<Match[]>([]);
-  const [leagues, setLeagues] = useState<League[]>([]);
   const [liveCount, setLiveCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [visibleGroupCount, setVisibleGroupCount] = useState(INITIAL_GROUP_BATCH);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const { isFavorite, toggleFavorite } = useFavorites();
 
-  const load = useCallback(async () => {
-    try {
-      const isToday = selectedDate === todayStr;
+  useEffect(() => {
+    setVisibleGroupCount(INITIAL_GROUP_BATCH);
+  }, [selectedDate, selectedLeagueId]);
 
-      if (isToday) {
-        const [live, today] = await Promise.all([
-          fetchLiveMatches(),
-          fetchMatchesByDate(selectedDate),
-        ]);
-        const liveIds = new Set(live.map(m => m.id));
-        const merged = [...live, ...today.filter(m => !liveIds.has(m.id))];
-        setMatches(merged);
-        setLiveCount(live.length);
-      } else {
-        const data = await fetchMatchesByDate(selectedDate);
-        setMatches(data);
+  useEffect(() => {
+    let active = true;
+
+    const loadMatches = async () => {
+      setLoading(true);
+
+      try {
+        if (selectedDate !== todayStr) {
+          const data = await fetchMatchesByDate(selectedDate);
+          if (!active) return;
+          setMatches(data);
+          setLiveCount(0);
+          setLoading(false);
+          return;
+        }
+
+        const todayMatches = await fetchMatchesByDate(selectedDate);
+        if (!active) return;
+
+        setMatches(todayMatches);
         setLiveCount(0);
-      }
+        setLoading(false);
 
-      // Extract unique leagues after setting matches
-    } catch (err) {
-      console.error("Failed to load matches:", err);
-    } finally {
-      setLoading(false);
+        void fetchLiveMatches()
+          .then((liveMatches) => {
+            if (!active) return;
+            setMatches(mergeLiveMatches(liveMatches, todayMatches));
+            setLiveCount(liveMatches.length);
+          })
+          .catch((error) => {
+            console.error('Failed to fetch live matches:', error);
+          });
+      } catch (error) {
+        console.error('Failed to load matches:', error);
+        if (!active) return;
+        setMatches([]);
+        setLiveCount(0);
+        setLoading(false);
+      }
+    };
+
+    void loadMatches();
+
+    if (selectedDate !== todayStr) {
+      return () => {
+        active = false;
+      };
     }
+
+    const interval = window.setInterval(() => {
+      void Promise.all([
+        fetchMatchesByDate(selectedDate),
+        fetchLiveMatches(),
+      ])
+        .then(([todayMatches, liveMatches]) => {
+          if (!active) return;
+          setMatches(mergeLiveMatches(liveMatches, todayMatches));
+          setLiveCount(liveMatches.length);
+        })
+        .catch((error) => {
+          console.error('Failed to refresh live matches:', error);
+        });
+    }, 15000);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
   }, [selectedDate, todayStr]);
 
-  useEffect(() => {
-    setLoading(true);
-    load();
-    // Only auto-refresh for today
-    if (selectedDate === todayStr) {
-      const interval = setInterval(load, 15000);
-      return () => clearInterval(interval);
-    }
-  }, [load, selectedDate, todayStr]);
-
-  // Extract leagues from matches
-  useEffect(() => {
-    const leagueMap = new Map<number, League>();
-    matches.forEach(m => leagueMap.set(m.league.id, m.league));
-    setLeagues(Array.from(leagueMap.values()));
+  const leagues = useMemo(() => {
+    const leagueMap = new Map<number, Match['league']>();
+    matches.forEach((match) => leagueMap.set(match.league.id, match.league));
+    return Array.from(leagueMap.values());
   }, [matches]);
 
-  const filtered = selectedLeagueId
-    ? matches.filter(m => m.league.id === selectedLeagueId)
-    : matches;
-  const groups = getMatchesGroupedByLeague(filtered);
+  const filtered = useMemo(() => {
+    return selectedLeagueId
+      ? matches.filter((match) => match.league.id === selectedLeagueId)
+      : matches;
+  }, [matches, selectedLeagueId]);
+
+  const groups = useMemo(() => getMatchesGroupedByLeague(filtered), [filtered]);
+
+  const visibleGroups = useMemo(() => {
+    if (selectedLeagueId !== null) {
+      return groups;
+    }
+
+    return groups.slice(0, visibleGroupCount);
+  }, [groups, selectedLeagueId, visibleGroupCount]);
+
+  useEffect(() => {
+    if (selectedLeagueId !== null || visibleGroupCount >= groups.length) return;
+
+    const target = loadMoreRef.current;
+    if (!target) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) return;
+        setVisibleGroupCount((current) => Math.min(current + GROUP_BATCH, groups.length));
+      },
+      { rootMargin: '400px 0px' },
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [groups.length, selectedLeagueId, visibleGroupCount]);
 
   // Date navigation
   const currentDateIdx = dates.indexOf(selectedDate);
@@ -125,14 +198,22 @@ export default function Index() {
                 <p className="text-sm mt-1">No matches scheduled for {getDateLabel(selectedDate).toLowerCase()}</p>
               </div>
             ) : (
-              groups.map(group => (
-                <LeagueGroup
-                  key={group.league.id}
-                  group={group}
-                  isFavorite={isFavorite}
-                  onToggleFavorite={toggleFavorite}
-                />
-              ))
+              <>
+                {visibleGroups.map(group => (
+                  <LeagueGroup
+                    key={group.league.id}
+                    group={group}
+                    isFavorite={isFavorite}
+                    onToggleFavorite={toggleFavorite}
+                  />
+                ))}
+
+                {selectedLeagueId === null && visibleGroups.length < groups.length && (
+                  <div ref={loadMoreRef} className="pt-2">
+                    <MatchListSkeleton groups={1} />
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
