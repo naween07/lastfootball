@@ -1,6 +1,13 @@
+import type { CSSProperties } from 'react';
 import { LeagueMatches } from '@/types/football';
 import MatchCard from './MatchCard';
 import { ChevronRight } from 'lucide-react';
+import OptimizedImage from './OptimizedImage';
+
+const groupVisibilityStyle: CSSProperties = {
+  contentVisibility: 'auto',
+  containIntrinsicSize: '320px',
+};
 
 interface LeagueGroupProps {
   group: LeagueMatches;
@@ -10,12 +17,12 @@ interface LeagueGroupProps {
 
 export default function LeagueGroup({ group, isFavorite, onToggleFavorite }: LeagueGroupProps) {
   return (
-    <div className="mb-4">
+    <div className="mb-4" style={groupVisibilityStyle}>
       {/* League header */}
       <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-3 min-w-0">
           {group.league.logo?.startsWith('http') ? (
-            <img src={group.league.logo} alt="" className="w-7 h-7 flex-shrink-0 object-contain" />
+            <OptimizedImage src={group.league.logo} alt="" className="w-7 h-7 flex-shrink-0 object-contain" />
           ) : (
             <span className="text-xl">{group.league.logo}</span>
           )}

@@ -5,6 +5,7 @@ import SEOHead, { buildMatchJsonLd } from '@/components/SEOHead';
 import MatchTimeline from '@/components/MatchTimeline';
 import MatchStatsView from '@/components/MatchStatsView';
 import LineupView from '@/components/LineupView';
+import OptimizedImage from '@/components/OptimizedImage';
 import { fetchMatchDetails } from '@/services/footballApi';
 import { useState, useEffect } from 'react';
 import { Match } from '@/types/football';
@@ -78,14 +79,14 @@ export default function MatchDetail() {
 
           <div className="text-center mb-2">
             <div className="flex items-center justify-center gap-2">
-              {match.league.logo && <img src={match.league.logo} alt="" className="w-4 h-4" />}
+              {match.league.logo && <OptimizedImage src={match.league.logo} alt="" className="w-4 h-4" priority />}
               <span className="text-xs text-muted-foreground">{match.league.name}</span>
             </div>
           </div>
 
           <div className="flex items-center justify-center gap-6">
             <div className="text-center flex-1">
-              {match.homeTeam.logo && <img src={match.homeTeam.logo} alt="" className="w-8 h-8 mx-auto mb-1" />}
+              {match.homeTeam.logo && <OptimizedImage src={match.homeTeam.logo} alt="" className="w-8 h-8 mx-auto mb-1" priority />}
               <p className="text-base font-bold text-foreground">{match.homeTeam.shortName}</p>
               <p className="text-xs text-muted-foreground hidden sm:block">{match.homeTeam.name}</p>
             </div>
@@ -118,7 +119,7 @@ export default function MatchDetail() {
             </div>
 
             <div className="text-center flex-1">
-              {match.awayTeam.logo && <img src={match.awayTeam.logo} alt="" className="w-8 h-8 mx-auto mb-1" />}
+              {match.awayTeam.logo && <OptimizedImage src={match.awayTeam.logo} alt="" className="w-8 h-8 mx-auto mb-1" priority />}
               <p className="text-base font-bold text-foreground">{match.awayTeam.shortName}</p>
               <p className="text-xs text-muted-foreground hidden sm:block">{match.awayTeam.name}</p>
             </div>

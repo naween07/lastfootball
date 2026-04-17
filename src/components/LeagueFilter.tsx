@@ -1,4 +1,5 @@
 import { League } from '@/types/football';
+import OptimizedImage from './OptimizedImage';
 
 // Top 10 most-watched football leagues by API-Football ID
 const TOP_LEAGUES: { id: number; name: string; logo: string }[] = [
@@ -71,7 +72,7 @@ function FilterChip({ label, logo, active, onClick }: { label: string; logo?: st
       }`}
     >
       {logo?.startsWith('http') ? (
-        <img src={logo} alt="" className="w-3.5 h-3.5" />
+        <OptimizedImage src={logo} alt="" className="w-3.5 h-3.5" priority={active} />
       ) : logo ? (
         <span>{logo}</span>
       ) : null}
