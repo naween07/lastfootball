@@ -5,6 +5,21 @@ interface StandingsTableProps {
   loading: boolean;
 }
 
+// UCL spots = top 4, Europa = 5-6, Relegation = bottom 3 (standard for most leagues)
+function getZoneColor(rank: number, total: number): string {
+  if (rank <= 4) return 'border-l-[3px] border-l-emerald-500'; // Champions League
+  if (rank <= 6) return 'border-l-[3px] border-l-blue-500';    // Europa League
+  if (rank > total - 3) return 'border-l-[3px] border-l-red-500'; // Relegation
+  return 'border-l-[3px] border-l-transparent';
+}
+
+function getRankColor(rank: number, total: number): string {
+  if (rank <= 4) return 'text-emerald-400 font-bold';
+  if (rank <= 6) return 'text-blue-400 font-bold';
+  if (rank > total - 3) return 'text-red-400 font-bold';
+  return 'text-muted-foreground';
+}
+
 export default function StandingsTable({ standings, loading }: StandingsTableProps) {
   if (loading) {
     return (
@@ -23,71 +38,109 @@ export default function StandingsTable({ standings, loading }: StandingsTablePro
     );
   }
 
+  const total = standings.length;
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border text-muted-foreground text-xs">
-            <th className="text-left py-3 px-2 w-8">#</th>
-            <th className="text-left py-3 px-2">Team</th>
-            <th className="text-center py-3 px-1 w-8">P</th>
-            <th className="text-center py-3 px-1 w-8">W</th>
-            <th className="text-center py-3 px-1 w-8">D</th>
-            <th className="text-center py-3 px-1 w-8">L</th>
-            <th className="text-center py-3 px-1 w-12 hidden sm:table-cell">GF</th>
-            <th className="text-center py-3 px-1 w-12 hidden sm:table-cell">GA</th>
-            <th className="text-center py-3 px-1 w-10">GD</th>
-            <th className="text-center py-3 px-1 w-10 hidden sm:table-cell">Form</th>
-            <th className="text-center py-3 px-2 w-10 font-bold">Pts</th>
-          </tr>
-        </thead>
-        <tbody>
-          {standings.map((team) => (
-            <tr
-              key={team.team.id}
-              className="border-b border-border/50 hover:bg-secondary/30 transition-colors"
-            >
-              <td className="py-2.5 px-2 text-muted-foreground tabular-nums">{team.rank}</td>
-              <td className="py-2.5 px-2">
-                <div className="flex items-center gap-2">
-                  {team.team.logo && (
-                    <img src={team.team.logo} alt="" className="w-5 h-5 object-contain" />
-                  )}
-                  <span className="font-medium text-foreground truncate max-w-[140px] sm:max-w-none">
-                    {team.team.name}
-                  </span>
-                </div>
-              </td>
-              <td className="text-center py-2.5 px-1 tabular-nums text-muted-foreground">{team.played}</td>
-              <td className="text-center py-2.5 px-1 tabular-nums text-muted-foreground">{team.win}</td>
-              <td className="text-center py-2.5 px-1 tabular-nums text-muted-foreground">{team.draw}</td>
-              <td className="text-center py-2.5 px-1 tabular-nums text-muted-foreground">{team.lose}</td>
-              <td className="text-center py-2.5 px-1 tabular-nums text-muted-foreground hidden sm:table-cell">{team.goalsFor}</td>
-              <td className="text-center py-2.5 px-1 tabular-nums text-muted-foreground hidden sm:table-cell">{team.goalsAgainst}</td>
-              <td className="text-center py-2.5 px-1 tabular-nums font-medium text-foreground">
-                {team.goalsDiff > 0 ? `+${team.goalsDiff}` : team.goalsDiff}
-              </td>
-              <td className="text-center py-2.5 px-1 hidden sm:table-cell">
-                <div className="flex items-center justify-center gap-0.5">
-                  {team.form.split('').slice(-5).map((f, i) => (
-                    <span
-                      key={i}
-                      className={`w-4 h-4 rounded-full text-[10px] font-bold flex items-center justify-center ${
-                        f === 'W' ? 'bg-green-500/20 text-green-400' :
-                        f === 'D' ? 'bg-yellow-500/20 text-yellow-400' :
-                        'bg-red-500/20 text-red-400'
-                      }`}
-                    >
-                      {f}
-                    </span>
-                  ))}
-                </div>
-              </td>
-              <td className="text-center py-2.5 px-2 tabular-nums font-bold text-foreground">{team.points}</td>
+    <div>
+      {/* Zone legend */}
+      <div className="flex items-center gap-4 px-3 py-2 mb-1">
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+          <span className="text-[10px] text-muted-foreground">UCL</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-blue-500" />
+          <span className="text-[10px] text-muted-foreground">UEL</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-red-500" />
+          <span className="text-[10px] text-muted-foreground">Relegation</span>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border text-muted-foreground/70 text-[11px] uppercase tracking-wider">
+              <th className="text-left py-2.5 pl-4 pr-1 w-8">#</th>
+              <th className="text-left py-2.5 px-1">Team</th>
+              <th className="text-center py-2.5 px-1 w-7">P</th>
+              <th className="text-center py-2.5 px-1 w-7">W</th>
+              <th className="text-center py-2.5 px-1 w-7">D</th>
+              <th className="text-center py-2.5 px-1 w-7">L</th>
+              <th className="text-center py-2.5 px-1 w-8 hidden sm:table-cell">GF</th>
+              <th className="text-center py-2.5 px-1 w-8 hidden sm:table-cell">GA</th>
+              <th className="text-center py-2.5 px-1 w-8">GD</th>
+              <th className="text-center py-2.5 px-1 w-20 hidden sm:table-cell">Form</th>
+              <th className="text-center py-2.5 px-2 w-10">Pts</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {standings.map((team) => (
+              <tr
+                key={team.team.id}
+                className={`border-b border-border/30 hover:bg-secondary/40 transition-colors ${getZoneColor(team.rank, total)}`}
+              >
+                {/* Rank */}
+                <td className={`py-2 pl-4 pr-1 text-xs tabular-nums ${getRankColor(team.rank, total)}`}>
+                  {team.rank}
+                </td>
+
+                {/* Team name + logo */}
+                <td className="py-2 px-1">
+                  <div className="flex items-center gap-2">
+                    {team.team.logo ? (
+                      <img src={team.team.logo} alt="" className="w-[18px] h-[18px] object-contain flex-shrink-0" />
+                    ) : (
+                      <div className="w-[18px] h-[18px] rounded-full bg-secondary flex items-center justify-center flex-shrink-0">
+                        <span className="text-[7px] font-bold text-muted-foreground">
+                          {team.team.name.substring(0, 3).toUpperCase()}
+                        </span>
+                      </div>
+                    )}
+                    <span className="font-medium text-[13px] text-foreground truncate max-w-[120px] sm:max-w-none">
+                      {team.team.name}
+                    </span>
+                  </div>
+                </td>
+
+                {/* Stats */}
+                <td className="text-center py-2 px-1 tabular-nums text-muted-foreground text-xs">{team.played}</td>
+                <td className="text-center py-2 px-1 tabular-nums text-muted-foreground text-xs">{team.win}</td>
+                <td className="text-center py-2 px-1 tabular-nums text-muted-foreground text-xs">{team.draw}</td>
+                <td className="text-center py-2 px-1 tabular-nums text-muted-foreground text-xs">{team.lose}</td>
+                <td className="text-center py-2 px-1 tabular-nums text-muted-foreground text-xs hidden sm:table-cell">{team.goalsFor}</td>
+                <td className="text-center py-2 px-1 tabular-nums text-muted-foreground text-xs hidden sm:table-cell">{team.goalsAgainst}</td>
+                <td className={`text-center py-2 px-1 tabular-nums text-xs font-semibold ${
+                  team.goalsDiff > 0 ? 'text-emerald-400' : team.goalsDiff < 0 ? 'text-red-400' : 'text-muted-foreground'
+                }`}>
+                  {team.goalsDiff > 0 ? `+${team.goalsDiff}` : team.goalsDiff}
+                </td>
+
+                {/* Form guide dots */}
+                <td className="text-center py-2 px-1 hidden sm:table-cell">
+                  <div className="flex items-center justify-center gap-[3px]">
+                    {team.form.split('').slice(-5).map((f, i) => (
+                      <span
+                        key={i}
+                        className={`w-[7px] h-[7px] rounded-full ${
+                          f === 'W' ? 'bg-emerald-500' :
+                          f === 'D' ? 'bg-muted-foreground/50' :
+                          'bg-red-500'
+                        }`}
+                        title={f === 'W' ? 'Win' : f === 'D' ? 'Draw' : 'Loss'}
+                      />
+                    ))}
+                  </div>
+                </td>
+
+                {/* Points */}
+                <td className="text-center py-2 px-2 tabular-nums font-extrabold text-foreground">{team.points}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

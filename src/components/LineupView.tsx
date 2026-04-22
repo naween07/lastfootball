@@ -10,15 +10,36 @@ interface LineupViewProps {
 
 export default function LineupView({ lineups, homeTeamName, awayTeamName, events = [] }: LineupViewProps) {
   const [showSubs, setShowSubs] = useState(false);
-
-  // Build a map: playerName -> list of event icons
   const playerEvents = buildPlayerEventMap(events);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
+      {/* Formation header */}
+      <div className="flex items-center justify-between px-4 py-2">
+        <div className="text-center flex-1">
+          <span className="text-xs font-bold text-foreground">{homeTeamName}</span>
+          <span className="ml-2 text-xs font-mono text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+            {lineups.home.formation}
+          </span>
+        </div>
+        <div className="text-center flex-1">
+          <span className="mr-2 text-xs font-mono text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+            {lineups.away.formation}
+          </span>
+          <span className="text-xs font-bold text-foreground">{awayTeamName}</span>
+        </div>
+      </div>
+
       {/* Pitch */}
-      <div className="relative w-full overflow-hidden rounded-lg" style={{ aspectRatio: '68/105' }}>
-        <div className="absolute inset-0 bg-[#2d6a30]" />
+      <div className="relative w-full overflow-hidden rounded-xl mx-auto" style={{ aspectRatio: '68/105', maxWidth: '420px' }}>
+        {/* Pitch surface — darker, richer green */}
+        <div className="absolute inset-0 bg-gradient-to-b from-[#1a5c1e] to-[#1f6b23]" />
+
+        {/* Pitch pattern stripes */}
+        <div className="absolute inset-0 opacity-[0.06]" style={{
+          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 8%, rgba(255,255,255,0.5) 8%, rgba(255,255,255,0.5) 8.5%)',
+        }} />
+
         <PitchMarkings />
 
         {/* Home team (top half) */}
@@ -30,34 +51,28 @@ export default function LineupView({ lineups, homeTeamName, awayTeamName, events
         <div className="absolute inset-x-0 top-1/2 bottom-0">
           <TeamFormation lineup={lineups.away} isHome={false} playerEvents={playerEvents} />
         </div>
-
-        {/* Formation labels */}
-        <div className="absolute top-2 left-3 z-10">
-          <span className="text-[10px] sm:text-xs font-bold text-white/90 drop-shadow">
-            {homeTeamName} {lineups.home.formation}
-          </span>
-        </div>
-        <div className="absolute bottom-2 left-3 z-10">
-          <span className="text-[10px] sm:text-xs font-bold text-white/90 drop-shadow">
-            {awayTeamName} {lineups.away.formation}
-          </span>
-        </div>
       </div>
 
       {/* Substitutes toggle */}
       <div className="px-4">
         <button
           onClick={() => setShowSubs(!showSubs)}
-          className="w-full py-2 text-xs font-semibold text-muted-foreground bg-secondary rounded-lg hover:bg-secondary/80 transition-colors"
+          className="w-full py-2.5 text-xs font-bold text-muted-foreground bg-secondary/60 rounded-lg hover:bg-secondary transition-colors uppercase tracking-wider"
         >
           {showSubs ? 'Hide Substitutes' : 'Show Substitutes'}
         </button>
       </div>
 
       {showSubs && (
-        <div className="px-4 pb-4">
-          <h4 className="text-xs font-bold text-muted-foreground text-center mb-3 uppercase tracking-wide">Substitutes</h4>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-0">
+        <div className="px-4 pb-4 space-y-3">
+          {/* Subs header */}
+          <div className="flex items-center gap-2">
+            <div className="flex-1 h-px bg-border" />
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Substitutes</span>
+            <div className="flex-1 h-px bg-border" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-x-4 gap-y-0">
             <div>
               {lineups.home.substitutes.map(p => (
                 <SubRow key={p.id || p.name} player={p} playerEvents={playerEvents} />
@@ -71,11 +86,15 @@ export default function LineupView({ lineups, homeTeamName, awayTeamName, events
           </div>
 
           {/* Coaches */}
-          <div className="border-t border-border mt-3 pt-3">
-            <h4 className="text-xs font-bold text-muted-foreground text-center mb-2 uppercase tracking-wide">Manager</h4>
+          <div className="border-t border-border/50 pt-3">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="flex-1 h-px bg-border" />
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Manager</span>
+              <div className="flex-1 h-px bg-border" />
+            </div>
             <div className="flex justify-between px-1">
-              <span className="text-sm text-muted-foreground">{lineups.home.coach.name}</span>
-              <span className="text-sm text-muted-foreground">{lineups.away.coach.name}</span>
+              <span className="text-sm font-medium text-muted-foreground">{lineups.home.coach.name}</span>
+              <span className="text-sm font-medium text-muted-foreground">{lineups.away.coach.name}</span>
             </div>
           </div>
         </div>
@@ -90,19 +109,16 @@ type EventIcon = {
   minute: number;
 };
 
-// Normalize name: remove accents, lowercase
 function normalizeName(name: string): string {
   return name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 }
 
-// Extract last name for fuzzy matching
 function getLastName(name: string): string {
   const parts = normalizeName(name).split(/\s+/);
   return parts[parts.length - 1];
 }
 
 function buildPlayerEventMap(events: MatchEvent[]): Map<string, EventIcon[]> {
-  // Store events by both full normalized name AND last name for fuzzy matching
   const byFull = new Map<string, EventIcon[]>();
   const byLast = new Map<string, EventIcon[]>();
 
@@ -134,52 +150,34 @@ function buildPlayerEventMap(events: MatchEvent[]): Map<string, EventIcon[]> {
 }
 
 function getPlayerIcons(playerName: string, playerEvents: Map<string, EventIcon[]>): EventIcon[] {
-  // Try full name first, then last name
   const full = normalizeName(playerName);
   if (playerEvents.has(full)) return playerEvents.get(full)!;
   const last = getLastName(playerName);
   return playerEvents.get(last) || [];
 }
 
-function EventIcons({ icons }: { icons: EventIcon[] }) {
-  if (!icons.length) return null;
-  return (
-    <div className="flex items-center gap-0.5 flex-wrap justify-center">
-      {icons.map((icon, i) => (
-        <span key={i} className="inline-flex items-center" title={`${icon.minute}'`}>
-          {icon.type === 'goal' && (
-            <span className="text-[8px] sm:text-[10px]">⚽</span>
-          )}
-          {icon.type === 'yellow_card' && (
-            <span className="inline-block w-2 h-2.5 sm:w-2.5 sm:h-3 rounded-[1px] bg-yellow-400 border border-yellow-500" />
-          )}
-          {icon.type === 'red_card' && (
-            <span className="inline-block w-2 h-2.5 sm:w-2.5 sm:h-3 rounded-[1px] bg-red-500 border border-red-600" />
-          )}
-          {icon.type === 'sub_in' && (
-            <span className="text-[8px] sm:text-[10px] text-emerald-400">▲</span>
-          )}
-          {icon.type === 'sub_out' && (
-            <span className="text-[8px] sm:text-[10px] text-red-400">▼</span>
-          )}
-        </span>
-      ))}
-    </div>
-  );
-}
-
 /* ---------- Pitch markings ---------- */
 function PitchMarkings() {
   return (
     <div className="absolute inset-0 pointer-events-none">
-      <div className="absolute inset-[3%] border-2 border-white/40 rounded-sm" />
-      <div className="absolute left-[3%] right-[3%] top-1/2 h-0.5 bg-white/40 -translate-y-px" />
-      <div className="absolute left-1/2 top-1/2 w-[18%] aspect-square rounded-full border-2 border-white/40 -translate-x-1/2 -translate-y-1/2" />
-      <div className="absolute left-1/2 top-1/2 w-1.5 h-1.5 rounded-full bg-white/50 -translate-x-1/2 -translate-y-1/2" />
-      <div className="absolute top-[3%] left-1/2 -translate-x-1/2 w-[44%] h-[16%] border-2 border-white/40 border-t-0" />
-      <div className="absolute top-[3%] left-1/2 -translate-x-1/2 w-[20%] h-[6%] border-2 border-white/40 border-t-0" />
-      <div className="absolute bottom-[3%] left-1/2 -translate-x-1/2 w-[44%] h-[16%] border-2 border-white/40 border-b-0" />
-      <div className="absolute bottom-[3%] left-1/2 -translate-x-1/2 w-[20%] h-[6%] border-2 border-white/40 border-b-0" />
+      {/* Outer boundary */}
+      <div className="absolute inset-[3%] border-[1.5px] border-white/30 rounded-sm" />
+      {/* Half line */}
+      <div className="absolute left-[3%] right-[3%] top-1/2 h-[1.5px] bg-white/30 -translate-y-px" />
+      {/* Center circle */}
+      <div className="absolute left-1/2 top-1/2 w-[18%] aspect-square rounded-full border-[1.5px] border-white/30 -translate-x-1/2 -translate-y-1/2" />
+      <div className="absolute left-1/2 top-1/2 w-1.5 h-1.5 rounded-full bg-white/40 -translate-x-1/2 -translate-y-1/2" />
+      {/* Top penalty box */}
+      <div className="absolute top-[3%] left-1/2 -translate-x-1/2 w-[44%] h-[16%] border-[1.5px] border-white/30 border-t-0" />
+      <div className="absolute top-[3%] left-1/2 -translate-x-1/2 w-[20%] h-[6%] border-[1.5px] border-white/30 border-t-0" />
+      {/* Bottom penalty box */}
+      <div className="absolute bottom-[3%] left-1/2 -translate-x-1/2 w-[44%] h-[16%] border-[1.5px] border-white/30 border-b-0" />
+      <div className="absolute bottom-[3%] left-1/2 -translate-x-1/2 w-[20%] h-[6%] border-[1.5px] border-white/30 border-b-0" />
+      {/* Corner arcs */}
+      <div className="absolute top-[3%] left-[3%] w-3 h-3 border-b-[1.5px] border-r-[1.5px] border-white/20 rounded-br-full" />
+      <div className="absolute top-[3%] right-[3%] w-3 h-3 border-b-[1.5px] border-l-[1.5px] border-white/20 rounded-bl-full" />
+      <div className="absolute bottom-[3%] left-[3%] w-3 h-3 border-t-[1.5px] border-r-[1.5px] border-white/20 rounded-tr-full" />
+      <div className="absolute bottom-[3%] right-[3%] w-3 h-3 border-t-[1.5px] border-l-[1.5px] border-white/20 rounded-tl-full" />
     </div>
   );
 }
@@ -192,37 +190,59 @@ function TeamFormation({ lineup, isHome, playerEvents }: { lineup: TeamLineup; i
     <div className="relative w-full h-full">
       {positions.map((pos, i) => {
         const icons = getPlayerIcons(pos.player.name, playerEvents);
+        const isGK = pos.player.pos === 'G';
         return (
           <div
             key={pos.player.id || pos.player.name + i}
             className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-10"
             style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
           >
-            {/* Jersey number + event badges */}
             <div className="relative">
-              <div className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold shadow-lg ${
-                isHome
-                  ? 'bg-red-600 text-white border-2 border-red-400'
-                  : 'bg-blue-600 text-white border-2 border-blue-400'
-              } ${pos.player.pos === 'G' ? '!bg-amber-500 !border-amber-300' : ''}`}>
+              {/* Player circle */}
+              <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-[11px] sm:text-xs font-extrabold shadow-md ${
+                isGK
+                  ? 'bg-amber-500 text-black ring-2 ring-amber-300/50'
+                  : isHome
+                    ? 'bg-white text-[#1a1a1a] ring-2 ring-white/30'
+                    : 'bg-[#2a2a3e] text-white ring-2 ring-[#3a3a5e]/50'
+              }`}>
                 {pos.player.number}
               </div>
-              {/* Event icons positioned top-right of the circle */}
+
+              {/* Event badges — top right corner */}
               {icons.length > 0 && (
-                <div className="absolute -top-1 -right-2 flex gap-0.5">
-                  {icons.map((icon, idx) => (
+                <div className="absolute -top-1 -right-2.5 flex gap-[2px]">
+                  {icons.slice(0, 3).map((icon, idx) => (
                     <span key={idx} className="inline-flex" title={`${icon.minute}'`}>
-                      {icon.type === 'goal' && <span className="text-[8px] sm:text-[10px]">⚽</span>}
-                      {icon.type === 'yellow_card' && <span className="inline-block w-2 h-2.5 rounded-[1px] bg-yellow-400 border border-yellow-500" />}
-                      {icon.type === 'red_card' && <span className="inline-block w-2 h-2.5 rounded-[1px] bg-red-500 border border-red-600" />}
-                      {icon.type === 'sub_out' && <span className="text-[8px] text-red-400">▼</span>}
-                      {icon.type === 'sub_in' && <span className="text-[8px] text-emerald-400">▲</span>}
+                      {icon.type === 'goal' && (
+                        <span className="w-3 h-3 rounded-full bg-primary flex items-center justify-center">
+                          <span className="text-[6px] text-primary-foreground font-bold">G</span>
+                        </span>
+                      )}
+                      {icon.type === 'yellow_card' && (
+                        <span className="w-2.5 h-3 rounded-[1px] bg-yellow-400 shadow-sm" />
+                      )}
+                      {icon.type === 'red_card' && (
+                        <span className="w-2.5 h-3 rounded-[1px] bg-red-500 shadow-sm" />
+                      )}
+                      {icon.type === 'sub_out' && (
+                        <span className="w-3 h-3 rounded-full bg-red-500/80 flex items-center justify-center">
+                          <span className="text-[7px] text-white font-bold">↓</span>
+                        </span>
+                      )}
+                      {icon.type === 'sub_in' && (
+                        <span className="w-3 h-3 rounded-full bg-emerald-500/80 flex items-center justify-center">
+                          <span className="text-[7px] text-white font-bold">↑</span>
+                        </span>
+                      )}
                     </span>
                   ))}
                 </div>
               )}
             </div>
-            <span className="mt-0.5 text-[8px] sm:text-[10px] font-semibold text-white text-center leading-tight drop-shadow-md max-w-[60px] sm:max-w-[80px] truncate">
+
+            {/* Player name */}
+            <span className="mt-[2px] text-[8px] sm:text-[10px] font-semibold text-white text-center leading-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] max-w-[56px] sm:max-w-[72px] truncate">
               {getShortName(pos.player.name)}
             </span>
           </div>
@@ -316,15 +336,33 @@ function getShortName(fullName: string): string {
 
 function SubRow({ player, align = 'left', playerEvents }: { player: LineupPlayer; align?: 'left' | 'right'; playerEvents: Map<string, EventIcon[]> }) {
   const icons = getPlayerIcons(player.name, playerEvents);
-  const posColor = {
-    G: 'text-amber-400', D: 'text-blue-400', M: 'text-emerald-400', F: 'text-red-400',
-  }[player.pos] || 'text-muted-foreground';
+  const posColors: Record<string, string> = {
+    G: 'bg-amber-500/15 text-amber-400',
+    D: 'bg-blue-500/15 text-blue-400',
+    M: 'bg-emerald-500/15 text-emerald-400',
+    F: 'bg-red-500/15 text-red-400',
+  };
+  const posStyle = posColors[player.pos] || 'bg-secondary text-muted-foreground';
 
   return (
-    <div className={`flex items-center gap-2 py-1 px-1 ${align === 'right' ? 'flex-row-reverse text-right' : ''}`}>
-      <span className="text-xs font-bold text-muted-foreground w-5 text-center tabular-nums">{player.number}</span>
-      <span className="text-sm text-foreground truncate">{player.name}</span>
-      {icons.length > 0 && <EventIcons icons={icons} />}
+    <div className={`flex items-center gap-2 py-1.5 px-1 ${align === 'right' ? 'flex-row-reverse text-right' : ''}`}>
+      <span className={`text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${posStyle}`}>
+        {player.number}
+      </span>
+      <span className="text-[13px] text-foreground/80 truncate flex-1">{player.name}</span>
+      {icons.length > 0 && (
+        <div className="flex items-center gap-[2px] flex-shrink-0">
+          {icons.map((icon, idx) => (
+            <span key={idx} className="inline-flex" title={`${icon.minute}'`}>
+              {icon.type === 'goal' && <span className="w-2 h-2 rounded-full bg-primary" />}
+              {icon.type === 'yellow_card' && <span className="w-2 h-2.5 rounded-[1px] bg-yellow-400" />}
+              {icon.type === 'red_card' && <span className="w-2 h-2.5 rounded-[1px] bg-red-500" />}
+              {icon.type === 'sub_in' && <span className="text-[9px] text-emerald-400 font-bold">↑</span>}
+              {icon.type === 'sub_out' && <span className="text-[9px] text-red-400 font-bold">↓</span>}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

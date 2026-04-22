@@ -19,39 +19,36 @@ export default function MatchCard({ match, isFavoriteHome, isFavoriteAway, onTog
   return (
     <Link
       to={`/match/${match.id}`}
-      className="group block bg-card hover:bg-secondary/50 transition-colors rounded-lg mx-3 mb-2"
+      className={`group block bg-card hover:bg-secondary/60 transition-colors mx-1 mb-px border-b border-border/30 ${
+        isLive ? 'border-l-[3px] border-l-live' : ''
+      }`}
     >
-      <div className="flex items-center px-3 py-3">
+      <div className="flex items-center px-3 py-2.5">
         {/* Status / Time column */}
-        <div className="w-14 flex-shrink-0 text-center">
+        <div className="w-[52px] flex-shrink-0 text-center">
           {isLive && (
-            <div className="flex flex-col items-center gap-0.5">
-              <span className="inline-flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-live animate-pulse-live" />
-                <span className="text-[10px] font-bold text-live uppercase">Live</span>
-              </span>
-              <span className="text-xs font-semibold text-live">{match.minute}</span>
+            <div className="flex flex-col items-center gap-0">
+              <span className="text-[10px] font-extrabold text-live uppercase tracking-wider">Live</span>
+              <span className="text-xs font-bold text-live tabular-nums">{match.minute}</span>
             </div>
           )}
           {isHT && (
-            <span className="text-xs font-bold text-amber-400">HT</span>
+            <span className="text-xs font-extrabold text-amber-400 tracking-wider">HT</span>
           )}
           {isFinished && (
-            <span className="text-sm font-semibold text-muted-foreground">FT</span>
+            <span className="text-xs font-semibold text-muted-foreground/70">FT</span>
           )}
           {isNotStarted && (
-            <span className="text-sm font-semibold text-primary">{match.time}</span>
+            <span className="text-sm font-bold text-primary tabular-nums">{match.time}</span>
           )}
         </div>
 
-        {/* Vertical divider */}
-        <div className="w-px h-10 bg-border flex-shrink-0" />
-
         {/* Teams & Score */}
-        <div className="flex-1 min-w-0 pl-3">
+        <div className="flex-1 min-w-0">
           <TeamRow
             name={match.homeTeam.name}
             logo={match.homeTeam.logo}
+            shortName={match.homeTeam.shortName}
             score={match.homeScore}
             isWinning={match.homeScore !== null && match.awayScore !== null && match.homeScore > match.awayScore}
             isLive={isLive || isHT}
@@ -60,6 +57,7 @@ export default function MatchCard({ match, isFavoriteHome, isFavoriteAway, onTog
           <TeamRow
             name={match.awayTeam.name}
             logo={match.awayTeam.logo}
+            shortName={match.awayTeam.shortName}
             score={match.awayScore}
             isWinning={match.homeScore !== null && match.awayScore !== null && match.awayScore > match.homeScore}
             isLive={isLive || isHT}
@@ -73,16 +71,15 @@ export default function MatchCard({ match, isFavoriteHome, isFavoriteAway, onTog
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              // Toggle favorite for whichever team — use home team as default
               onToggleFavorite(match.homeTeam.id, match.homeTeam.name, match.homeTeam.logo);
             }}
-            className="flex-shrink-0 p-1 ml-2"
+            className="flex-shrink-0 p-1.5 ml-1 rounded-full hover:bg-secondary transition-colors"
           >
             <Star
-              className={`w-5 h-5 transition-colors ${
+              className={`w-4 h-4 transition-colors ${
                 isFavoriteHome || isFavoriteAway
                   ? 'fill-primary text-primary'
-                  : 'text-muted-foreground/40 hover:text-muted-foreground'
+                  : 'text-muted-foreground/30 hover:text-muted-foreground/60'
               }`}
             />
           </button>
@@ -95,6 +92,7 @@ export default function MatchCard({ match, isFavoriteHome, isFavoriteAway, onTog
 function TeamRow({
   name,
   logo,
+  shortName,
   score,
   isWinning,
   isLive,
@@ -102,26 +100,43 @@ function TeamRow({
 }: {
   name: string;
   logo?: string;
+  shortName?: string;
   score: number | null;
   isWinning: boolean;
   isLive: boolean;
   isFinished: boolean;
 }) {
+  // Fallback: colored initial circle when logo fails
+  const initials = (shortName || name.substring(0, 3)).toUpperCase().slice(0, 3);
+
   return (
-    <div className="flex items-center justify-between py-0.5">
-      <div className="flex items-center gap-2.5 min-w-0">
-        {logo && <OptimizedImage src={logo} alt="" className="w-5 h-5 flex-shrink-0 object-contain" />}
-        <span className={`text-sm truncate ${
-          isWinning ? 'font-semibold text-foreground' : 'text-secondary-foreground'
-        }`}>
+    <div className="flex items-center justify-between py-[3px]">
+      <div className="flex items-center gap-2 min-w-0">
+        {logo ? (
+          <OptimizedImage
+            src={logo}
+            alt=""
+            className="w-[18px] h-[18px] flex-shrink-0 object-contain"
+          />
+        ) : (
+          <div className="w-[18px] h-[18px] flex-shrink-0 rounded-full bg-secondary flex items-center justify-center">
+            <span className="text-[7px] font-bold text-muted-foreground">{initials}</span>
+          </div>
+        )}
+        <span className={`text-[13px] truncate ${
+          isWinning ? 'font-bold text-foreground' : 'text-muted-foreground'
+        } ${isFinished && !isWinning ? 'text-muted-foreground/70' : ''}`}>
           {name}
         </span>
       </div>
-      <span className={`text-base font-bold tabular-nums min-w-[2rem] text-right ${
-        isLive && isWinning ? 'text-live' : isLive ? 'text-secondary-foreground' :
-        isFinished && isWinning ? 'text-foreground' : 'text-muted-foreground'
+      <span className={`text-[15px] font-extrabold tabular-nums min-w-[24px] text-right ${
+        isLive && isWinning ? 'text-foreground' :
+        isLive ? 'text-muted-foreground' :
+        isFinished && isWinning ? 'text-foreground' :
+        isFinished ? 'text-muted-foreground/60' :
+        'text-muted-foreground/40'
       }`}>
-        {score !== null ? score : ''}
+        {score !== null ? score : '-'}
       </span>
     </div>
   );
