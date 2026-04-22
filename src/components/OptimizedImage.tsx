@@ -20,11 +20,10 @@ const PROXIED_HOSTS = new Set([
 ]);
 
 function proxify(src: string): string {
-  if (!SUPABASE_URL) return src;
   try {
     const u = new URL(src);
     if (!PROXIED_HOSTS.has(u.host)) return src;
-    return `${SUPABASE_URL}/functions/v1/logo-proxy?url=${encodeURIComponent(src)}`;
+    return `/api/logo?url=${encodeURIComponent(src)}`;
   } catch {
     return src;
   }

@@ -2,6 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Match, League, LeagueMatches, MatchEvent, MatchStats, TeamLineup, LineupPlayer, MatchPlayerData } from "@/types/football";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const API_BASE_URL = '/api';
 
 // In-memory cache with TTL
 const apiCache = new Map<string, { data: any; expiry: number }>();
@@ -32,10 +33,9 @@ async function callApi(endpoint: string, params: Record<string, string> = {}) {
   const cached = getCached(cacheKey);
   if (cached) return cached;
 
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/football-api?${query}`, {
+  const response = await fetch(`${API_BASE_URL}/football?${query}`, {
     headers: {
       "Content-Type": "application/json",
-      "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
     },
   });
   if (!response.ok) throw new Error(`API error: ${response.status}`);

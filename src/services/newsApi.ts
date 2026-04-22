@@ -1,5 +1,3 @@
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-
 export interface NewsItem {
   id: string;
   title: string;
@@ -14,10 +12,9 @@ export interface NewsItem {
 
 export async function fetchFootballNews(): Promise<NewsItem[]> {
   try {
-    const response = await fetch(`${SUPABASE_URL}/functions/v1/football-news`, {
+    const response = await fetch('/api/news', {
       headers: {
         "Content-Type": "application/json",
-        apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
       },
     });
     if (!response.ok) throw new Error(`News API error: ${response.status}`);
