@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import { Match, League, LeagueMatches, MatchEvent, MatchStats, TeamLineup, LineupPlayer } from "@/types/football";
+import { Match, League, LeagueMatches, MatchEvent, MatchStats, TeamLineup, LineupPlayer, MatchPlayerData } from "@/types/football";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
@@ -18,7 +18,6 @@ function getCached(key: string): any | null {
 
 function setCache(key: string, data: any, ttlMs: number) {
   apiCache.set(key, { data, expiry: Date.now() + ttlMs });
-  // Prevent unbounded growth
   if (apiCache.size > 200) {
     const oldest = apiCache.keys().next().value;
     if (oldest) apiCache.delete(oldest);
@@ -28,11 +27,8 @@ function setCache(key: string, data: any, ttlMs: number) {
 async function callApi(endpoint: string, params: Record<string, string> = {}) {
   const query = new URLSearchParams({ endpoint, ...params }).toString();
   const cacheKey = query;
-
-  // Live endpoints get short cache (30s), others get longer (5min)
   const isLive = params.live === "all";
   const ttl = isLive ? 30_000 : 300_000;
-
   const cached = getCached(cacheKey);
   if (cached) return cached;
 
@@ -49,7 +45,6 @@ async function callApi(endpoint: string, params: Record<string, string> = {}) {
   return result;
 }
 
-// Status mapping from API-Football to our types
 function mapStatus(short: string): Match["status"] {
   const map: Record<string, Match["status"]> = {
     "1H": "1H", "2H": "2H", "HT": "HT", "FT": "FT",
@@ -102,27 +97,6 @@ function mapFixtureToMatch(fixture: any): Match {
       logo: l.logo,
     },
   };
-}
-
-function mapEvents(events: any[]): MatchEvent[] {
-  return events.map((e, i) => {
-    let type: MatchEvent["type"] = "goal";
-    if (e.type === "Goal") type = "goal";
-    else if (e.type === "Card" && e.detail?.includes("Yellow")) type = "yellow_card";
-    else if (e.type === "Card" && e.detail?.includes("Red")) type = "red_card";
-    else if (e.type === "subst") type = "substitution";
-
-    return {
-      id: i,
-      type,
-      minute: e.time?.elapsed || 0,
-      extraMinute: e.time?.extra || undefined,
-      team: e.team?.id ? "home" : "away", // will be fixed below
-      playerName: e.player?.name || "Unknown",
-      assistName: e.assist?.name || undefined,
-      detail: e.detail || undefined,
-    };
-  });
 }
 
 function mapStats(stats: any[]): MatchStats | undefined {
@@ -203,10 +177,9 @@ export async function fetchMatchDetails(fixtureId: number): Promise<Match | null
     if (!fixtures.length) return null;
 
     const match = mapFixtureToMatch(fixtures[0]);
-    
-    // Map events with correct team assignment
+    const homeTeamId = fixtures[0].teams.home.id;
+
     if (events.length > 0) {
-      const homeTeamId = fixtures[0].teams.home.id;
       match.events = events.map((e: any, i: number) => {
         let type: MatchEvent["type"] = "goal";
         if (e.type === "Goal") type = "goal";
@@ -229,7 +202,6 @@ export async function fetchMatchDetails(fixtureId: number): Promise<Match | null
 
     match.stats = mapStats(stats);
 
-    // Map lineups
     if (lineups && lineups.length >= 2) {
       const homeLineup = mapLineup(lineups[0]);
       const awayLineup = mapLineup(lineups[1]);
@@ -245,15 +217,54 @@ export async function fetchMatchDetails(fixtureId: number): Promise<Match | null
   }
 }
 
+export async function fetchMatchPlayers(fixtureId: number): Promise<MatchPlayerData[]> {
+  try {
+    const data = await callApi("fixtures/players", { fixture: String(fixtureId) });
+    if (!data || !data.length) return [];
+    return data.map((team: any) => ({
+      teamId: team.team.id,
+      teamName: team.team.name,
+      players: team.players.map((p: any) => {
+        const s = p.statistics?.[0] || {};
+        return {
+          id: p.player.id,
+          name: p.player.name,
+          photo: p.player.photo,
+          number: s.games?.number || 0,
+          position: s.games?.position || '',
+          rating: s.games?.rating || null,
+          minutes: s.games?.minutes || null,
+          captain: s.games?.captain || false,
+          substitute: s.games?.substitute || false,
+          goals: s.goals?.total || 0,
+          assists: s.goals?.assists || 0,
+          yellowCards: s.cards?.yellow || 0,
+          redCards: s.cards?.red || 0,
+          saves: s.goals?.saves || null,
+          shots: s.shots?.total || null,
+          shotsOn: s.shots?.on || null,
+          passes: s.passes?.total || null,
+          passAccuracy: s.passes?.accuracy || null,
+          tackles: s.tackles?.total || null,
+          duels: s.duels?.total || null,
+          duelsWon: s.duels?.won || null,
+          dribbles: s.dribbles?.attempts || null,
+          dribblesSuccess: s.dribbles?.success || null,
+        };
+      }),
+    }));
+  } catch (err) {
+    console.error("Failed to fetch match players:", err);
+    return [];
+  }
+}
+
 export async function searchTeamsAndLeagues(query: string): Promise<Match[]> {
   try {
-    // Search by team name - get their upcoming/recent fixtures
     const teams = await callApi("teams", { search: query });
     if (!teams.length) return [];
-
     const teamId = teams[0]?.team?.id;
     if (!teamId) return [];
-
     const fixtures = await callApi("fixtures", { team: String(teamId), last: "5" });
     return fixtures.map(mapFixtureToMatch);
   } catch (err) {
@@ -279,12 +290,10 @@ export const TOP_LEAGUES = [
   { id: 253, name: 'MLS', country: 'USA' },
 ];
 
-// Cup/knockout competition IDs
-export const CUP_LEAGUE_IDS = [2, 3, 848, 45, 1, 4, 5, 6, 9, 15, 16]; // UCL, UEL, UECL, FA Cup, World Cup, Euro, Nations League, etc.
+export const CUP_LEAGUE_IDS = [2, 3, 848, 45, 1, 4, 5, 6, 9, 15, 16];
 
 export function getCurrentSeason(): number {
   const now = new Date();
-  // Most leagues start in Aug, so if before Aug use previous year
   return now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
 }
 
@@ -315,7 +324,6 @@ export async function fetchStandings(leagueId: number, season: number): Promise<
     if (!data.length) return [];
     const standings = data[0]?.league?.standings;
     if (!standings || !standings.length) return [];
-    // Take first group (some leagues have multiple groups)
     return standings[0].map((s: any) => ({
       rank: s.rank,
       team: { id: s.team.id, name: s.team.name, logo: s.team.logo },
@@ -506,7 +514,6 @@ export function getMatchesGroupedByLeague(matches: Match[]): LeagueMatches[] {
   return all;
 }
 
-// Format date as YYYY-MM-DD
 export function formatDate(date: Date): string {
   return date.toISOString().split("T")[0];
 }
@@ -540,7 +547,6 @@ export function getDateLabel(dateStr: string): string {
   return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
-/** Get an array of date strings from yesterday to +5 days */
 export function getDateRange(): string[] {
   const dates: string[] = [];
   for (let i = -1; i <= 5; i++) {

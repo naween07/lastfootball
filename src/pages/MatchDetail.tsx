@@ -7,9 +7,9 @@ import MatchStatsView from '@/components/MatchStatsView';
 import LineupView from '@/components/LineupView';
 import MatchInsightCard from '@/components/MatchInsightCard';
 import OptimizedImage from '@/components/OptimizedImage';
-import { fetchMatchDetails } from '@/services/footballApi';
+import { fetchMatchDetails, fetchMatchPlayers } from '@/services/footballApi';
 import { useState, useEffect, useMemo } from 'react';
-import { Match } from '@/types/football';
+import { Match, MatchPlayerData } from '@/types/football';
 import { cn } from '@/lib/utils';
 
 type Tab = 'overview' | 'lineups' | 'stats' | 'commentary';
@@ -17,20 +17,39 @@ type Tab = 'overview' | 'lineups' | 'stats' | 'commentary';
 export default function MatchDetail() {
   const { id } = useParams<{ id: string }>();
   const [match, setMatch] = useState<Match | null>(null);
+  const [playerData, setPlayerData] = useState<MatchPlayerData[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('overview');
 
   useEffect(() => {
     if (!id) return;
     setLoading(true);
-    fetchMatchDetails(Number(id))
-      .then(setMatch)
+
+    // Fetch match details and player stats in parallel
+    Promise.all([
+      fetchMatchDetails(Number(id)),
+      fetchMatchPlayers(Number(id)),
+    ])
+      .then(([matchData, players]) => {
+        setMatch(matchData);
+        setPlayerData(players);
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
 
+    // Poll for live updates
     const interval = setInterval(() => {
-      fetchMatchDetails(Number(id)).then(setMatch).catch(console.error);
+      Promise.all([
+        fetchMatchDetails(Number(id)),
+        fetchMatchPlayers(Number(id)),
+      ])
+        .then(([matchData, players]) => {
+          setMatch(matchData);
+          setPlayerData(players);
+        })
+        .catch(console.error);
     }, 15000);
+
     return () => clearInterval(interval);
   }, [id]);
 
@@ -80,6 +99,9 @@ export default function MatchDetail() {
               homeTeamName={match.homeTeam.name}
               awayTeamName={match.awayTeam.name}
               events={match.events}
+              playerData={playerData}
+              homeTeamId={match.homeTeam.id}
+              awayTeamId={match.awayTeam.id}
             />
           </Card>
         )}
@@ -130,7 +152,6 @@ function MatchHero({ match }: { match: Match }) {
           Back
         </Link>
 
-        {/* League meta */}
         <div className="flex items-center justify-center gap-2 mb-4 md:mb-6">
           {match.league.logo && (
             <OptimizedImage src={match.league.logo} alt="" className="w-4 h-4 object-contain" priority />
@@ -140,9 +161,7 @@ function MatchHero({ match }: { match: Match }) {
           </span>
         </div>
 
-        {/* Teams + score */}
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 md:gap-6">
-          {/* Home */}
           <div className="flex flex-col items-center text-center">
             {match.homeTeam.logo && (
               <OptimizedImage
@@ -157,7 +176,6 @@ function MatchHero({ match }: { match: Match }) {
             </p>
           </div>
 
-          {/* Score / time */}
           <div className="flex flex-col items-center min-w-[110px]">
             {hasScore ? (
               <div className="flex items-baseline gap-2 md:gap-3 tabular-nums">
@@ -167,9 +185,7 @@ function MatchHero({ match }: { match: Match }) {
                 )}>
                   {match.homeScore}
                 </span>
-                <span className="text-2xl md:text-3xl text-muted-foreground/60 font-light">
-                  :
-                </span>
+                <span className="text-2xl md:text-3xl text-muted-foreground/60 font-light">:</span>
                 <span className={cn(
                   'text-4xl md:text-6xl font-black leading-none',
                   isLive ? 'text-live' : 'text-foreground'
@@ -207,7 +223,6 @@ function MatchHero({ match }: { match: Match }) {
             </div>
           </div>
 
-          {/* Away */}
           <div className="flex flex-col items-center text-center">
             {match.awayTeam.logo && (
               <OptimizedImage
@@ -268,10 +283,8 @@ function OverviewTab({ match, onJumpTo }: { match: Match; onJumpTo: (t: Tab) => 
 
   return (
     <div className="space-y-4">
-      {/* AI Insight always at top */}
       <MatchInsightCard match={match} />
 
-      {/* Quick info card */}
       <Card padded>
         <SectionTitle>Match info</SectionTitle>
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
@@ -280,13 +293,10 @@ function OverviewTab({ match, onJumpTo }: { match: Match; onJumpTo: (t: Tab) => 
         </dl>
       </Card>
 
-      {/* Key events preview */}
       {topEvents.length > 0 && (
         <Card>
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">
-              Key events
-            </h3>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">Key events</h3>
             <button
               onClick={() => onJumpTo('commentary')}
               className="text-xs text-muted-foreground hover:text-foreground font-medium"
@@ -302,13 +312,10 @@ function OverviewTab({ match, onJumpTo }: { match: Match; onJumpTo: (t: Tab) => 
         </Card>
       )}
 
-      {/* Stats preview */}
       {match.stats && (
         <Card padded>
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">
-              Top stats
-            </h3>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">Top stats</h3>
             <button
               onClick={() => onJumpTo('stats')}
               className="text-xs text-muted-foreground hover:text-foreground font-medium"
@@ -351,19 +358,14 @@ function Card({ children, padded = false }: { children: React.ReactNode; padded?
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <h2 className="text-xs font-bold uppercase tracking-wider text-foreground mb-3">
-      {children}
-    </h2>
+    <h2 className="text-xs font-bold uppercase tracking-wider text-foreground mb-3">{children}</h2>
   );
 }
 
 function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
     <>
-      <dt className="flex items-center gap-1.5 text-muted-foreground">
-        {icon}
-        {label}
-      </dt>
+      <dt className="flex items-center gap-1.5 text-muted-foreground">{icon}{label}</dt>
       <dd className="text-foreground font-medium text-right">{value}</dd>
     </>
   );

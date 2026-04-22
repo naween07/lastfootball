@@ -56,6 +56,7 @@ export interface Match {
   events?: MatchEvent[];
   stats?: MatchStats;
   lineups?: { home: TeamLineup; away: TeamLineup };
+  playerData?: MatchPlayerData[];
 }
 
 export interface League {
@@ -68,4 +69,36 @@ export interface League {
 export interface LeagueMatches {
   league: League;
   matches: Match[];
+}
+
+export interface MatchPlayerStats {
+  id: number;
+  name: string;
+  photo: string;
+  number: number;
+  position: string;
+  rating: string | null;
+  minutes: number | null;
+  captain: boolean;
+  substitute: boolean;
+  goals: number;
+  assists: number;
+  yellowCards: number;
+  redCards: number;
+  saves: number | null;
+  shots: number | null;
+  shotsOn: number | null;
+  passes: number | null;
+  passAccuracy: string | null;
+  tackles: number | null;
+  duels: number | null;
+  duelsWon: number | null;
+  dribbles: number | null;
+  dribblesSuccess: number | null;
+}
+
+export interface MatchPlayerData {
+  teamId: number;
+  teamName: string;
+  players: MatchPlayerStats[];
 }

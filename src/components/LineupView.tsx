@@ -1,16 +1,32 @@
-import { TeamLineup, LineupPlayer, MatchEvent } from '@/types/football';
-import { useState } from 'react';
+import { TeamLineup, LineupPlayer, MatchEvent, MatchPlayerData, MatchPlayerStats } from '@/types/football';
+import { useState, useMemo } from 'react';
 
 interface LineupViewProps {
   lineups: { home: TeamLineup; away: TeamLineup };
   homeTeamName: string;
   awayTeamName: string;
   events?: MatchEvent[];
+  playerData?: MatchPlayerData[];
+  homeTeamId?: number;
+  awayTeamId?: number;
 }
 
-export default function LineupView({ lineups, homeTeamName, awayTeamName, events = [] }: LineupViewProps) {
+export default function LineupView({ lineups, homeTeamName, awayTeamName, events = [], playerData = [], homeTeamId, awayTeamId }: LineupViewProps) {
   const [showSubs, setShowSubs] = useState(false);
   const playerEvents = buildPlayerEventMap(events);
+
+  // Build lookup maps for player stats by team
+  const homePlayerMap = useMemo(() => {
+    const team = playerData.find(t => t.teamId === homeTeamId);
+    if (!team) return new Map<number, MatchPlayerStats>();
+    return new Map(team.players.map(p => [p.id, p]));
+  }, [playerData, homeTeamId]);
+
+  const awayPlayerMap = useMemo(() => {
+    const team = playerData.find(t => t.teamId === awayTeamId);
+    if (!team) return new Map<number, MatchPlayerStats>();
+    return new Map(team.players.map(p => [p.id, p]));
+  }, [playerData, awayTeamId]);
 
   return (
     <div className="space-y-3">
@@ -32,24 +48,17 @@ export default function LineupView({ lineups, homeTeamName, awayTeamName, events
 
       {/* Pitch */}
       <div className="relative w-full overflow-hidden rounded-xl mx-auto" style={{ aspectRatio: '68/105', maxWidth: '420px' }}>
-        {/* Pitch surface — darker, richer green */}
         <div className="absolute inset-0 bg-gradient-to-b from-[#1a5c1e] to-[#1f6b23]" />
-
-        {/* Pitch pattern stripes */}
         <div className="absolute inset-0 opacity-[0.06]" style={{
           backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 8%, rgba(255,255,255,0.5) 8%, rgba(255,255,255,0.5) 8.5%)',
         }} />
-
         <PitchMarkings />
 
-        {/* Home team (top half) */}
         <div className="absolute inset-x-0 top-0 bottom-1/2">
-          <TeamFormation lineup={lineups.home} isHome={true} playerEvents={playerEvents} />
+          <TeamFormation lineup={lineups.home} isHome={true} playerEvents={playerEvents} playerMap={homePlayerMap} />
         </div>
-
-        {/* Away team (bottom half) */}
         <div className="absolute inset-x-0 top-1/2 bottom-0">
-          <TeamFormation lineup={lineups.away} isHome={false} playerEvents={playerEvents} />
+          <TeamFormation lineup={lineups.away} isHome={false} playerEvents={playerEvents} playerMap={awayPlayerMap} />
         </div>
       </div>
 
@@ -65,24 +74,26 @@ export default function LineupView({ lineups, homeTeamName, awayTeamName, events
 
       {showSubs && (
         <div className="px-4 pb-4 space-y-3">
-          {/* Subs header */}
           <div className="flex items-center gap-2">
             <div className="flex-1 h-px bg-border" />
             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Substitutes</span>
             <div className="flex-1 h-px bg-border" />
           </div>
 
-          <div className="grid grid-cols-2 gap-x-4 gap-y-0">
-            <div>
-              {lineups.home.substitutes.map(p => (
-                <SubRow key={p.id || p.name} player={p} playerEvents={playerEvents} />
-              ))}
-            </div>
-            <div>
-              {lineups.away.substitutes.map(p => (
-                <SubRow key={p.id || p.name} player={p} align="right" playerEvents={playerEvents} />
-              ))}
-            </div>
+          {/* Home subs */}
+          <div className="space-y-0">
+            <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1 px-1">{homeTeamName}</div>
+            {lineups.home.substitutes.map(p => (
+              <SubRow key={p.id || p.name} player={p} playerEvents={playerEvents} playerStats={homePlayerMap.get(p.id)} />
+            ))}
+          </div>
+
+          {/* Away subs */}
+          <div className="space-y-0 mt-3">
+            <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1 px-1">{awayTeamName}</div>
+            {lineups.away.substitutes.map(p => (
+              <SubRow key={p.id || p.name} player={p} playerEvents={playerEvents} playerStats={awayPlayerMap.get(p.id)} />
+            ))}
           </div>
 
           {/* Coaches */}
@@ -93,14 +104,35 @@ export default function LineupView({ lineups, homeTeamName, awayTeamName, events
               <div className="flex-1 h-px bg-border" />
             </div>
             <div className="flex justify-between px-1">
-              <span className="text-sm font-medium text-muted-foreground">{lineups.home.coach.name}</span>
-              <span className="text-sm font-medium text-muted-foreground">{lineups.away.coach.name}</span>
+              <div className="flex items-center gap-2">
+                {lineups.home.coach.photo && (
+                  <img src={lineups.home.coach.photo} alt="" className="w-7 h-7 rounded-full object-cover bg-secondary" />
+                )}
+                <span className="text-sm font-medium text-muted-foreground">{lineups.home.coach.name}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-muted-foreground">{lineups.away.coach.name}</span>
+                {lineups.away.coach.photo && (
+                  <img src={lineups.away.coach.photo} alt="" className="w-7 h-7 rounded-full object-cover bg-secondary" />
+                )}
+              </div>
             </div>
           </div>
         </div>
       )}
     </div>
   );
+}
+
+/* ---------- Rating badge color ---------- */
+function getRatingColor(rating: string | null): string {
+  if (!rating) return 'bg-secondary text-muted-foreground';
+  const r = parseFloat(rating);
+  if (r >= 8.0) return 'bg-emerald-500 text-white';
+  if (r >= 7.0) return 'bg-emerald-600/80 text-white';
+  if (r >= 6.5) return 'bg-amber-500 text-white';
+  if (r >= 6.0) return 'bg-orange-500 text-white';
+  return 'bg-red-500 text-white';
 }
 
 /* ---------- Event icon types ---------- */
@@ -132,17 +164,12 @@ function buildPlayerEventMap(events: MatchEvent[]): Map<string, EventIcon[]> {
   };
 
   events.forEach(e => {
-    if (e.type === 'goal') {
-      addEvent(e.playerName, { type: 'goal', minute: e.minute });
-    } else if (e.type === 'yellow_card') {
-      addEvent(e.playerName, { type: 'yellow_card', minute: e.minute });
-    } else if (e.type === 'red_card') {
-      addEvent(e.playerName, { type: 'red_card', minute: e.minute });
-    } else if (e.type === 'substitution') {
+    if (e.type === 'goal') addEvent(e.playerName, { type: 'goal', minute: e.minute });
+    else if (e.type === 'yellow_card') addEvent(e.playerName, { type: 'yellow_card', minute: e.minute });
+    else if (e.type === 'red_card') addEvent(e.playerName, { type: 'red_card', minute: e.minute });
+    else if (e.type === 'substitution') {
       addEvent(e.playerName, { type: 'sub_out', minute: e.minute });
-      if (e.assistName) {
-        addEvent(e.assistName, { type: 'sub_in', minute: e.minute });
-      }
+      if (e.assistName) addEvent(e.assistName, { type: 'sub_in', minute: e.minute });
     }
   });
 
@@ -160,20 +187,14 @@ function getPlayerIcons(playerName: string, playerEvents: Map<string, EventIcon[
 function PitchMarkings() {
   return (
     <div className="absolute inset-0 pointer-events-none">
-      {/* Outer boundary */}
       <div className="absolute inset-[3%] border-[1.5px] border-white/30 rounded-sm" />
-      {/* Half line */}
       <div className="absolute left-[3%] right-[3%] top-1/2 h-[1.5px] bg-white/30 -translate-y-px" />
-      {/* Center circle */}
       <div className="absolute left-1/2 top-1/2 w-[18%] aspect-square rounded-full border-[1.5px] border-white/30 -translate-x-1/2 -translate-y-1/2" />
       <div className="absolute left-1/2 top-1/2 w-1.5 h-1.5 rounded-full bg-white/40 -translate-x-1/2 -translate-y-1/2" />
-      {/* Top penalty box */}
       <div className="absolute top-[3%] left-1/2 -translate-x-1/2 w-[44%] h-[16%] border-[1.5px] border-white/30 border-t-0" />
       <div className="absolute top-[3%] left-1/2 -translate-x-1/2 w-[20%] h-[6%] border-[1.5px] border-white/30 border-t-0" />
-      {/* Bottom penalty box */}
       <div className="absolute bottom-[3%] left-1/2 -translate-x-1/2 w-[44%] h-[16%] border-[1.5px] border-white/30 border-b-0" />
       <div className="absolute bottom-[3%] left-1/2 -translate-x-1/2 w-[20%] h-[6%] border-[1.5px] border-white/30 border-b-0" />
-      {/* Corner arcs */}
       <div className="absolute top-[3%] left-[3%] w-3 h-3 border-b-[1.5px] border-r-[1.5px] border-white/20 rounded-br-full" />
       <div className="absolute top-[3%] right-[3%] w-3 h-3 border-b-[1.5px] border-l-[1.5px] border-white/20 rounded-bl-full" />
       <div className="absolute bottom-[3%] left-[3%] w-3 h-3 border-t-[1.5px] border-r-[1.5px] border-white/20 rounded-tr-full" />
@@ -183,14 +204,21 @@ function PitchMarkings() {
 }
 
 /* ---------- Team formation on half pitch ---------- */
-function TeamFormation({ lineup, isHome, playerEvents }: { lineup: TeamLineup; isHome: boolean; playerEvents: Map<string, EventIcon[]> }) {
+function TeamFormation({ lineup, isHome, playerEvents, playerMap }: {
+  lineup: TeamLineup;
+  isHome: boolean;
+  playerEvents: Map<string, EventIcon[]>;
+  playerMap: Map<number, MatchPlayerStats>;
+}) {
   const positions = getFormationPositions(lineup.formation, lineup.startXI, isHome);
 
   return (
     <div className="relative w-full h-full">
       {positions.map((pos, i) => {
         const icons = getPlayerIcons(pos.player.name, playerEvents);
+        const stats = playerMap.get(pos.player.id);
         const isGK = pos.player.pos === 'G';
+
         return (
           <div
             key={pos.player.id || pos.player.name + i}
@@ -198,18 +226,38 @@ function TeamFormation({ lineup, isHome, playerEvents }: { lineup: TeamLineup; i
             style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
           >
             <div className="relative">
-              {/* Player circle */}
-              <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-[11px] sm:text-xs font-extrabold shadow-md ${
-                isGK
-                  ? 'bg-amber-500 text-black ring-2 ring-amber-300/50'
-                  : isHome
-                    ? 'bg-white text-[#1a1a1a] ring-2 ring-white/30'
-                    : 'bg-[#2a2a3e] text-white ring-2 ring-[#3a3a5e]/50'
-              }`}>
-                {pos.player.number}
-              </div>
+              {/* Player photo or number circle */}
+              {stats?.photo ? (
+                <div className={`w-9 h-9 sm:w-11 sm:h-11 rounded-full overflow-hidden ring-2 shadow-md ${
+                  isGK ? 'ring-amber-400' : isHome ? 'ring-white/40' : 'ring-[#3a3a5e]/60'
+                }`}>
+                  <img
+                    src={stats.photo}
+                    alt=""
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                </div>
+              ) : (
+                <div className={`w-9 h-9 sm:w-11 sm:h-11 rounded-full flex items-center justify-center text-[11px] sm:text-xs font-extrabold shadow-md ${
+                  isGK
+                    ? 'bg-amber-500 text-black ring-2 ring-amber-300/50'
+                    : isHome
+                      ? 'bg-white text-[#1a1a1a] ring-2 ring-white/30'
+                      : 'bg-[#2a2a3e] text-white ring-2 ring-[#3a3a5e]/50'
+                }`}>
+                  {pos.player.number}
+                </div>
+              )}
 
-              {/* Event badges — top right corner */}
+              {/* Rating badge — top left */}
+              {stats?.rating && (
+                <div className={`absolute -top-1 -left-2 px-1 py-0.5 rounded text-[8px] sm:text-[9px] font-extrabold leading-none ${getRatingColor(stats.rating)}`}>
+                  {parseFloat(stats.rating).toFixed(1)}
+                </div>
+              )}
+
+              {/* Event badges — top right */}
               {icons.length > 0 && (
                 <div className="absolute -top-1 -right-2.5 flex gap-[2px]">
                   {icons.slice(0, 3).map((icon, idx) => (
@@ -219,12 +267,8 @@ function TeamFormation({ lineup, isHome, playerEvents }: { lineup: TeamLineup; i
                           <span className="text-[6px] text-primary-foreground font-bold">G</span>
                         </span>
                       )}
-                      {icon.type === 'yellow_card' && (
-                        <span className="w-2.5 h-3 rounded-[1px] bg-yellow-400 shadow-sm" />
-                      )}
-                      {icon.type === 'red_card' && (
-                        <span className="w-2.5 h-3 rounded-[1px] bg-red-500 shadow-sm" />
-                      )}
+                      {icon.type === 'yellow_card' && <span className="w-2.5 h-3 rounded-[1px] bg-yellow-400 shadow-sm" />}
+                      {icon.type === 'red_card' && <span className="w-2.5 h-3 rounded-[1px] bg-red-500 shadow-sm" />}
                       {icon.type === 'sub_out' && (
                         <span className="w-3 h-3 rounded-full bg-red-500/80 flex items-center justify-center">
                           <span className="text-[7px] text-white font-bold">↓</span>
@@ -237,6 +281,13 @@ function TeamFormation({ lineup, isHome, playerEvents }: { lineup: TeamLineup; i
                       )}
                     </span>
                   ))}
+                </div>
+              )}
+
+              {/* Captain badge */}
+              {stats?.captain && (
+                <div className="absolute -bottom-0.5 -right-1 w-3.5 h-3.5 rounded-full bg-amber-400 flex items-center justify-center">
+                  <span className="text-[7px] font-extrabold text-black">C</span>
                 </div>
               )}
             </div>
@@ -334,8 +385,14 @@ function getShortName(fullName: string): string {
   return `${parts[0][0]}. ${parts[parts.length - 1]}`;
 }
 
-function SubRow({ player, align = 'left', playerEvents }: { player: LineupPlayer; align?: 'left' | 'right'; playerEvents: Map<string, EventIcon[]> }) {
+function SubRow({ player, playerEvents, playerStats }: {
+  player: LineupPlayer;
+  playerEvents: Map<string, EventIcon[]>;
+  playerStats?: MatchPlayerStats;
+}) {
   const icons = getPlayerIcons(player.name, playerEvents);
+  const subIcon = icons.find(i => i.type === 'sub_in');
+
   const posColors: Record<string, string> = {
     G: 'bg-amber-500/15 text-amber-400',
     D: 'bg-blue-500/15 text-blue-400',
@@ -345,19 +402,53 @@ function SubRow({ player, align = 'left', playerEvents }: { player: LineupPlayer
   const posStyle = posColors[player.pos] || 'bg-secondary text-muted-foreground';
 
   return (
-    <div className={`flex items-center gap-2 py-1.5 px-1 ${align === 'right' ? 'flex-row-reverse text-right' : ''}`}>
-      <span className={`text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${posStyle}`}>
-        {player.number}
-      </span>
-      <span className="text-[13px] text-foreground/80 truncate flex-1">{player.name}</span>
+    <div className="flex items-center gap-2 py-1.5 px-1 hover:bg-secondary/30 rounded transition-colors">
+      {/* Rating badge */}
+      {playerStats?.rating ? (
+        <span className={`text-[10px] font-extrabold w-7 h-5 rounded flex items-center justify-center flex-shrink-0 ${getRatingColor(playerStats.rating)}`}>
+          {parseFloat(playerStats.rating).toFixed(1)}
+        </span>
+      ) : (
+        <span className={`text-[10px] font-bold w-7 h-5 rounded flex items-center justify-center flex-shrink-0 ${posStyle}`}>
+          {player.number}
+        </span>
+      )}
+
+      {/* Player photo */}
+      {playerStats?.photo ? (
+        <img src={playerStats.photo} alt="" className="w-6 h-6 rounded-full object-cover flex-shrink-0 bg-secondary" loading="lazy" />
+      ) : (
+        <div className="w-6 h-6 rounded-full bg-secondary flex items-center justify-center flex-shrink-0">
+          <span className="text-[8px] font-bold text-muted-foreground">{player.number}</span>
+        </div>
+      )}
+
+      {/* Name + position */}
+      <div className="flex-1 min-w-0">
+        <span className="text-[13px] text-foreground/80 truncate block">{player.name}</span>
+        {playerStats && (
+          <span className="text-[10px] text-muted-foreground">
+            {playerStats.position === 'G' ? 'Goalkeeper' :
+             playerStats.position === 'D' ? 'Defender' :
+             playerStats.position === 'M' ? 'Midfielder' :
+             playerStats.position === 'F' ? 'Attacker' : playerStats.position}
+          </span>
+        )}
+      </div>
+
+      {/* Sub minute */}
+      {subIcon && (
+        <span className="text-[10px] text-emerald-400 font-semibold flex-shrink-0">{subIcon.minute}'</span>
+      )}
+
+      {/* Event icons */}
       {icons.length > 0 && (
         <div className="flex items-center gap-[2px] flex-shrink-0">
-          {icons.map((icon, idx) => (
+          {icons.filter(i => i.type !== 'sub_in').map((icon, idx) => (
             <span key={idx} className="inline-flex" title={`${icon.minute}'`}>
               {icon.type === 'goal' && <span className="w-2 h-2 rounded-full bg-primary" />}
               {icon.type === 'yellow_card' && <span className="w-2 h-2.5 rounded-[1px] bg-yellow-400" />}
               {icon.type === 'red_card' && <span className="w-2 h-2.5 rounded-[1px] bg-red-500" />}
-              {icon.type === 'sub_in' && <span className="text-[9px] text-emerald-400 font-bold">↑</span>}
               {icon.type === 'sub_out' && <span className="text-[9px] text-red-400 font-bold">↓</span>}
             </span>
           ))}
