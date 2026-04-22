@@ -1,0 +1,21 @@
+[Unit]
+Description=LastFootball API Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/lastfootball/server
+ExecStart=/usr/bin/node /var/www/lastfootball/server/index.mjs
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+
+# Load API key from env file
+EnvironmentFile=/var/www/lastfootball/server/.env
+
+# Limits
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
