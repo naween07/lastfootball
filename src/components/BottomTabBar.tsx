@@ -48,7 +48,7 @@ export default function BottomTabBar() {
             <Link
               key={to}
               to={to}
-              className="flex flex-col items-center justify-center gap-0.5 flex-1 h-full relative transition-colors"
+              className="flex flex-col items-center justify-center gap-0.5 flex-1 h-full relative transition-colors touch-feedback"
             >
               {isActive && (
                 <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-primary" />

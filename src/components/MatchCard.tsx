@@ -19,7 +19,7 @@ export default function MatchCard({ match, isFavoriteHome, isFavoriteAway, onTog
   return (
     <Link
       to={`/match/${match.id}`}
-      className={`group block bg-card hover:bg-secondary/60 transition-colors mx-1 mb-px border-b border-border/30 ${
+      className={`group block bg-card hover:bg-secondary/60 transition-colors mx-1 mb-px border-b border-border/30 touch-feedback ${
         isLive ? 'border-l-[3px] border-l-live' : ''
       }`}
     >

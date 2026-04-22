@@ -214,4 +214,39 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
+  /* ─── Touch feedback — instant press feel on mobile ────────────────────── */
+  .touch-feedback {
+    -webkit-tap-highlight-color: transparent;
+  }
+  .touch-feedback:active {
+    transform: scale(0.97);
+    opacity: 0.8;
+    transition: transform 50ms ease-out, opacity 50ms ease-out;
+  }
+
+  /* ─── Shimmer skeleton loader ──────────────────────────────────────────── */
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--muted)) 25%,
+      hsl(var(--muted-foreground) / 0.08) 50%,
+      hsl(var(--muted)) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* ─── Smooth page content entry ────────────────────────────────────────── */
+  .page-enter {
+    animation: page-enter 200ms ease-out;
+  }
+  @keyframes page-enter {
+    0% { opacity: 0; transform: translateY(6px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
 }
