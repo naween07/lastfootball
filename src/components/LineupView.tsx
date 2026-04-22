@@ -96,28 +96,39 @@ export default function LineupView({ lineups, homeTeamName, awayTeamName, events
             ))}
           </div>
 
-          {/* Coaches */}
-          <div className="border-t border-border/50 pt-3">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="flex-1 h-px bg-border" />
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Manager</span>
-              <div className="flex-1 h-px bg-border" />
-            </div>
-            <div className="flex justify-between px-1">
-              <div className="flex items-center gap-2">
-                {lineups.home.coach.photo && (
-                  <img src={lineups.home.coach.photo} alt="" className="w-7 h-7 rounded-full object-cover bg-secondary" />
-                )}
-                <span className="text-sm font-medium text-muted-foreground">{lineups.home.coach.name}</span>
+          {/* Coaches — only shown when at least one coach name is known */}
+          {(lineups.home.coach.name && lineups.home.coach.name !== 'Unknown') ||
+           (lineups.away.coach.name && lineups.away.coach.name !== 'Unknown') ? (
+            <div className="border-t border-border/50 pt-3">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="flex-1 h-px bg-border" />
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Manager</span>
+                <div className="flex-1 h-px bg-border" />
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-muted-foreground">{lineups.away.coach.name}</span>
-                {lineups.away.coach.photo && (
-                  <img src={lineups.away.coach.photo} alt="" className="w-7 h-7 rounded-full object-cover bg-secondary" />
-                )}
+              <div className="flex justify-between px-1">
+                <div className="flex items-center gap-2">
+                  {lineups.home.coach.photo && (
+                    <img src={lineups.home.coach.photo} alt="" className="w-7 h-7 rounded-full object-cover bg-secondary" />
+                  )}
+                  {lineups.home.coach.name && lineups.home.coach.name !== 'Unknown' ? (
+                    <span className="text-sm font-medium text-muted-foreground">{lineups.home.coach.name}</span>
+                  ) : (
+                    <span className="text-sm text-muted-foreground/40 italic">—</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {lineups.away.coach.name && lineups.away.coach.name !== 'Unknown' ? (
+                    <span className="text-sm font-medium text-muted-foreground">{lineups.away.coach.name}</span>
+                  ) : (
+                    <span className="text-sm text-muted-foreground/40 italic">—</span>
+                  )}
+                  {lineups.away.coach.photo && (
+                    <img src={lineups.away.coach.photo} alt="" className="w-7 h-7 rounded-full object-cover bg-secondary" />
+                  )}
+                </div>
               </div>
             </div>
-          </div>
+          ) : null}
         </div>
       )}
     </div>

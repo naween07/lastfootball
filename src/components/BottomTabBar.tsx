@@ -14,7 +14,6 @@ export default function BottomTabBar() {
       setFavLogo(null);
       return;
     }
-    // Get the first favorite team's logo from DB
     const loadLogo = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -39,7 +38,8 @@ export default function BottomTabBar() {
   ];
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-md border-t border-border safe-bottom">
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-md border-t border-border"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <div className="flex items-center justify-around h-14">
         {TABS.map(({ to, label, icon: Icon }) => {
           const isActive = to === '/' ? pathname === '/' : pathname.startsWith(to);
@@ -48,18 +48,21 @@ export default function BottomTabBar() {
             <Link
               key={to}
               to={to}
-              className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors ${
-                isActive
-                  ? 'text-primary'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
+              className="flex flex-col items-center justify-center gap-0.5 flex-1 h-full relative transition-colors"
             >
-              {isFavTab && favLogo ? (
-                <img src={favLogo} alt="" className="w-5 h-5 rounded-full object-cover" />
-              ) : (
-                <Icon className="w-5 h-5" />
+              {isActive && (
+                <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-primary" />
               )}
-              <span className="text-[10px] font-medium">{label}</span>
+              <span className={`transition-colors ${isActive ? 'text-primary' : 'text-muted-foreground'}`}>
+                {isFavTab && favLogo ? (
+                  <img src={favLogo} alt="" className="w-5 h-5 rounded-full object-cover ring-1 ring-border" />
+                ) : (
+                  <Icon className={`w-5 h-5 transition-transform ${isActive ? 'scale-110' : ''}`} />
+                )}
+              </span>
+              <span className={`text-[10px] font-semibold transition-colors ${isActive ? 'text-primary' : 'text-muted-foreground'}`}>
+                {label}
+              </span>
             </Link>
           );
         })}

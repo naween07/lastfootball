@@ -65,7 +65,7 @@ export default function News() {
         </div>
       </div>
 
-      <main className="container py-4">
+      <main className="container py-4 pb-20 md:pb-4">
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-6 h-6 animate-spin text-orange-500" />

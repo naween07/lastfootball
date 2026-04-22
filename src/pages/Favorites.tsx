@@ -4,7 +4,8 @@ import LeagueGroup from '@/components/LeagueGroup';
 import { useFavorites } from '@/hooks/useFavorites';
 import { fetchMatchesByDate, getMatchesGroupedByLeague, getToday } from '@/services/footballApi';
 import { Match } from '@/types/football';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Star, CalendarDays } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 export default function Favorites() {
   const { favoriteTeamIds, isFavorite, toggleFavorite } = useFavorites();
@@ -12,6 +13,10 @@ export default function Favorites() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (favoriteTeamIds.length === 0) {
+      setLoading(false);
+      return;
+    }
     fetchMatchesByDate(getToday())
       .then(all => {
         const filtered = all.filter(m =>
@@ -28,24 +33,52 @@ export default function Favorites() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <main className="container py-4">
-        <h1 className="text-lg font-bold mb-4 px-1">⭐ Favorite Teams</h1>
 
+      <div className="bg-gradient-to-r from-amber-500/10 via-yellow-500/10 to-amber-500/10 border-b border-amber-500/20">
+        <div className="container py-4 flex items-center gap-3">
+          <div className="p-2 rounded-xl bg-gradient-to-br from-amber-400 to-yellow-500 shadow-lg shadow-amber-500/25">
+            <Star className="w-5 h-5 text-white fill-white" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-foreground">My Club</h1>
+            <p className="text-xs text-muted-foreground">
+              {favoriteTeamIds.length > 0
+                ? `${favoriteTeamIds.length} team${favoriteTeamIds.length > 1 ? 's' : ''} followed`
+                : 'Follow your favourite teams'}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <main className="container py-4 pb-20 md:pb-4">
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            <Loader2 className="w-6 h-6 animate-spin text-amber-400" />
             <span className="ml-2 text-sm text-muted-foreground">Loading...</span>
           </div>
         ) : favoriteTeamIds.length === 0 ? (
           <div className="text-center py-20 text-muted-foreground">
-            <p className="text-3xl mb-3">⭐</p>
-            <p className="text-lg font-medium">No favorites yet</p>
-            <p className="text-sm mt-1">Tap the star next to any team to add it here</p>
+            <Star className="w-12 h-12 mx-auto mb-3 opacity-20" />
+            <p className="text-lg font-semibold text-foreground mb-1">No favourites yet</p>
+            <p className="text-sm mb-6">Tap the star icon on any team to follow them here</p>
+            <Link
+              to="/"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity"
+            >
+              Browse Matches
+            </Link>
           </div>
         ) : groups.length === 0 ? (
           <div className="text-center py-20 text-muted-foreground">
-            <p className="text-lg font-medium">No matches today</p>
-            <p className="text-sm mt-1">Your favorite teams have no matches scheduled today</p>
+            <CalendarDays className="w-12 h-12 mx-auto mb-3 opacity-20" />
+            <p className="text-lg font-semibold text-foreground mb-1">No matches today</p>
+            <p className="text-sm mb-6">Your favourite teams are not playing today</p>
+            <Link
+              to="/fixtures"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-secondary text-secondary-foreground text-sm font-semibold hover:opacity-80 transition-opacity"
+            >
+              View Fixtures
+            </Link>
           </div>
         ) : (
           groups.map(group => (

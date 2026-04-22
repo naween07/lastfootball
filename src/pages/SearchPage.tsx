@@ -12,7 +12,6 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(false);
   const { isFavorite, toggleFavorite } = useFavorites();
 
-  // Debounced search
   useEffect(() => {
     if (query.length < 3) {
       setResults([]);
@@ -35,18 +34,22 @@ export default function SearchPage() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <main className="container py-4">
-        <div className="relative mb-4">
-          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search teams or leagues..."
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-card border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-            autoFocus
-          />
+      <div className="sticky top-14 z-30 bg-background/95 backdrop-blur-md border-b border-border">
+        <div className="container py-3">
+          <div className="relative">
+            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search teams or leagues..."
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-card border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              autoFocus
+            />
+          </div>
         </div>
+      </div>
+      <main className="container py-4 pb-20 md:pb-4">
 
         {query.length < 3 ? (
           <div className="text-center py-20 text-muted-foreground">

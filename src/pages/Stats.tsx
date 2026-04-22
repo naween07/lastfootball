@@ -66,7 +66,7 @@ export default function Stats() {
         </div>
       </div>
 
-      <main className="container py-4">
+      <main className="container py-4 pb-20 md:pb-4">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <div className="flex items-center gap-1">
             <select

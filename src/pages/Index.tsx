@@ -179,7 +179,7 @@ export default function Index() {
         <DateNavigator dates={dates} selectedDate={selectedDate} onSelectDate={setSelectedDate} />
       </div>
 
-      <main className="container py-4">
+      <main className="container py-4 pb-20 md:pb-4">
         {loading ? (
           <MatchListSkeleton groups={4} />
         ) : (

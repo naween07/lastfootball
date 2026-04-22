@@ -206,4 +206,12 @@
   .live-border-accent {
     border-left: 3px solid hsl(var(--live));
   }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
 }

@@ -90,7 +90,7 @@ export default function MatchDetail() {
       <MatchHero match={match} />
       <TabBar match={match} tab={tab} setTab={setTab} />
 
-      <main className="container py-4 md:py-6 max-w-3xl">
+      <main className="container py-4 md:py-6 pb-20 md:pb-6 max-w-3xl">
         {tab === 'overview' && <OverviewTab match={match} onJumpTo={setTab} />}
         {tab === 'lineups' && match.lineups && (
           <Card>
@@ -252,7 +252,7 @@ function TabBar({ match, tab, setTab }: { match: Match; tab: Tab; setTab: (t: Ta
   ];
 
   return (
-    <div className="sticky top-0 z-20 bg-card/95 backdrop-blur border-b border-border">
+    <div className="sticky top-14 z-20 bg-card/95 backdrop-blur border-b border-border">
       <div className="container max-w-3xl">
         <div className="flex gap-1 overflow-x-auto scrollbar-none">
           {tabs.filter(t => t.show).map(t => (

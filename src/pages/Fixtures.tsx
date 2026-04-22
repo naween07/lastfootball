@@ -45,7 +45,7 @@ export default function Fixtures() {
         <DateNavigator dates={dates} selectedDate={selectedDate} onSelectDate={setSelectedDate} />
       </div>
 
-      <main className="container py-4">
+      <main className="container py-4 pb-20 md:pb-4">
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-6 h-6 animate-spin text-primary" />
