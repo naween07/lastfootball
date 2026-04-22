@@ -5,9 +5,10 @@ type Theme = 'dark' | 'light';
 export function useTheme() {
   const [theme, setTheme] = useState<Theme>(() => {
     if (typeof window !== 'undefined') {
-      return (localStorage.getItem('theme') as Theme) || 'light';
+      // Default to dark — FotMob-style. Users can still toggle to light.
+      return (localStorage.getItem('theme') as Theme) || 'dark';
     }
-    return 'light';
+    return 'dark';
   });
 
   useEffect(() => {

@@ -1,31 +1,31 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-
 @layer base {
-  /* Light theme — FotMob-inspired clarity (DEFAULT) */
+  /* ─── Light theme — clean and minimal ──────────────────────────────────── */
   :root {
     --background: 0 0% 99%;
-    --foreground: 222 18% 11%;
+    --foreground: 0 0% 10%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222 18% 11%;
+    --card-foreground: 0 0% 10%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 18% 11%;
+    --popover-foreground: 0 0% 10%;
 
-    --primary: 222 18% 11%;
+    --primary: 142 72% 35%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 222 14% 25%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 25%;
 
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 46%;
 
-    --accent: 142 71% 45%;
+    --accent: 142 72% 35%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 72% 51%;
@@ -34,62 +34,63 @@
     --live: 0 72% 51%;
     --live-foreground: 0 0% 100%;
 
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 222 18% 11%;
+    --border: 0 0% 91%;
+    --input: 0 0% 91%;
+    --ring: 142 72% 35%;
 
     --radius: 0.625rem;
 
     --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 222 14% 25%;
-    --sidebar-primary: 222 18% 11%;
+    --sidebar-foreground: 0 0% 25%;
+    --sidebar-primary: 142 72% 35%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 14% 96%;
-    --sidebar-accent-foreground: 222 14% 25%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 222 18% 11%;
+    --sidebar-accent: 0 0% 96%;
+    --sidebar-accent-foreground: 0 0% 25%;
+    --sidebar-border: 0 0% 91%;
+    --sidebar-ring: 142 72% 35%;
   }
 
+  /* ─── Dark theme — FotMob-inspired, deep neutrals + vibrant green ──────── */
   .dark {
-    --background: 220 18% 8%;
-    --foreground: 220 10% 92%;
+    --background: 0 0% 8%;
+    --foreground: 0 0% 92%;
 
-    --card: 220 15% 11%;
-    --card-foreground: 220 10% 92%;
+    --card: 0 0% 12%;
+    --card-foreground: 0 0% 92%;
 
-    --popover: 220 15% 13%;
-    --popover-foreground: 220 10% 92%;
+    --popover: 0 0% 14%;
+    --popover-foreground: 0 0% 92%;
 
-    --primary: 228 62% 52%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 142 76% 58%;
+    --primary-foreground: 120 60% 8%;
 
-    --secondary: 220 12% 15%;
-    --secondary-foreground: 220 8% 75%;
+    --secondary: 0 0% 16%;
+    --secondary-foreground: 0 0% 75%;
 
-    --muted: 220 10% 13%;
-    --muted-foreground: 220 8% 48%;
+    --muted: 0 0% 14%;
+    --muted-foreground: 0 0% 50%;
 
-    --accent: 142 71% 45%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 142 76% 58%;
+    --accent-foreground: 120 60% 8%;
 
-    --destructive: 4 72% 52%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --live: 4 72% 52%;
+    --live: 0 84% 60%;
     --live-foreground: 0 0% 100%;
 
-    --border: 220 12% 16%;
-    --input: 220 12% 18%;
-    --ring: 228 62% 52%;
+    --border: 0 0% 16%;
+    --input: 0 0% 18%;
+    --ring: 142 76% 58%;
 
-    --sidebar-background: 220 15% 7%;
-    --sidebar-foreground: 220 8% 75%;
-    --sidebar-primary: 228 62% 52%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 10% 13%;
-    --sidebar-accent-foreground: 220 8% 75%;
-    --sidebar-border: 220 12% 16%;
-    --sidebar-ring: 228 62% 52%;
+    --sidebar-background: 0 0% 6%;
+    --sidebar-foreground: 0 0% 75%;
+    --sidebar-primary: 142 76% 58%;
+    --sidebar-primary-foreground: 120 60% 8%;
+    --sidebar-accent: 0 0% 14%;
+    --sidebar-accent-foreground: 0 0% 75%;
+    --sidebar-border: 0 0% 16%;
+    --sidebar-ring: 142 76% 58%;
   }
 }
 
@@ -98,19 +99,34 @@
     @apply border-border;
   }
 
+  html {
+    /* Prevent zoom on input focus on iOS */
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
     @apply bg-background text-foreground font-sans antialiased;
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
     font-feature-settings: 'cv11', 'ss01';
   }
 
-  /* Stronger numeric typography for scores */
+  /* Tabular numbers for scores/stats — keeps digits aligned */
   .tabular-nums {
     font-variant-numeric: tabular-nums;
+  }
+
+  /* Hide scrollbars on horizontal scrollers (date nav, league tabs) */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
   }
 }
 
 @layer utilities {
+  /* ─── Live match indicators ────────────────────────────────────────────── */
   .live-pulse {
     @apply relative;
   }
@@ -120,7 +136,15 @@
     background-color: hsl(var(--live));
   }
 
-  /* FotMob-style event flash */
+  .animate-pulse-live {
+    animation: pulse-live 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  @keyframes pulse-live {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* ─── Event flashes for goals and cards ────────────────────────────────── */
   .event-flash-goal {
     animation: flash-goal 1.2s ease-out;
   }
@@ -128,28 +152,58 @@
     animation: flash-card 1.2s ease-out;
   }
   @keyframes flash-goal {
-    0% { background-color: hsl(var(--accent) / 0.35); transform: scale(1); }
-    50% { background-color: hsl(var(--accent) / 0.15); transform: scale(1.01); }
+    0%   { background-color: hsl(var(--accent) / 0.35); transform: scale(1); }
+    50%  { background-color: hsl(var(--accent) / 0.15); transform: scale(1.01); }
     100% { background-color: transparent; transform: scale(1); }
   }
   @keyframes flash-card {
-    0% { background-color: hsl(48 96% 53% / 0.3); }
+    0%   { background-color: hsl(48 96% 53% / 0.3); }
     100% { background-color: transparent; }
   }
 
+  /* ─── Entry animations ─────────────────────────────────────────────────── */
   .scale-in {
     animation: scale-in 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   }
   @keyframes scale-in {
-    0% { transform: scale(0.6); opacity: 0; }
-    100% { transform: scale(1); opacity: 1; }
+    0%   { transform: scale(0.6); opacity: 0; }
+    100% { transform: scale(1);   opacity: 1; }
   }
 
   .slide-up {
     animation: slide-up 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
   @keyframes slide-up {
-    0% { transform: translateY(8px); opacity: 0; }
-    100% { transform: translateY(0); opacity: 1; }
+    0%   { transform: translateY(8px); opacity: 0; }
+    100% { transform: translateY(0);   opacity: 1; }
+  }
+
+  .fade-in {
+    animation: fade-in 0.3s ease-out;
+  }
+  @keyframes fade-in {
+    0%   { opacity: 0; }
+    100% { opacity: 1; }
+  }
+
+  /* ─── Form guide dots (W/D/L) ──────────────────────────────────────────── */
+  .form-dot {
+    @apply inline-block w-2 h-2 rounded-full;
+  }
+  .form-dot-w { background-color: hsl(142 76% 58%); }
+  .form-dot-d { background-color: hsl(0 0% 50%); }
+  .form-dot-l { background-color: hsl(0 84% 60%); }
+
+  /* ─── Match card hover state ───────────────────────────────────────────── */
+  .match-card-hover {
+    @apply transition-colors duration-150;
+  }
+  .match-card-hover:hover {
+    background-color: hsl(var(--secondary));
+  }
+
+  /* ─── Live border accent ───────────────────────────────────────────────── */
+  .live-border-accent {
+    border-left: 3px solid hsl(var(--live));
   }
 }
