@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { fetchLeagueFixtures, fetchLeagueRounds } from '@/services/footballApi';
 import { Match } from '@/types/football';
-import { Loader2, Trophy, ChevronDown } from 'lucide-react';
+import { Loader2, Trophy } from 'lucide-react';
 import OptimizedImage from '../OptimizedImage';
 import { cn } from '@/lib/utils';
 
@@ -40,6 +40,17 @@ function getOrder(r: string): number {
 function getLabel(r: string): string {
   const l = r.toLowerCase();
   if (l.includes('final') && !l.includes('semi') && !l.includes('quarter')) return 'Final';
+  if (l.includes('semi')) return 'SF';
+  if (l.includes('quarter')) return 'QF';
+  if (l.includes('round of 16') || l.includes('8th')) return 'R16';
+  if (l.includes('round of 32')) return 'R32';
+  if (l.includes('play-off')) return 'KOPO';
+  return r;
+}
+
+function getFullLabel(r: string): string {
+  const l = r.toLowerCase();
+  if (l.includes('final') && !l.includes('semi') && !l.includes('quarter')) return 'Final';
   if (l.includes('semi')) return 'Semi-finals';
   if (l.includes('quarter')) return 'Quarter-finals';
   if (l.includes('round of 16') || l.includes('8th')) return 'Round of 16';
@@ -57,46 +68,31 @@ function buildTies(matches: Match[]): TieData[] {
     if (!map.has(k)) map.set(k, []);
     map.get(k)!.push(m);
   });
-
   return Array.from(map.values()).map(legs => {
     legs.sort((a, b) => a.date.localeCompare(b.date));
-    const f = legs[0];
-    const done = legs.every(l => ['FT', 'AET', 'PEN'].includes(l.status));
+    const f = legs[0], done = legs.every(l => ['FT', 'AET', 'PEN'].includes(l.status));
     const t1 = f.homeTeam, t2 = f.awayTeam;
-
     const l1: [number | null, number | null] = [f.homeScore, f.awayScore];
     let l2: [number | null, number | null] | null = null;
     if (legs.length >= 2) {
       const s = legs[1];
       l2 = s.homeTeam.id === t1.id ? [s.homeScore, s.awayScore] : [s.awayScore, s.homeScore];
     }
-
-    let agg: [number, number] | null = null;
-    let wid: number | null = null;
+    let agg: [number, number] | null = null, wid: number | null = null;
     if (done && l2) {
       const a1 = (l1[0] ?? 0) + (l2[0] ?? 0), a2 = (l1[1] ?? 0) + (l2[1] ?? 0);
       agg = [a1, a2];
-      if (a1 > a2) wid = t1.id;
-      else if (a2 > a1) wid = t2.id;
-      else {
-        const last = legs[legs.length - 1];
-        if (last.status === 'PEN') wid = last.homeScore! > last.awayScore! ? last.homeTeam.id : last.awayTeam.id;
-      }
+      if (a1 > a2) wid = t1.id; else if (a2 > a1) wid = t2.id;
+      else { const last = legs[legs.length - 1]; if (last.status === 'PEN') wid = last.homeScore! > last.awayScore! ? last.homeTeam.id : last.awayTeam.id; }
     } else if (done && legs.length === 1) {
       if ((f.homeScore ?? 0) > (f.awayScore ?? 0)) wid = t1.id;
       else if ((f.awayScore ?? 0) > (f.homeScore ?? 0)) wid = t2.id;
     }
-
-    return {
-      id: [t1.id, t2.id].sort().join('-'),
-      team1: t1, team2: t2,
-      leg1: l1, leg2: l2, agg, winnerId: wid, decided: done,
-      dateLabel: legs.map(l => fmtD(l.date)).filter(Boolean).join(' · '),
-    };
+    return { id: [t1.id, t2.id].sort().join('-'), team1: t1, team2: t2, leg1: l1, leg2: l2, agg, winnerId: wid, decided: done, dateLabel: legs.map(l => fmtD(l.date)).filter(Boolean).join(' · ') };
   });
 }
 
-// ─── Main Component ─────────────────────────────────────────────────────────
+// ─── Main ───────────────────────────────────────────────────────────────────
 export default function KnockoutBracket({ leagueId, season }: KnockoutBracketProps) {
   const [rounds, setRounds] = useState<RoundData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,10 +102,8 @@ export default function KnockoutBracket({ leagueId, season }: KnockoutBracketPro
     fetchLeagueRounds(leagueId, season).then(async all => {
       const ko = all.filter(isKO);
       if (!ko.length) { setRounds([]); return; }
-
       const lm = new Map<string, string[]>();
-      ko.forEach(r => { const l = getLabel(r); if (!lm.has(l)) lm.set(l, []); lm.get(l)!.push(r); });
-
+      ko.forEach(r => { const l = getFullLabel(r); if (!lm.has(l)) lm.set(l, []); lm.get(l)!.push(r); });
       const rd: RoundData[] = [];
       for (const [label, rns] of lm) {
         let ms: Match[] = [];
@@ -121,236 +115,248 @@ export default function KnockoutBracket({ leagueId, season }: KnockoutBracketPro
     }).catch(console.error).finally(() => setLoading(false));
   }, [leagueId, season]);
 
-  if (loading) return (
-    <div className="flex items-center justify-center py-16">
-      <Loader2 className="w-5 h-5 animate-spin text-primary" />
-      <span className="ml-2 text-sm text-muted-foreground">Loading bracket...</span>
-    </div>
-  );
+  if (loading) return <div className="flex items-center justify-center py-16"><Loader2 className="w-5 h-5 animate-spin text-primary" /><span className="ml-2 text-sm text-muted-foreground">Loading bracket...</span></div>;
+  if (!rounds.length) return <div className="text-center py-12 text-muted-foreground text-sm">No knockout rounds available.</div>;
 
-  if (!rounds.length) return (
-    <div className="text-center py-12 text-muted-foreground text-sm">No knockout rounds available.</div>
-  );
-
-  // Reverse: Final at top → earlier rounds below
-  const rev = [...rounds].reverse();
-
-  return (
-    <div className="py-4 px-2 sm:px-4">
-      {rev.map((round, ri) => (
-        <RoundSection key={round.label} round={round} isFirst={ri === 0} />
-      ))}
-    </div>
-  );
+  return <BracketView rounds={rounds} />;
 }
 
-// ─── Round Section ──────────────────────────────────────────────────────────
-function RoundSection({ round, isFirst }: { round: RoundData; isFirst: boolean }) {
-  const isFinal = round.label === 'Final';
-  const [expanded, setExpanded] = useState(true);
+// ─── Bracket View ───────────────────────────────────────────────────────────
+// Layout: each column is a round. Left half flows right, right half flows left.
+// Final + trophy sits in the center column.
+
+const COL_W = 155; // width of each match column
+const MATCH_H = 52; // height per match slot
+const CONN_W = 20; // connector line width between columns
+const TROPHY_W = 60;
+
+function BracketView({ rounds }: { rounds: RoundData[] }) {
+  const finalRound = rounds.find(r => r.label === 'Final');
+  const nonFinal = rounds.filter(r => r.label !== 'Final').sort((a, b) => a.order - b.order);
+
+  // Split ties: first half → left, second half → right
+  const leftRounds = nonFinal.map(r => ({ ...r, ties: r.ties.slice(0, Math.ceil(r.ties.length / 2)) }));
+  const rightRounds = nonFinal.map(r => ({ ...r, ties: r.ties.slice(Math.ceil(r.ties.length / 2)) }));
+
+  const numLeftCols = leftRounds.length;
+  const numRightCols = rightRounds.length;
+  const maxTiesInFirstRound = Math.max(leftRounds[0]?.ties.length || 0, rightRounds[0]?.ties.length || 0);
+  const bracketH = Math.max(maxTiesInFirstRound * MATCH_H, 250);
+
+  const totalW = numLeftCols * (COL_W + CONN_W) + TROPHY_W + numRightCols * (COL_W + CONN_W);
+
+  // Compute positions for each match in each column
+  const leftPositions = computePositions(leftRounds, bracketH, false);
+  const rightPositions = computePositions(rightRounds, bracketH, true);
+
+  // Center x positions
+  const leftColXs = leftRounds.map((_, i) => i * (COL_W + CONN_W));
+  const centerX = numLeftCols * (COL_W + CONN_W);
+  const rightColXs = rightRounds.map((_, i) => centerX + TROPHY_W + i * (COL_W + CONN_W));
 
   return (
-    <div className="mb-1">
-      {/* Round header */}
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className={cn(
-          'w-full flex items-center justify-center gap-2 py-3 transition-colors',
-          isFinal ? '' : 'hover:bg-secondary/30 rounded-lg'
-        )}
-      >
-        {isFinal && <Trophy className="w-4 h-4 text-amber-400" />}
-        <span className={cn(
-          'text-xs font-bold uppercase tracking-widest',
-          isFinal ? 'text-amber-400' : 'text-muted-foreground'
-        )}>
-          {round.label}
-        </span>
-        {!isFinal && (
-          <span className="text-[10px] text-muted-foreground/50 ml-1">({round.ties.length})</span>
-        )}
-        <ChevronDown className={cn(
-          'w-3.5 h-3.5 text-muted-foreground/40 transition-transform',
-          !expanded && '-rotate-90'
-        )} />
-      </button>
+    <div className="py-3 overflow-x-auto">
+      <div className="min-w-fit mx-auto" style={{ width: totalW + 20, padding: '0 10px' }}>
+        {/* SVG layer for connector lines */}
+        <div className="relative" style={{ height: bracketH + 40 }}>
+          <svg className="absolute inset-0" width={totalW} height={bracketH + 40} viewBox={`0 0 ${totalW} ${bracketH + 40}`}>
+            {/* Left bracket connector lines */}
+            {leftRounds.map((round, ci) => {
+              if (ci === leftRounds.length - 1) return null;
+              const nextPositions = leftPositions[ci + 1];
+              return leftPositions[ci].map((y, mi) => {
+                const pairIdx = Math.floor(mi / 2);
+                if (mi % 2 !== 0) return null;
+                const partner = leftPositions[ci][mi + 1];
+                if (!partner && partner !== 0) return null;
+                const nextY = nextPositions?.[pairIdx];
+                if (nextY === undefined) return null;
 
-      {/* Ties grid */}
-      {expanded && (
-        <div className={cn(
-          'grid gap-2 pb-4',
-          isFinal ? 'grid-cols-1 max-w-xs mx-auto' :
-          round.ties.length <= 2 ? 'grid-cols-1 sm:grid-cols-2 max-w-lg mx-auto' :
-          'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4'
-        )}>
-          {round.ties.map(tie => (
-            isFinal
-              ? <FinalCard key={tie.id} tie={tie} />
-              : <TieCard key={tie.id} tie={tie} />
+                const x1 = leftColXs[ci] + COL_W;
+                const x2 = leftColXs[ci + 1];
+                const midX = (x1 + x2) / 2;
+                const topY = y + MATCH_H / 2 + 20;
+                const botY = partner + MATCH_H / 2 + 20;
+                const outY = nextY + MATCH_H / 2 + 20;
+
+                return (
+                  <g key={`lc-${ci}-${mi}`}>
+                    <line x1={x1} y1={topY} x2={midX} y2={topY} stroke="hsl(var(--border))" strokeWidth={1.5} />
+                    <line x1={x1} y1={botY} x2={midX} y2={botY} stroke="hsl(var(--border))" strokeWidth={1.5} />
+                    <line x1={midX} y1={topY} x2={midX} y2={botY} stroke="hsl(var(--border))" strokeWidth={1.5} />
+                    <line x1={midX} y1={outY} x2={x2} y2={outY} stroke="hsl(var(--border))" strokeWidth={1.5} />
+                  </g>
+                );
+              });
+            })}
+
+            {/* Right bracket connector lines */}
+            {rightRounds.map((round, ci) => {
+              if (ci === rightRounds.length - 1) return null;
+              const nextPositions = rightPositions[ci + 1];
+              return rightPositions[ci].map((y, mi) => {
+                const pairIdx = Math.floor(mi / 2);
+                if (mi % 2 !== 0) return null;
+                const partner = rightPositions[ci][mi + 1];
+                if (!partner && partner !== 0) return null;
+                const nextY = nextPositions?.[pairIdx];
+                if (nextY === undefined) return null;
+
+                const x1 = rightColXs[ci];
+                const x2 = rightColXs[ci + 1] + COL_W;
+                const midX = (x1 + x2) / 2;
+                const topY = y + MATCH_H / 2 + 20;
+                const botY = partner + MATCH_H / 2 + 20;
+                const outY = nextY + MATCH_H / 2 + 20;
+
+                return (
+                  <g key={`rc-${ci}-${mi}`}>
+                    <line x1={x1} y1={topY} x2={midX} y2={topY} stroke="hsl(var(--border))" strokeWidth={1.5} />
+                    <line x1={x1} y1={botY} x2={midX} y2={botY} stroke="hsl(var(--border))" strokeWidth={1.5} />
+                    <line x1={midX} y1={topY} x2={midX} y2={botY} stroke="hsl(var(--border))" strokeWidth={1.5} />
+                    <line x1={midX} y1={outY} x2={x2} y2={outY} stroke="hsl(var(--border))" strokeWidth={1.5} />
+                  </g>
+                );
+              });
+            })}
+
+            {/* Lines from SF to Final */}
+            {leftPositions.length > 0 && (() => {
+              const lastLeftCol = leftPositions[leftPositions.length - 1];
+              if (!lastLeftCol?.length) return null;
+              const sfY = lastLeftCol[0] + MATCH_H / 2 + 20;
+              const fX = leftColXs[leftColXs.length - 1] + COL_W;
+              return <line x1={fX} y1={sfY} x2={centerX} y2={bracketH / 2 + 20} stroke="hsl(var(--border))" strokeWidth={1.5} />;
+            })()}
+            {rightPositions.length > 0 && (() => {
+              const lastRightCol = rightPositions[rightPositions.length - 1];
+              if (!lastRightCol?.length) return null;
+              const sfY = lastRightCol[0] + MATCH_H / 2 + 20;
+              const fX = rightColXs[rightColXs.length - 1];
+              return <line x1={fX} y1={sfY} x2={centerX + TROPHY_W} y2={bracketH / 2 + 20} stroke="hsl(var(--border))" strokeWidth={1.5} />;
+            })()}
+          </svg>
+
+          {/* Left columns */}
+          {leftRounds.map((round, ci) => (
+            <div key={round.label + 'L'} className="absolute" style={{ left: leftColXs[ci], top: 0, width: COL_W }}>
+              {/* Round label */}
+              <div className="text-center mb-1" style={{ height: 20 }}>
+                <span className="text-[9px] font-bold text-muted-foreground/50 uppercase tracking-widest">{getLabel(round.label)}</span>
+              </div>
+              {round.ties.map((tie, ti) => (
+                <div key={tie.id} className="absolute" style={{ top: leftPositions[ci][ti] + 20, left: 0, width: COL_W }}>
+                  <BracketCard tie={tie} />
+                </div>
+              ))}
+            </div>
+          ))}
+
+          {/* Trophy / Final center */}
+          <div className="absolute flex flex-col items-center justify-center" style={{ left: centerX, width: TROPHY_W, top: 0, height: bracketH + 40 }}>
+            <Trophy className="w-8 h-8 text-amber-400 mb-1" />
+            {finalRound?.ties[0] && (
+              <div className="text-center">
+                {finalRound.ties[0].decided ? (
+                  <>
+                    <Lg src={finalRound.ties[0].winnerId === finalRound.ties[0].team1.id ? finalRound.ties[0].team1.logo : finalRound.ties[0].team2.logo} sz={24} />
+                  </>
+                ) : (
+                  <span className="text-[8px] text-muted-foreground">Final</span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Right columns */}
+          {rightRounds.map((round, ci) => (
+            <div key={round.label + 'R'} className="absolute" style={{ left: rightColXs[ci], top: 0, width: COL_W }}>
+              <div className="text-center mb-1" style={{ height: 20 }}>
+                <span className="text-[9px] font-bold text-muted-foreground/50 uppercase tracking-widest">{getLabel(round.label)}</span>
+              </div>
+              {round.ties.map((tie, ti) => (
+                <div key={tie.id} className="absolute" style={{ top: rightPositions[ci][ti] + 20, left: 0, width: COL_W }}>
+                  <BracketCard tie={tie} />
+                </div>
+              ))}
+            </div>
           ))}
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
-// ─── Tie Card ───────────────────────────────────────────────────────────────
-function TieCard({ tie }: { tie: TieData }) {
+// Compute Y positions for each match in each round column
+function computePositions(roundCols: RoundData[], totalH: number, _isRight: boolean): number[][] {
+  const result: number[][] = [];
+  for (let ci = 0; ci < roundCols.length; ci++) {
+    const count = roundCols[ci].ties.length;
+    if (ci === 0) {
+      // First round: evenly spaced
+      const gap = totalH / count;
+      result.push(Array.from({ length: count }, (_, i) => i * gap + (gap - MATCH_H) / 2));
+    } else {
+      // Subsequent rounds: position between each pair from previous round
+      const prev = result[ci - 1];
+      const positions: number[] = [];
+      for (let i = 0; i < prev.length; i += 2) {
+        const top = prev[i];
+        const bot = prev[i + 1] ?? prev[i];
+        positions.push((top + bot) / 2);
+      }
+      result.push(positions);
+    }
+  }
+  return result;
+}
+
+// ─── Bracket Card ───────────────────────────────────────────────────────────
+function BracketCard({ tie }: { tie: TieData }) {
   const w1 = tie.winnerId === tie.team1.id;
   const w2 = tie.winnerId === tie.team2.id;
-  const has2 = !!tie.leg2;
 
   return (
-    <div className="bg-card rounded-lg border border-border/50 overflow-hidden">
-      {/* Header with leg labels */}
-      {tie.decided && has2 && (
-        <div className="flex items-center px-3 py-1 bg-secondary/30 border-b border-border/30">
-          <span className="flex-1" />
-          <div className="flex items-center gap-0 tabular-nums">
-            <span className="text-[8px] text-muted-foreground/60 w-[22px] text-center uppercase">1st</span>
-            <span className="text-[8px] text-muted-foreground/60 w-[22px] text-center uppercase">2nd</span>
-            <span className="text-[8px] text-muted-foreground/60 w-[26px] text-center uppercase font-bold">Agg</span>
-          </div>
-        </div>
-      )}
-
-      {/* Team 1 */}
-      <TeamRow
-        team={tie.team1} s1={tie.leg1[0]} s2={has2 ? tie.leg2![0] : null}
-        agg={tie.agg?.[0] ?? null} won={w1} lost={w2} decided={tie.decided} has2={has2}
-      />
-      <div className="h-px bg-border/20 mx-2" />
-      {/* Team 2 */}
-      <TeamRow
-        team={tie.team2} s1={tie.leg1[1]} s2={has2 ? tie.leg2![1] : null}
-        agg={tie.agg?.[1] ?? null} won={w2} lost={w1} decided={tie.decided} has2={has2}
-      />
-
-      {/* Date for undecided ties */}
-      {!tie.decided && (
-        <div className="text-center py-1.5 bg-secondary/20 border-t border-border/20">
-          <span className="text-[10px] text-muted-foreground">{tie.dateLabel}</span>
-        </div>
-      )}
+    <div className="bg-card border border-border/40 rounded overflow-hidden" style={{ height: MATCH_H - 4 }}>
+      <BRow team={tie.team1} agg={tie.agg?.[0] ?? null} won={w1} lost={w2} decided={tie.decided} date={!tie.decided ? tie.dateLabel : undefined} />
+      <div className="h-px bg-border/15" />
+      <BRow team={tie.team2} agg={tie.agg?.[1] ?? null} won={w2} lost={w1} decided={tie.decided} />
     </div>
   );
 }
 
-function TeamRow({ team, s1, s2, agg, won, lost, decided, has2 }: {
-  team: TieData['team1']; s1: number | null; s2: number | null;
-  agg: number | null; won: boolean; lost: boolean; decided: boolean; has2: boolean;
+function BRow({ team, agg, won, lost, decided, date }: {
+  team: TieData['team1']; agg: number | null; won: boolean; lost: boolean; decided: boolean; date?: string;
 }) {
   return (
     <div className={cn(
-      'flex items-center gap-2 px-3 py-2 transition-colors',
-      won && decided ? 'bg-primary/[0.04]' : '',
-    )}>
-      {/* Team logo + name */}
-      <Lg src={team.logo} sz={18} />
+      'flex items-center gap-1 px-1.5',
+      won && decided ? 'bg-primary/[0.06]' : '',
+      lost && decided ? 'opacity-35' : '',
+    )} style={{ height: (MATCH_H - 5) / 2 }}>
       <span className={cn(
-        'text-[13px] flex-1 truncate',
-        won && decided ? 'font-bold text-foreground' : '',
-        lost && decided ? 'text-muted-foreground/50' : '',
-        !decided ? 'text-foreground' : '',
-        !won && !lost && decided ? 'text-muted-foreground' : '',
-      )}>
-        {team.name}
-      </span>
-
-      {/* Scores */}
-      {decided ? (
-        <div className="flex items-center tabular-nums gap-0">
-          <span className={cn(
-            'text-[13px] font-semibold w-[22px] text-center',
-            won ? 'text-foreground' : 'text-muted-foreground/40'
-          )}>{s1}</span>
-          {has2 && (
-            <span className={cn(
-              'text-[13px] font-semibold w-[22px] text-center',
-              won ? 'text-foreground' : 'text-muted-foreground/40'
-            )}>{s2}</span>
-          )}
-          {agg !== null && (
-            <span className={cn(
-              'text-[13px] font-black w-[26px] text-center rounded-md py-0.5',
-              won ? 'text-primary bg-primary/10' : 'text-muted-foreground/30',
-            )}>{agg}</span>
-          )}
-        </div>
+        'text-[9px] w-[14px] text-center tabular-nums flex-shrink-0',
+        won ? 'text-muted-foreground' : 'text-muted-foreground/40',
+      )}>{team.shortName?.charAt(0) || ''}</span>
+      <Lg src={team.logo} sz={13} />
+      <span className={cn(
+        'text-[10px] flex-1 truncate leading-none',
+        won && decided ? 'font-bold text-foreground' : lost && decided ? 'text-muted-foreground/50' : 'text-foreground/80',
+      )}>{team.name.length > 14 ? team.shortName : team.name}</span>
+      {decided && agg !== null ? (
+        <span className={cn(
+          'text-[11px] font-black tabular-nums min-w-[16px] text-right',
+          won ? 'text-primary' : 'text-muted-foreground/30',
+        )}>{agg}</span>
+      ) : date ? (
+        <span className="text-[7px] text-muted-foreground/50">{date}</span>
       ) : null}
     </div>
   );
 }
 
-// ─── Final Card ─────────────────────────────────────────────────────────────
-function FinalCard({ tie }: { tie: TieData }) {
-  const w1 = tie.winnerId === tie.team1.id;
-  const w2 = tie.winnerId === tie.team2.id;
-
-  return (
-    <div className="relative bg-gradient-to-b from-amber-500/[0.06] to-transparent border-2 border-amber-500/20 rounded-xl overflow-hidden">
-      {/* Final header */}
-      {tie.decided ? (
-        <div className="flex items-center justify-center gap-1.5 py-2 bg-amber-500/[0.06]">
-          <Trophy className="w-3.5 h-3.5 text-amber-400" />
-          <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest">Champion</span>
-        </div>
-      ) : (
-        <div className="flex items-center justify-center gap-1.5 py-2 bg-secondary/30">
-          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{tie.dateLabel || 'TBD'}</span>
-        </div>
-      )}
-
-      {/* Team 1 */}
-      <div className={cn(
-        'flex items-center gap-3 px-4 py-3',
-        w1 && tie.decided ? 'bg-primary/[0.04]' : '',
-        !w1 && tie.decided ? 'opacity-40' : '',
-      )}>
-        <Lg src={tie.team1.logo} sz={28} />
-        <span className={cn(
-          'text-sm flex-1 truncate',
-          w1 && tie.decided ? 'font-bold text-foreground' : 'text-muted-foreground',
-        )}>{tie.team1.name}</span>
-        {tie.decided && (
-          <span className={cn('text-xl font-black tabular-nums', w1 ? 'text-foreground' : 'text-muted-foreground')}>{tie.leg1[0]}</span>
-        )}
-      </div>
-
-      <div className="h-px bg-border/20 mx-3" />
-
-      {/* Team 2 */}
-      <div className={cn(
-        'flex items-center gap-3 px-4 py-3',
-        w2 && tie.decided ? 'bg-primary/[0.04]' : '',
-        !w2 && tie.decided ? 'opacity-40' : '',
-      )}>
-        <Lg src={tie.team2.logo} sz={28} />
-        <span className={cn(
-          'text-sm flex-1 truncate',
-          w2 && tie.decided ? 'font-bold text-foreground' : 'text-muted-foreground',
-        )}>{tie.team2.name}</span>
-        {tie.decided && (
-          <span className={cn('text-xl font-black tabular-nums', w2 ? 'text-foreground' : 'text-muted-foreground')}>{tie.leg1[1]}</span>
-        )}
-      </div>
-
-      {/* Aggregate for two-legged */}
-      {tie.agg && (
-        <div className="text-center py-1.5 bg-secondary/20 border-t border-border/20">
-          <span className="text-[10px] text-muted-foreground">Aggregate: {tie.agg[0]} - {tie.agg[1]}</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── Logo ───────────────────────────────────────────────────────────────────
-function Lg({ src, sz = 18 }: { src?: string; sz?: number }) {
-  if (!src) return (
-    <div className="rounded-full bg-secondary flex items-center justify-center flex-shrink-0" style={{ width: sz, height: sz }}>
-      <span style={{ fontSize: sz * 0.45 }} className="text-muted-foreground">?</span>
-    </div>
-  );
+function Lg({ src, sz = 14 }: { src?: string; sz?: number }) {
+  if (!src) return <div className="rounded-full bg-secondary flex items-center justify-center flex-shrink-0" style={{ width: sz, height: sz }}><span style={{ fontSize: sz * 0.45 }} className="text-muted-foreground">?</span></div>;
   return <OptimizedImage src={src} alt="" className="object-contain flex-shrink-0" style={{ width: sz, height: sz }} />;
 }
