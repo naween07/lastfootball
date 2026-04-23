@@ -306,26 +306,38 @@ setInterval(() => {
 }, 5 * 60_000);
 
 // ─── HTTP Server ────────────────────────────────────────────────────────────
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'content-type',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-};
+const ALLOWED_ORIGINS = new Set([
+  'https://lastfootball.com',
+  'https://www.lastfootball.com',
+  'http://localhost:8080',
+  'http://localhost:5173',
+]);
+
+function getCorsHeaders(req) {
+  const origin = req?.headers?.origin || '';
+  const allowedOrigin = ALLOWED_ORIGINS.has(origin) ? origin : 'https://lastfootball.com';
+  return {
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Headers': 'content-type',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Vary': 'Origin',
+  };
+}
 
 function json(res, data, extra = {}) {
   const body = JSON.stringify(data);
-  res.writeHead(200, { ...CORS, 'Content-Type': 'application/json', ...extra });
+  res.writeHead(200, { ...getCorsHeaders(req), 'Content-Type': 'application/json', ...extra });
   res.end(body);
 }
 
 function error(res, code, msg) {
-  res.writeHead(code, { ...CORS, 'Content-Type': 'application/json' });
+  res.writeHead(code, { ...getCorsHeaders(req), 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ error: msg }));
 }
 
 const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
-    res.writeHead(204, CORS);
+    res.writeHead(204, getCorsHeaders(req));
     return res.end();
   }
 
@@ -354,7 +366,7 @@ const server = http.createServer(async (req, res) => {
     if (path === '/api/football' || path === '/api/news') {
       const rate = checkRate(ip, 'api', RATE_MAX_API);
       if (!rate.allowed) {
-        res.writeHead(429, { ...CORS, 'Content-Type': 'application/json', 'Retry-After': String(rate.resetIn) });
+        res.writeHead(429, { ...getCorsHeaders(req), 'Content-Type': 'application/json', 'Retry-After': String(rate.resetIn) });
         return res.end(JSON.stringify({ error: 'Too many requests', retryAfter: rate.resetIn }));
       }
       res.setHeader('X-RateLimit-Remaining', String(rate.remaining));
@@ -364,7 +376,7 @@ const server = http.createServer(async (req, res) => {
     if (path === '/api/logo') {
       const rate = checkRate(ip, 'logo', RATE_MAX_LOGO);
       if (!rate.allowed) {
-        res.writeHead(429, { ...CORS, 'Content-Type': 'application/json', 'Retry-After': String(rate.resetIn) });
+        res.writeHead(429, { ...getCorsHeaders(req), 'Content-Type': 'application/json', 'Retry-After': String(rate.resetIn) });
         return res.end(JSON.stringify({ error: 'Too many requests', retryAfter: rate.resetIn }));
       }
     }
@@ -420,7 +432,7 @@ const server = http.createServer(async (req, res) => {
       if (!logo) return error(res, 403, 'Host not allowed');
 
       res.writeHead(200, {
-        ...CORS,
+        ...getCorsHeaders(req),
         'Content-Type': logo.type,
         'Cache-Control': 'public, max-age=604800, immutable',
       });

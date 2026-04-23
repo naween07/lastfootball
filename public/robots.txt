@@ -3,4 +3,4 @@ Allow: /
 Disallow: /auth
 Disallow: /onboarding
 
-Sitemap: https://lastfootball.lovable.app/sitemap.xml
+Sitemap: https://lastfootball.com/sitemap.xml
