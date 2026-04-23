@@ -60,13 +60,21 @@ function cacheSet(key, data, ttl) {
   });
 }
 
-function fetchJSON(url, headers) {
+// ─── API Quota Monitor ──────────────────────────────────────────────────────
+const quota = {
+  daily: { used: 0, limit: 0, remaining: 0 },
+  lastChecked: null,
+  callsToday: 0,
+};
+
+function fetchWithHeaders(url, headers) {
   return new Promise((resolve, reject) => {
     https.get(url, { headers }, (res) => {
+      const resHeaders = res.headers;
       let body = '';
       res.on('data', chunk => body += chunk);
       res.on('end', () => {
-        try { resolve(JSON.parse(body)); }
+        try { resolve({ data: JSON.parse(body), headers: resHeaders }); }
         catch (e) { reject(new Error('Invalid JSON from upstream')); }
       });
     }).on('error', reject);
@@ -76,10 +84,26 @@ function fetchJSON(url, headers) {
 async function fetchUpstream(endpoint, params) {
   const qs = new URLSearchParams(params).toString();
   const url = `${API_BASE}/${endpoint}${qs ? '?' + qs : ''}`;
-  return fetchJSON(url, {
+  const { data, headers } = await fetchWithHeaders(url, {
     'x-rapidapi-key': API_KEY,
     'x-rapidapi-host': 'v3.football.api-sports.io',
   });
+
+  // Track quota from response headers
+  const remaining = parseInt(headers['x-ratelimit-requests-remaining'] || '0');
+  const limit = parseInt(headers['x-ratelimit-requests-limit'] || '0');
+  if (limit > 0) {
+    quota.daily = { used: limit - remaining, limit, remaining };
+    quota.lastChecked = new Date().toISOString();
+    quota.callsToday++;
+
+    const pctUsed = ((limit - remaining) / limit) * 100;
+    if (pctUsed >= 80) {
+      console.warn(`⚠️ API QUOTA WARNING: ${Math.round(pctUsed)}% used (${limit - remaining}/${limit}). ${remaining} calls remaining.`);
+    }
+  }
+
+  return data;
 }
 
 async function revalidate(cacheKey, endpoint, params, ttl) {
@@ -286,6 +310,17 @@ const server = http.createServer(async (req, res) => {
     // Health check (no rate limit)
     if (path === '/api/health') {
       return json(res, { ok: true, cache: cache.size, logos: logoCache.size, rateLimits: rateLimits.size });
+    }
+
+    // API quota status (no rate limit)
+    if (path === '/api/quota') {
+      return json(res, {
+        quota: quota.daily,
+        callsFromServer: quota.callsToday,
+        lastChecked: quota.lastChecked,
+        cacheEntries: cache.size,
+        pctUsed: quota.daily.limit > 0 ? Math.round((quota.daily.used / quota.daily.limit) * 100) : 0,
+      });
     }
 
     // Rate limit check for API and news routes
