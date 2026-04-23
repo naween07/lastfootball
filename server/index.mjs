@@ -225,22 +225,49 @@ function fetchBuffer(url) {
   });
 }
 
-async function getLogo(logoUrl) {
+// Try to load sharp for image optimization (optional dependency)
+let sharp = null;
+try {
+  sharp = (await import('sharp')).default;
+  console.log('Sharp loaded — logo resizing enabled');
+} catch {
+  console.log('Sharp not available — serving logos at original size');
+}
+
+async function getLogo(logoUrl, maxSize = 80) {
   try {
     const u = new URL(logoUrl);
     if (!ALLOWED_HOSTS.has(u.host)) return null;
   } catch { return null; }
 
-  const cached = logoCache.get(logoUrl);
+  const cacheKey = logoUrl + ':' + maxSize;
+  const cached = logoCache.get(cacheKey);
   if (cached && Date.now() - cached.fetchedAt < LOGO_TTL) return cached;
 
   const { buf, type } = await fetchBuffer(logoUrl);
+
+  let finalBuf = buf;
+  let finalType = type;
+
+  // Resize with sharp if available (saves ~80% bandwidth)
+  if (sharp && buf.length > 1024) {
+    try {
+      finalBuf = await sharp(buf)
+        .resize(maxSize, maxSize, { fit: 'inside', withoutEnlargement: true })
+        .png({ quality: 80, compressionLevel: 9 })
+        .toBuffer();
+      finalType = 'image/png';
+    } catch {
+      // Fall back to original
+    }
+  }
+
   if (logoCache.size >= MAX_LOGOS) {
     const oldest = logoCache.keys().next().value;
     if (oldest) logoCache.delete(oldest);
   }
-  const entry = { buf, type, fetchedAt: Date.now() };
-  logoCache.set(logoUrl, entry);
+  const entry = { buf: finalBuf, type: finalType, fetchedAt: Date.now() };
+  logoCache.set(cacheKey, entry);
   return entry;
 }
 
@@ -386,7 +413,10 @@ const server = http.createServer(async (req, res) => {
       const logoUrl = url.searchParams.get('url');
       if (!logoUrl) return error(res, 400, 'Missing url');
 
-      const logo = await getLogo(logoUrl);
+      const size = parseInt(url.searchParams.get('s') || '80') || 80;
+      const maxSize = Math.min(Math.max(size, 16), 200); // clamp 16-200
+
+      const logo = await getLogo(logoUrl, maxSize);
       if (!logo) return error(res, 403, 'Host not allowed');
 
       res.writeHead(200, {
