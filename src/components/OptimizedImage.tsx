@@ -8,8 +8,6 @@ interface OptimizedImageProps extends ImgHTMLAttributes<HTMLImageElement> {
   skipProxy?: boolean;
 }
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-
 // Hosts we proxy to eliminate slow third-party image waterfalls.
 const PROXIED_HOSTS = new Set([
   "media.api-sports.io",
@@ -51,8 +49,10 @@ export default function OptimizedImage({
     <img
       {...props}
       src={finalSrc}
-      alt={alt}
+      alt={alt || ''}
       className={cn(className)}
+      width={props.width || undefined}
+      height={props.height || undefined}
       decoding="async"
       loading={priority ? "eager" : "lazy"}
       fetchPriority={priority ? "high" : "low"}

@@ -27,8 +27,11 @@
     <!-- Preconnect for faster loads -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" /></noscript>
 
-    <!-- Google Analytics (GA4) -->
+    <!-- Google Analytics (GA4) — loaded after paint -->
+    <link rel="preconnect" href="https://www.googletagmanager.com" />
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-C6ZXWQKDNR"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
