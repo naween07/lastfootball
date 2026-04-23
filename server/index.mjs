@@ -324,13 +324,13 @@ function getCorsHeaders(req) {
   };
 }
 
-function json(res, data, extra = {}) {
+function json(req, res, data, extra = {}) {
   const body = JSON.stringify(data);
   res.writeHead(200, { ...getCorsHeaders(req), 'Content-Type': 'application/json', ...extra });
   res.end(body);
 }
 
-function error(res, code, msg) {
+function error(req, res, code, msg) {
   res.writeHead(code, { ...getCorsHeaders(req), 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ error: msg }));
 }
@@ -348,12 +348,12 @@ const server = http.createServer(async (req, res) => {
   try {
     // Health check (no rate limit)
     if (path === '/api/health') {
-      return json(res, { ok: true, cache: cache.size, logos: logoCache.size, rateLimits: rateLimits.size });
+      return json(req, res, { ok: true, cache: cache.size, logos: logoCache.size, rateLimits: rateLimits.size });
     }
 
     // API quota status (no rate limit)
     if (path === '/api/quota') {
-      return json(res, {
+      return json(req, res, {
         quota: quota.daily,
         callsFromServer: quota.callsToday,
         lastChecked: quota.lastChecked,
@@ -384,7 +384,7 @@ const server = http.createServer(async (req, res) => {
     // Football API proxy
     if (path === '/api/football') {
       const endpoint = url.searchParams.get('endpoint');
-      if (!endpoint) return error(res, 400, 'Missing endpoint');
+      if (!endpoint) return error(req, res, 400, 'Missing endpoint');
 
       const params = {};
       for (const [k, v] of url.searchParams) {
@@ -401,14 +401,14 @@ const server = http.createServer(async (req, res) => {
         if (!isFresh) {
           revalidate(cacheKey, endpoint, params, ttl).catch(e => console.error('BG revalidate:', e));
         }
-        return json(res, entry.data, {
+        return json(req, res, entry.data, {
           'X-Cache': isFresh ? 'HIT' : 'STALE',
           'Cache-Control': `public, max-age=${ttl.fresh}, stale-while-revalidate=${ttl.stale}`,
         });
       }
 
       const data = await revalidate(cacheKey, endpoint, params, ttl);
-      return json(res, data, {
+      return json(req, res, data, {
         'X-Cache': 'MISS',
         'Cache-Control': `public, max-age=${ttl.fresh}, stale-while-revalidate=${ttl.stale}`,
       });
@@ -417,19 +417,19 @@ const server = http.createServer(async (req, res) => {
     // News
     if (path === '/api/news') {
       const news = await getNews();
-      return json(res, { news });
+      return json(req, res, { news });
     }
 
     // Logo proxy
     if (path === '/api/logo') {
       const logoUrl = url.searchParams.get('url');
-      if (!logoUrl) return error(res, 400, 'Missing url');
+      if (!logoUrl) return error(req, res, 400, 'Missing url');
 
       const size = parseInt(url.searchParams.get('s') || '80') || 80;
       const maxSize = Math.min(Math.max(size, 16), 200); // clamp 16-200
 
       const logo = await getLogo(logoUrl, maxSize);
-      if (!logo) return error(res, 403, 'Host not allowed');
+      if (!logo) return error(req, res, 403, 'Host not allowed');
 
       res.writeHead(200, {
         ...getCorsHeaders(req),
@@ -439,10 +439,10 @@ const server = http.createServer(async (req, res) => {
       return res.end(logo.buf);
     }
 
-    error(res, 404, 'Not found');
+    error(req, res, 404, 'Not found');
   } catch (err) {
     console.error('Request error:', err);
-    error(res, 500, err.message || 'Internal error');
+    error(req, res, 500, err.message || 'Internal error');
   }
 });
 
