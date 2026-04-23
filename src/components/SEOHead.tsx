@@ -10,8 +10,8 @@ interface SEOHeadProps {
 }
 
 const SITE_NAME = 'LastFootball';
-const BASE_URL = 'https://lastfootball.lovable.app';
-const DEFAULT_IMAGE = 'https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/21b2e938-ed29-4af2-ac56-ce6539a06806/id-preview-5d776192--d3207f4f-6cbc-4943-83ab-8039cf37763e.lovable.app-1776056005272.png';
+const BASE_URL = 'https://lastfootball.com';
+const DEFAULT_IMAGE = 'https://lastfootball.com/favicon.svg';
 
 export default function SEOHead({
   title,

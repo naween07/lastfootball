@@ -1,9 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Match } from "@/types/football";
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-const PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
-
 export interface MatchInsight {
   headline: string;
   summary: string;
@@ -50,12 +47,10 @@ export function useMatchInsight(match: Match | null) {
         : undefined,
     };
 
-    fetch(`${SUPABASE_URL}/functions/v1/match-insights`, {
+    fetch('/api/match-insights', {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${PUBLISHABLE_KEY}`,
-        apikey: PUBLISHABLE_KEY,
       },
       body: JSON.stringify(body),
       signal: controller.signal,

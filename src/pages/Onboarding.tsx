@@ -46,12 +46,10 @@ export default function Onboarding() {
     const timer = setTimeout(async () => {
       setSearching(true);
       try {
-        const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
         const query = new URLSearchParams({ endpoint: 'teams', search: searchQuery }).toString();
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/football-api?${query}`, {
+        const res = await fetch(`/api/football?${query}`, {
           headers: {
             'Content-Type': 'application/json',
-            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
           },
         });
         const data = await res.json();
