@@ -1,5 +1,6 @@
 import { TeamLineup, LineupPlayer, MatchEvent, MatchPlayerData, MatchPlayerStats } from '@/types/football';
 import { useState, useMemo } from 'react';
+import PlayerCard from './PlayerCard';
 
 interface LineupViewProps {
   lineups: { home: TeamLineup; away: TeamLineup };
@@ -13,6 +14,7 @@ interface LineupViewProps {
 
 export default function LineupView({ lineups, homeTeamName, awayTeamName, events = [], playerData = [], homeTeamId, awayTeamId }: LineupViewProps) {
   const [showSubs, setShowSubs] = useState(false);
+  const [selectedPlayer, setSelectedPlayer] = useState<{ player: MatchPlayerStats; teamName: string; teamLogo?: string } | null>(null);
   const playerEvents = buildPlayerEventMap(events);
 
   // Build lookup maps for player stats by team
@@ -55,10 +57,10 @@ export default function LineupView({ lineups, homeTeamName, awayTeamName, events
         <PitchMarkings />
 
         <div className="absolute inset-x-0 top-0 bottom-1/2">
-          <TeamFormation lineup={lineups.home} isHome={true} playerEvents={playerEvents} playerMap={homePlayerMap} />
+          <TeamFormation lineup={lineups.home} isHome={true} playerEvents={playerEvents} playerMap={homePlayerMap} onSelectPlayer={(p) => setSelectedPlayer({ player: p, teamName: homeTeamName })} />
         </div>
         <div className="absolute inset-x-0 top-1/2 bottom-0">
-          <TeamFormation lineup={lineups.away} isHome={false} playerEvents={playerEvents} playerMap={awayPlayerMap} />
+          <TeamFormation lineup={lineups.away} isHome={false} playerEvents={playerEvents} playerMap={awayPlayerMap} onSelectPlayer={(p) => setSelectedPlayer({ player: p, teamName: awayTeamName })} />
         </div>
       </div>
 
@@ -129,6 +131,20 @@ export default function LineupView({ lineups, homeTeamName, awayTeamName, events
               </div>
             </div>
           ) : null}
+        </div>
+      )}
+
+      {/* Player card overlay */}
+      {selectedPlayer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setSelectedPlayer(null)}>
+          <div onClick={e => e.stopPropagation()} className="w-full max-w-sm scale-in">
+            <PlayerCard
+              player={selectedPlayer.player}
+              teamName={selectedPlayer.teamName}
+              teamLogo={selectedPlayer.teamLogo}
+              onClose={() => setSelectedPlayer(null)}
+            />
+          </div>
         </div>
       )}
     </div>
@@ -215,11 +231,12 @@ function PitchMarkings() {
 }
 
 /* ---------- Team formation on half pitch ---------- */
-function TeamFormation({ lineup, isHome, playerEvents, playerMap }: {
+function TeamFormation({ lineup, isHome, playerEvents, playerMap, onSelectPlayer }: {
   lineup: TeamLineup;
   isHome: boolean;
   playerEvents: Map<string, EventIcon[]>;
   playerMap: Map<number, MatchPlayerStats>;
+  onSelectPlayer?: (player: MatchPlayerStats) => void;
 }) {
   const positions = getFormationPositions(lineup.formation, lineup.startXI, isHome);
 
@@ -233,8 +250,9 @@ function TeamFormation({ lineup, isHome, playerEvents, playerMap }: {
         return (
           <div
             key={pos.player.id || pos.player.name + i}
-            className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-10"
+            className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-10 cursor-pointer"
             style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
+            onClick={() => stats && onSelectPlayer?.(stats)}
           >
             <div className="relative">
               {/* Player photo or number circle */}
