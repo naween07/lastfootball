@@ -6,13 +6,14 @@ import MatchTimeline from '@/components/MatchTimeline';
 import MatchStatsView from '@/components/MatchStatsView';
 import LineupView from '@/components/LineupView';
 import MatchInsightCard from '@/components/MatchInsightCard';
+import ShotStatsView from '@/components/ShotStatsView';
 import OptimizedImage from '@/components/OptimizedImage';
 import { fetchMatchDetails, fetchMatchPlayers } from '@/services/footballApi';
 import { useState, useEffect, useMemo } from 'react';
 import { Match, MatchPlayerData } from '@/types/football';
 import { cn } from '@/lib/utils';
 
-type Tab = 'overview' | 'lineups' | 'stats' | 'commentary';
+type Tab = 'overview' | 'lineups' | 'stats' | 'shots' | 'commentary';
 
 export default function MatchDetail() {
   const { id } = useParams<{ id: string }>();
@@ -133,6 +134,20 @@ export default function MatchDetail() {
               stats={match.stats}
               homeTeam={match.homeTeam.name}
               awayTeam={match.awayTeam.name}
+            />
+          </Card>
+        )}
+        {tab === 'shots' && playerData.length > 0 && (
+          <Card padded>
+            <SectionTitle>Shot analysis</SectionTitle>
+            <ShotStatsView
+              playerData={playerData}
+              homeTeamId={match.homeTeam.id}
+              awayTeamId={match.awayTeam.id}
+              homeTeamName={match.homeTeam.name}
+              awayTeamName={match.awayTeam.name}
+              homeTeamLogo={match.homeTeam.logo}
+              awayTeamLogo={match.awayTeam.logo}
             />
           </Card>
         )}
@@ -270,6 +285,7 @@ function TabBar({ match, tab, setTab }: { match: Match; tab: Tab; setTab: (t: Ta
     { id: 'overview', label: 'Overview', show: true },
     { id: 'lineups', label: 'Lineups', show: !!match.lineups },
     { id: 'stats', label: 'Stats', show: !!match.stats },
+    { id: 'shots', label: 'Shots', show: !!match.stats },
     { id: 'commentary', label: 'Commentary', show: !!match.events?.length },
   ];
 
