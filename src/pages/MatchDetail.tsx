@@ -23,6 +23,7 @@ export default function MatchDetail() {
 
   useEffect(() => {
     if (!id) return;
+    let active = true;
     setLoading(true);
 
     // Fetch match details and player stats in parallel
@@ -31,26 +32,46 @@ export default function MatchDetail() {
       fetchMatchPlayers(Number(id)),
     ])
       .then(([matchData, players]) => {
+        if (!active) return;
         setMatch(matchData);
         setPlayerData(players);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
 
-    // Poll for live updates
-    const interval = setInterval(() => {
-      Promise.all([
-        fetchMatchDetails(Number(id)),
-        fetchMatchPlayers(Number(id)),
-      ])
-        .then(([matchData, players]) => {
-          setMatch(matchData);
-          setPlayerData(players);
-        })
-        .catch(console.error);
-    }, 15000);
+    // Poll for live updates — only if match is in progress
+    const LIVE_STATUSES = new Set(['LIVE', '1H', '2H', 'HT']);
+    const POLL_INTERVAL = 30_000; // 30 seconds for detail view
 
-    return () => clearInterval(interval);
+    const interval = setInterval(() => {
+      // Check current match status before fetching
+      setMatch(prev => {
+        if (!prev || !LIVE_STATUSES.has(prev.status)) {
+          // Match not live — no need to poll
+          return prev;
+        }
+
+        // Match is live — fetch updates (async, non-blocking)
+        Promise.all([
+          fetchMatchDetails(Number(id)),
+          fetchMatchPlayers(Number(id)),
+        ])
+          .then(([matchData, players]) => {
+            if (!active) return;
+            setMatch(matchData);
+            setPlayerData(players);
+            // If match just finished, next interval will skip the fetch
+          })
+          .catch(console.error);
+
+        return prev;
+      });
+    }, POLL_INTERVAL);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
   }, [id]);
 
   if (loading && !match) {
@@ -211,7 +232,8 @@ function MatchHero({ match }: { match: Match }) {
                 </span>
               )}
               {isHT && (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-accent/10 text-accent text-[11px] font-bold">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 text-[11px] font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse-live" />
                   Half Time
                 </span>
               )}
