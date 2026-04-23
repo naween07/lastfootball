@@ -220,6 +220,40 @@ async function getLogo(logoUrl) {
   return entry;
 }
 
+// ─── Rate Limiter (per-IP, no dependencies) ────────────────────────────────
+const rateLimits = new Map();
+const RATE_WINDOW = 60_000;  // 1 minute window
+const RATE_MAX_API = 60;     // 60 requests/min per IP for /api/football + /api/news
+const RATE_MAX_LOGO = 300;   // 300 requests/min per IP for /api/logo (images load in bursts)
+
+function getRateKey(ip, bucket) { return ip + ':' + bucket; }
+
+function checkRate(ip, bucket, max) {
+  const key = getRateKey(ip, bucket);
+  const now = Date.now();
+  let entry = rateLimits.get(key);
+
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 0, resetAt: now + RATE_WINDOW };
+    rateLimits.set(key, entry);
+  }
+
+  entry.count++;
+
+  if (entry.count > max) {
+    return { allowed: false, remaining: 0, resetIn: Math.ceil((entry.resetAt - now) / 1000) };
+  }
+  return { allowed: true, remaining: max - entry.count, resetIn: Math.ceil((entry.resetAt - now) / 1000) };
+}
+
+// Clean up stale rate limit entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rateLimits) {
+    if (now > entry.resetAt) rateLimits.delete(key);
+  }
+}, 5 * 60_000);
+
 // ─── HTTP Server ────────────────────────────────────────────────────────────
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -246,11 +280,31 @@ const server = http.createServer(async (req, res) => {
 
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
+  const ip = req.headers['x-real-ip'] || req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
 
   try {
-    // Health check
+    // Health check (no rate limit)
     if (path === '/api/health') {
-      return json(res, { ok: true, cache: cache.size, logos: logoCache.size });
+      return json(res, { ok: true, cache: cache.size, logos: logoCache.size, rateLimits: rateLimits.size });
+    }
+
+    // Rate limit check for API and news routes
+    if (path === '/api/football' || path === '/api/news') {
+      const rate = checkRate(ip, 'api', RATE_MAX_API);
+      if (!rate.allowed) {
+        res.writeHead(429, { ...CORS, 'Content-Type': 'application/json', 'Retry-After': String(rate.resetIn) });
+        return res.end(JSON.stringify({ error: 'Too many requests', retryAfter: rate.resetIn }));
+      }
+      res.setHeader('X-RateLimit-Remaining', String(rate.remaining));
+    }
+
+    // Rate limit for logo proxy (higher limit)
+    if (path === '/api/logo') {
+      const rate = checkRate(ip, 'logo', RATE_MAX_LOGO);
+      if (!rate.allowed) {
+        res.writeHead(429, { ...CORS, 'Content-Type': 'application/json', 'Retry-After': String(rate.resetIn) });
+        return res.end(JSON.stringify({ error: 'Too many requests', retryAfter: rate.resetIn }));
+      }
     }
 
     // Football API proxy
