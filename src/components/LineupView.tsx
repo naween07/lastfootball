@@ -294,13 +294,13 @@ function PitchPlayer({
             src={stats.photo}
             alt=""
             className={cn(
-              'w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover shadow-lg',
+              'w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover shadow-lg',
               isGK ? 'ring-2 ring-amber-400' : teamStyle === 'home' ? 'ring-2 ring-white/50' : 'ring-2 ring-blue-400/50',
             )}
           />
         ) : (
           <div className={cn(
-            'w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-xs font-extrabold shadow-lg',
+            'w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-[11px] font-extrabold shadow-lg',
             isGK ? 'bg-amber-500 text-black ring-2 ring-amber-300/50'
               : teamStyle === 'home' ? 'bg-white text-gray-900 ring-2 ring-white/30'
               : 'bg-[#2a2a3e] text-white ring-2 ring-[#3a3a5e]/50',
@@ -318,21 +318,21 @@ function PitchPlayer({
 
         {/* Captain */}
         {stats?.captain && (
-          <div className="absolute -bottom-0.5 -right-1 w-4 h-4 rounded-full bg-amber-400 flex items-center justify-center shadow">
-            <span className="text-[7px] font-extrabold text-black">C</span>
+          <div className="absolute -bottom-0.5 -right-1 w-3.5 h-3.5 rounded-full bg-amber-400 flex items-center justify-center shadow">
+            <span className="text-[6px] font-extrabold text-black">C</span>
           </div>
         )}
       </div>
 
       {/* Rating */}
       {stats?.rating && (
-        <div className={cn('mt-0.5 px-1.5 py-[1px] rounded text-[8px] sm:text-[9px] font-extrabold leading-tight shadow', ratingColor(stats.rating))}>
+        <div className={cn('mt-0.5 px-1 py-[1px] rounded text-[7px] sm:text-[8px] font-extrabold leading-tight shadow', ratingColor(stats.rating))}>
           {parseFloat(stats.rating).toFixed(1)} ★
         </div>
       )}
 
       {/* Name */}
-      <span className="mt-[1px] text-[8px] sm:text-[10px] font-semibold text-white text-center leading-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] max-w-[60px] sm:max-w-[76px] truncate">
+      <span className="mt-[1px] text-[7px] sm:text-[9px] font-semibold text-white text-center leading-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] max-w-[50px] sm:max-w-[66px] truncate">
         {shortName(pos.player.name)}
       </span>
     </div>
@@ -402,7 +402,7 @@ function gridPositions(players: LineupPlayer[], isHome: boolean): PlayerPosition
   const positions: PlayerPosition[] = [];
   rows.forEach((rp, row) => {
     rp.forEach((player, ci) => {
-      const x = rp.length === 1 ? 50 : 15 + (ci / (rp.length - 1)) * 70;
+      const x = rp.length === 1 ? 50 : 12 + (ci / (rp.length - 1)) * 76;
       // Home: 6% to 40%, Away: 60% to 94%
       const yBase = 6 + ((row - 1) / Math.max(maxRow - 1, 1)) * 34;
       const y = isHome ? yBase : 94 - yBase;
@@ -431,7 +431,7 @@ function formationPositions(formation: string, players: LineupPlayer[], isHome: 
     const yBase = 14 + (li / Math.max(lines.length - 1, 1)) * 26;
     const y = isHome ? yBase : 100 - yBase;
     for (let i = 0; i < count && idx < players.length; i++) {
-      const x = count === 1 ? 50 : 15 + (i / (count - 1)) * 70;
+      const x = count === 1 ? 50 : 12 + (i / (count - 1)) * 76;
       positions.push({ player: players[idx], x, y });
       idx++;
     }
