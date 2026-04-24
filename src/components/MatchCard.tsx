@@ -71,9 +71,28 @@ export default function MatchCard({ match, isFavoriteHome, isFavoriteAway, onTog
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              onToggleFavorite(match.homeTeam.id, match.homeTeam.name, match.homeTeam.logo);
+              if (isFavoriteHome) {
+                // Unfavorite home, favorite away
+                onToggleFavorite(match.homeTeam.id, match.homeTeam.name, match.homeTeam.logo);
+              } else if (isFavoriteAway) {
+                // Unfavorite away
+                onToggleFavorite(match.awayTeam.id, match.awayTeam.name, match.awayTeam.logo);
+              } else {
+                // Favorite home first
+                onToggleFavorite(match.homeTeam.id, match.homeTeam.name, match.homeTeam.logo);
+              }
+            }}
+            onDoubleClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              // Double-tap to favorite away team directly
+              if (!isFavoriteAway) {
+                onToggleFavorite(match.awayTeam.id, match.awayTeam.name, match.awayTeam.logo);
+              }
             }}
             className="flex-shrink-0 p-1.5 ml-1 rounded-full hover:bg-secondary transition-colors"
+            title={isFavoriteHome ? `★ ${match.homeTeam.shortName}` : isFavoriteAway ? `★ ${match.awayTeam.shortName}` : 'Add to favorites'}
+            aria-label={isFavoriteHome ? `Unfavorite ${match.homeTeam.shortName}` : isFavoriteAway ? `Unfavorite ${match.awayTeam.shortName}` : 'Add to favorites'}
           >
             <Star
               className={`w-4 h-4 transition-colors ${

@@ -1,7 +1,5 @@
-import { supabase } from "@/integrations/supabase/client";
 import { Match, League, LeagueMatches, MatchEvent, MatchStats, TeamLineup, LineupPlayer, MatchPlayerData } from "@/types/football";
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const API_BASE_URL = '/api';
 
 // In-memory cache with TTL
