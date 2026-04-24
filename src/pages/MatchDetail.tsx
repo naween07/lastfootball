@@ -5,7 +5,6 @@ import SEOHead, { buildMatchJsonLd } from '@/components/SEOHead';
 import MatchTimeline from '@/components/MatchTimeline';
 import MatchStatsView from '@/components/MatchStatsView';
 import LineupView from '@/components/LineupView';
-import MatchInsightCard from '@/components/MatchInsightCard';
 import ShotStatsView from '@/components/ShotStatsView';
 import OptimizedImage from '@/components/OptimizedImage';
 import { fetchMatchDetails, fetchMatchPlayers } from '@/services/footballApi';
@@ -321,8 +320,6 @@ function OverviewTab({ match, onJumpTo }: { match: Match; onJumpTo: (t: Tab) => 
 
   return (
     <div className="space-y-4">
-      <MatchInsightCard match={match} />
-
       <Card padded>
         <SectionTitle>Match info</SectionTitle>
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
