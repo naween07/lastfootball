@@ -13,7 +13,6 @@ interface LineupViewProps {
 }
 
 export default function LineupView({ lineups, homeTeamName, awayTeamName, events = [], playerData = [], homeTeamId, awayTeamId }: LineupViewProps) {
-  const [showSubs, setShowSubs] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<{ player: MatchPlayerStats; teamName: string; teamLogo?: string } | null>(null);
   const playerEvents = buildPlayerEventMap(events);
 
@@ -65,22 +64,13 @@ export default function LineupView({ lineups, homeTeamName, awayTeamName, events
       </div>
 
       {/* Substitutes toggle */}
-      <div className="px-4">
-        <button
-          onClick={() => setShowSubs(!showSubs)}
-          className="w-full py-2.5 text-xs font-bold text-muted-foreground bg-secondary/60 rounded-lg hover:bg-secondary transition-colors uppercase tracking-wider"
-        >
-          {showSubs ? 'Hide Substitutes' : 'Show Substitutes'}
-        </button>
-      </div>
-
-      {showSubs && (
-        <div className="px-4 pb-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <div className="flex-1 h-px bg-border" />
-            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Substitutes</span>
-            <div className="flex-1 h-px bg-border" />
-          </div>
+      {/* Substitutes — always visible */}
+      <div className="px-4 pb-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="flex-1 h-px bg-border" />
+          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Substitutes</span>
+          <div className="flex-1 h-px bg-border" />
+        </div>
 
           {/* Home subs */}
           <div className="space-y-0">
@@ -132,7 +122,7 @@ export default function LineupView({ lineups, homeTeamName, awayTeamName, events
             </div>
           ) : null}
         </div>
-      )}
+      </div>
 
       {/* Player card overlay */}
       {selectedPlayer && (
@@ -164,7 +154,7 @@ function getRatingColor(rating: string | null): string {
 
 /* ---------- Event icon types ---------- */
 type EventIcon = {
-  type: 'goal' | 'yellow_card' | 'red_card' | 'sub_in' | 'sub_out';
+  type: 'goal' | 'own_goal' | 'assist' | 'yellow_card' | 'red_card' | 'sub_in' | 'sub_out';
   minute: number;
 };
 
@@ -191,7 +181,14 @@ function buildPlayerEventMap(events: MatchEvent[]): Map<string, EventIcon[]> {
   };
 
   events.forEach(e => {
-    if (e.type === 'goal') addEvent(e.playerName, { type: 'goal', minute: e.minute });
+    if (e.type === 'goal') {
+      if (e.detail === 'Own Goal') {
+        addEvent(e.playerName, { type: 'own_goal', minute: e.minute });
+      } else {
+        addEvent(e.playerName, { type: 'goal', minute: e.minute });
+        if (e.assistName) addEvent(e.assistName, { type: 'assist', minute: e.minute });
+      }
+    }
     else if (e.type === 'yellow_card') addEvent(e.playerName, { type: 'yellow_card', minute: e.minute });
     else if (e.type === 'red_card') addEvent(e.playerName, { type: 'red_card', minute: e.minute });
     else if (e.type === 'substitution') {
@@ -289,12 +286,16 @@ function TeamFormation({ lineup, isHome, playerEvents, playerMap, onSelectPlayer
               {/* Event badges — top right */}
               {icons.length > 0 && (
                 <div className="absolute -top-1 -right-2.5 flex gap-[2px]">
-                  {icons.slice(0, 3).map((icon, idx) => (
+                  {icons.slice(0, 4).map((icon, idx) => (
                     <span key={idx} className="inline-flex" title={`${icon.minute}'`}>
                       {icon.type === 'goal' && (
-                        <span className="w-3 h-3 rounded-full bg-primary flex items-center justify-center">
-                          <span className="text-[6px] text-primary-foreground font-bold">G</span>
-                        </span>
+                        <span className="text-[10px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">⚽</span>
+                      )}
+                      {icon.type === 'own_goal' && (
+                        <span className="text-[10px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">🔴</span>
+                      )}
+                      {icon.type === 'assist' && (
+                        <span className="text-[10px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">👟</span>
                       )}
                       {icon.type === 'yellow_card' && <span className="w-2.5 h-3 rounded-[1px] bg-yellow-400 shadow-sm" />}
                       {icon.type === 'red_card' && <span className="w-2.5 h-3 rounded-[1px] bg-red-500 shadow-sm" />}
@@ -475,7 +476,9 @@ function SubRow({ player, playerEvents, playerStats }: {
         <div className="flex items-center gap-[2px] flex-shrink-0">
           {icons.filter(i => i.type !== 'sub_in').map((icon, idx) => (
             <span key={idx} className="inline-flex" title={`${icon.minute}'`}>
-              {icon.type === 'goal' && <span className="w-2 h-2 rounded-full bg-primary" />}
+              {icon.type === 'goal' && <span className="text-[10px]">⚽</span>}
+              {icon.type === 'own_goal' && <span className="text-[10px]">🔴</span>}
+              {icon.type === 'assist' && <span className="text-[10px]">👟</span>}
               {icon.type === 'yellow_card' && <span className="w-2 h-2.5 rounded-[1px] bg-yellow-400" />}
               {icon.type === 'red_card' && <span className="w-2 h-2.5 rounded-[1px] bg-red-500" />}
               {icon.type === 'sub_out' && <span className="text-[9px] text-red-400 font-bold">↓</span>}
