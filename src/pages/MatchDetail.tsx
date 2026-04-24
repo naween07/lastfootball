@@ -6,6 +6,8 @@ import MatchTimeline from '@/components/MatchTimeline';
 import MatchStatsView from '@/components/MatchStatsView';
 import LineupView from '@/components/LineupView';
 import ShotStatsView from '@/components/ShotStatsView';
+import ShareButton from '@/components/ShareButton';
+import MatchReactions from '@/components/MatchReactions';
 import OptimizedImage from '@/components/OptimizedImage';
 import { fetchMatchDetails, fetchMatchPlayers } from '@/services/footballApi';
 import { useState, useEffect, useMemo } from 'react';
@@ -181,13 +183,16 @@ function MatchHero({ match }: { match: Match }) {
   return (
     <section className="bg-card border-b border-border">
       <div className="container max-w-3xl py-4 md:py-6">
-        <Link
-          to="/"
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-4 transition-colors"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          Back
-        </Link>
+        <div className="flex items-center justify-between mb-4">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Back
+          </Link>
+          <ShareButton match={match} />
+        </div>
 
         <div className="flex items-center justify-center gap-2 mb-4 md:mb-6">
           {match.league.logo && (
@@ -275,6 +280,9 @@ function MatchHero({ match }: { match: Match }) {
             </p>
           </div>
         </div>
+
+        {/* Reactions */}
+        <MatchReactions matchId={match.id} />
       </div>
     </section>
   );

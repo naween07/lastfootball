@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import SEOHead, { buildWebsiteJsonLd } from '@/components/SEOHead';
 import { useAuth } from '@/hooks/useAuth';
 import LeagueFilter from '@/components/LeagueFilter';
 import LeagueGroup from '@/components/LeagueGroup';
+import MatchCard from '@/components/MatchCard';
 import DateNavigator from '@/components/DateNavigator';
 import { useFavorites } from '@/hooks/useFavorites';
+import { Star } from 'lucide-react';
 import {
   fetchLiveMatches,
   fetchMatchesByDate,
@@ -37,7 +39,7 @@ export default function Index() {
   const [loading, setLoading] = useState(true);
   const [visibleGroupCount, setVisibleGroupCount] = useState(INITIAL_GROUP_BATCH);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
-  const { isFavorite, toggleFavorite } = useFavorites();
+  const { isFavorite, toggleFavorite, favoriteTeamIds } = useFavorites();
 
   useEffect(() => {
     setVisibleGroupCount(INITIAL_GROUP_BATCH);
@@ -127,6 +129,14 @@ export default function Index() {
 
   const groups = useMemo(() => getMatchesGroupedByLeague(filtered), [filtered]);
 
+  // Favorite team matches — shown at top
+  const favoriteMatches = useMemo(() => {
+    if (!favoriteTeamIds.length) return [];
+    return matches.filter(m =>
+      favoriteTeamIds.includes(m.homeTeam.id) || favoriteTeamIds.includes(m.awayTeam.id)
+    );
+  }, [matches, favoriteTeamIds]);
+
   const visibleGroups = useMemo(() => {
     if (selectedLeagueId !== null) {
       return groups;
@@ -189,6 +199,27 @@ export default function Index() {
                 <span className="w-2 h-2 rounded-full bg-live animate-pulse-live" />
                 <span className="text-sm font-semibold text-live">{liveCount} Live</span>
                 <span className="text-xs text-muted-foreground">matches right now</span>
+              </div>
+            )}
+
+            {/* Your Matches — favorite teams */}
+            {favoriteMatches.length > 0 && selectedLeagueId === null && (
+              <div className="mb-4">
+                <div className="flex items-center gap-2 px-3 py-2">
+                  <Star className="w-3.5 h-3.5 fill-primary text-primary" />
+                  <span className="text-xs font-bold text-primary uppercase tracking-wider">Your Matches</span>
+                </div>
+                <div className="bg-card rounded-lg border border-primary/20 overflow-hidden">
+                  {favoriteMatches.map(match => (
+                    <MatchCard
+                      key={`fav-${match.id}`}
+                      match={match}
+                      isFavoriteHome={isFavorite(match.homeTeam.id)}
+                      isFavoriteAway={isFavorite(match.awayTeam.id)}
+                      onToggleFavorite={toggleFavorite}
+                    />
+                  ))}
+                </div>
               </div>
             )}
 
