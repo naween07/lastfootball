@@ -119,7 +119,7 @@ export default function LineupView({
       </div>
 
       {/* ─── SINGLE CONTINUOUS PITCH ────────────────────────────────── */}
-      <div className="relative w-full overflow-hidden" style={{ aspectRatio: '68/105', maxWidth: '460px', margin: '0 auto' }}>
+      <div className="relative w-full overflow-hidden" style={{ aspectRatio: '60/105', maxWidth: '460px', margin: '0 auto' }}>
         {/* Grass */}
         <div className="absolute inset-0 bg-gradient-to-b from-[#1a5c1e] to-[#1f6b23]" />
         <div className="absolute inset-0 opacity-[0.06]" style={{
@@ -403,8 +403,8 @@ function gridPositions(players: LineupPlayer[], isHome: boolean): PlayerPosition
   rows.forEach((rp, row) => {
     rp.forEach((player, ci) => {
       const x = rp.length === 1 ? 50 : 15 + (ci / (rp.length - 1)) * 70;
-      // Home: 6% to 43%, Away: 57% to 94%
-      const yBase = 6 + ((row - 1) / Math.max(maxRow - 1, 1)) * 37;
+      // Home: 6% to 40%, Away: 60% to 94%
+      const yBase = 6 + ((row - 1) / Math.max(maxRow - 1, 1)) * 34;
       const y = isHome ? yBase : 94 - yBase;
       positions.push({ player, x, y });
     });
@@ -426,9 +426,9 @@ function formationPositions(formation: string, players: LineupPlayer[], isHome: 
   }
 
   lines.forEach((count, li) => {
-    // Home: lines spread from 14% to 43% (range = 29%)
-    // Away: lines spread from 57% to 86% (100 - 14 = 86, 100 - 43 = 57)
-    const yBase = 14 + (li / Math.max(lines.length - 1, 1)) * 29;
+    // Home: lines spread from 14% to 40% (range = 26%)
+    // Away: lines spread from 60% to 86%
+    const yBase = 14 + (li / Math.max(lines.length - 1, 1)) * 26;
     const y = isHome ? yBase : 100 - yBase;
     for (let i = 0; i < count && idx < players.length; i++) {
       const x = count === 1 ? 50 : 15 + (i / (count - 1)) * 70;
