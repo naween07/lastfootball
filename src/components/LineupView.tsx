@@ -63,7 +63,6 @@ export default function LineupView({ lineups, homeTeamName, awayTeamName, events
         </div>
       </div>
 
-      {/* Substitutes toggle */}
       {/* Substitutes — always visible */}
       <div className="px-4 pb-4 space-y-3">
         <div className="flex items-center gap-2">
@@ -122,7 +121,6 @@ export default function LineupView({ lineups, homeTeamName, awayTeamName, events
             </div>
           ) : null}
         </div>
-      </div>
 
       {/* Player card overlay */}
       {selectedPlayer && (
