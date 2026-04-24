@@ -15,13 +15,27 @@ export function useAuth() {
         setUser(session?.user ?? null);
         
         if (session?.user) {
-          // Check onboarding status
-          const { data } = await supabase
-            .from('profiles')
-            .select('onboarding_completed')
-            .eq('user_id', session.user.id)
-            .single();
-          setOnboardingCompleted(data?.onboarding_completed ?? false);
+          try {
+            const { data, error } = await supabase
+              .from('profiles')
+              .select('onboarding_completed')
+              .eq('user_id', session.user.id)
+              .maybeSingle();
+            
+            if (error) {
+              console.warn('Profile query error:', error.message);
+              setOnboardingCompleted(true);
+            } else if (data) {
+              setOnboardingCompleted(data.onboarding_completed ?? true);
+            } else {
+              // No profile found — create one
+              await supabase.from('profiles').insert({ user_id: session.user.id, onboarding_completed: true });
+              setOnboardingCompleted(true);
+            }
+          } catch (err) {
+            console.warn('Profile check failed:', err);
+            setOnboardingCompleted(true);
+          }
         } else {
           setOnboardingCompleted(null);
         }
@@ -37,9 +51,18 @@ export function useAuth() {
           .from('profiles')
           .select('onboarding_completed')
           .eq('user_id', session.user.id)
-          .single()
-          .then(({ data }) => {
-            setOnboardingCompleted(data?.onboarding_completed ?? false);
+          .maybeSingle()
+          .then(({ data, error }) => {
+            if (error) {
+              console.warn('Profile query error:', error.message);
+              setOnboardingCompleted(true);
+            } else {
+              setOnboardingCompleted(data?.onboarding_completed ?? true);
+            }
+            setLoading(false);
+          })
+          .catch(() => {
+            setOnboardingCompleted(true);
             setLoading(false);
           });
       } else {
@@ -56,10 +79,12 @@ export function useAuth() {
 
   const completeOnboarding = useCallback(async () => {
     if (!user) return;
-    await supabase
-      .from('profiles')
-      .update({ onboarding_completed: true })
-      .eq('user_id', user.id);
+    try {
+      await supabase
+        .from('profiles')
+        .update({ onboarding_completed: true })
+        .eq('user_id', user.id);
+    } catch {}
     setOnboardingCompleted(true);
   }, [user]);
 
