@@ -119,6 +119,8 @@ export default function MatchDetail() {
               lineups={match.lineups}
               homeTeamName={match.homeTeam.name}
               awayTeamName={match.awayTeam.name}
+              homeTeamLogo={match.homeTeam.logo}
+              awayTeamLogo={match.awayTeam.logo}
               events={match.events}
               playerData={playerData}
               homeTeamId={match.homeTeam.id}
