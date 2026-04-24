@@ -1,27 +1,15 @@
-// Strip Supabase OAuth hash BEFORE any imports — must be synchronous
-// Supabase SDK will read tokens from localStorage after initial parse
+// Handle Supabase OAuth hash redirect
+// Supabase puts tokens in #hash which crashes React Router's BrowserRouter.
+// We strip the hash synchronously, but first store the raw hash so Supabase
+// can process it when it initializes.
 (function() {
   const hash = window.location.hash;
   if (hash && hash.includes('access_token')) {
-    // Parse tokens from hash and store them so Supabase can pick them up
-    const params = new URLSearchParams(hash.substring(1));
-    const accessToken = params.get('access_token');
-    const refreshToken = params.get('refresh_token');
-    if (accessToken && refreshToken) {
-      // Store in localStorage where Supabase expects them
-      const storageKey = 'sb-ehfyctoaudhyrjxbftty-auth-token';
-      const session = {
-        access_token: accessToken,
-        refresh_token: refreshToken,
-        token_type: params.get('token_type') || 'bearer',
-        expires_in: parseInt(params.get('expires_in') || '3600'),
-        expires_at: Math.floor(Date.now() / 1000) + parseInt(params.get('expires_in') || '3600'),
-      };
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(session));
-      } catch {}
-    }
-    // Clean URL immediately
+    // Store hash temporarily for Supabase to read
+    try {
+      sessionStorage.setItem('__sb_hash', hash);
+    } catch {}
+    // Clean URL immediately to prevent Router crash
     window.history.replaceState(null, '', '/');
   }
 })();
@@ -31,4 +19,21 @@ import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
 document.documentElement.classList.add("dark");
-createRoot(document.getElementById("root")!).render(<App />);
+
+// If we captured a hash, restore it temporarily for Supabase to detect
+const savedHash = sessionStorage.getItem('__sb_hash');
+if (savedHash) {
+  sessionStorage.removeItem('__sb_hash');
+  // Set hash back briefly for Supabase detectSessionInUrl
+  window.location.hash = savedHash.substring(1);
+  // Import and init Supabase to process the tokens
+  import('@/integrations/supabase/client').then(({ supabase }) => {
+    supabase.auth.getSession().then(() => {
+      // Clean hash again after Supabase processed it
+      window.history.replaceState(null, '', '/');
+      createRoot(document.getElementById("root")!).render(<App />);
+    });
+  });
+} else {
+  createRoot(document.getElementById("root")!).render(<App />);
+}
