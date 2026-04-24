@@ -168,10 +168,10 @@ export default function Index() {
   const canGoPrev = currentDateIdx > 0;
   const canGoNext = currentDateIdx < dates.length - 1;
 
-  // Redirect to onboarding if user is logged in but hasn't completed it
-  if (user && onboardingCompleted === false) {
-    return <Navigate to="/onboarding" replace />;
-  }
+  // Onboarding is optional — don't force redirect
+  // if (user && onboardingCompleted === false) {
+  //   return <Navigate to="/onboarding" replace />;
+  // }
 
   return (
     <div className="min-h-screen bg-background">
