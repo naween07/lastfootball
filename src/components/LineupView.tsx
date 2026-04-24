@@ -70,8 +70,16 @@ function EvIcons({ icons }: { icons: EvIcon[] }) {
           {ic.type === 'assist' && <span className="text-[10px]">👟</span>}
           {ic.type === 'yellow_card' && <span className="inline-block w-2 h-2.5 rounded-[1px] bg-yellow-400" />}
           {ic.type === 'red_card' && <span className="inline-block w-2 h-2.5 rounded-[1px] bg-red-500" />}
-          {ic.type === 'sub_out' && <span className="text-[10px] text-red-400">↓</span>}
-          {ic.type === 'sub_in' && <span className="text-[10px] text-emerald-400">↑</span>}
+          {ic.type === 'sub_out' && (
+            <span className="w-3.5 h-3.5 rounded-full bg-red-500 flex items-center justify-center shadow">
+              <span className="text-[8px] text-white font-bold">↓</span>
+            </span>
+          )}
+          {ic.type === 'sub_in' && (
+            <span className="w-3.5 h-3.5 rounded-full bg-emerald-500 flex items-center justify-center shadow">
+              <span className="text-[8px] text-white font-bold">↑</span>
+            </span>
+          )}
         </span>
       ))}
     </span>
