@@ -403,7 +403,8 @@ function gridPositions(players: LineupPlayer[], isHome: boolean): PlayerPosition
   rows.forEach((rp, row) => {
     rp.forEach((player, ci) => {
       const x = rp.length === 1 ? 50 : 15 + (ci / (rp.length - 1)) * 70;
-      const yBase = 6 + ((row - 1) / Math.max(maxRow - 1, 1)) * 40;
+      // Home: 6% to 43%, Away: 57% to 94%
+      const yBase = 6 + ((row - 1) / Math.max(maxRow - 1, 1)) * 37;
       const y = isHome ? yBase : 94 - yBase;
       positions.push({ player, x, y });
     });
@@ -413,7 +414,7 @@ function gridPositions(players: LineupPlayer[], isHome: boolean): PlayerPosition
 
 function formationPositions(formation: string, players: LineupPlayer[], isHome: boolean): PlayerPosition[] {
   const lines = formation.split('-').map(Number).filter(n => !isNaN(n));
-  if (!lines.length) return players.map((p, i) => ({ player: p, x: 50, y: isHome ? 5 + (i / players.length) * 42 : 95 - (i / players.length) * 42 }));
+  if (!lines.length) return players.map((p, i) => ({ player: p, x: 50, y: isHome ? 5 + (i / players.length) * 38 : 95 - (i / players.length) * 38 }));
 
   const positions: PlayerPosition[] = [];
   let idx = 0;
@@ -425,7 +426,9 @@ function formationPositions(formation: string, players: LineupPlayer[], isHome: 
   }
 
   lines.forEach((count, li) => {
-    const yBase = 14 + (li / Math.max(lines.length - 1, 1)) * 32;
+    // Home: lines spread from 14% to 43% (range = 29%)
+    // Away: lines spread from 57% to 86% (100 - 14 = 86, 100 - 43 = 57)
+    const yBase = 14 + (li / Math.max(lines.length - 1, 1)) * 29;
     const y = isHome ? yBase : 100 - yBase;
     for (let i = 0; i < count && idx < players.length; i++) {
       const x = count === 1 ? 50 : 15 + (i / (count - 1)) * 70;
