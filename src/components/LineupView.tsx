@@ -16,96 +16,65 @@ interface LineupViewProps {
   awayTeamId?: number;
 }
 
-// ─── Event types ────────────────────────────────────────────────────────────
-type EventIcon = {
-  type: 'goal' | 'own_goal' | 'assist' | 'yellow_card' | 'red_card' | 'sub_in' | 'sub_out';
-  minute: number;
-};
+// ─── Event helpers ──────────────────────────────────────────────────────────
+type EvIcon = { type: 'goal' | 'own_goal' | 'assist' | 'yellow_card' | 'red_card' | 'sub_in' | 'sub_out'; minute: number };
 
-function normalizeName(name: string): string {
-  return name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-}
-function getLastName(name: string): string {
-  const parts = normalizeName(name).split(/\s+/);
-  return parts[parts.length - 1];
-}
-function getShortName(name: string): string {
-  const parts = name.split(/\s+/);
-  if (parts.length <= 1) return name;
-  return `${parts[0].charAt(0)}. ${parts[parts.length - 1]}`;
-}
+function norm(n: string) { return n.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim(); }
+function lastName(n: string) { const p = norm(n).split(/\s+/); return p[p.length - 1]; }
+function shortName(n: string) { const p = n.split(/\s+/); return p.length <= 1 ? n : `${p[0].charAt(0)}. ${p[p.length - 1]}`; }
 
-function buildPlayerEventMap(events: MatchEvent[]): Map<string, EventIcon[]> {
-  const byFull = new Map<string, EventIcon[]>();
-  const byLast = new Map<string, EventIcon[]>();
-  const addEvent = (name: string, icon: EventIcon) => {
-    const full = normalizeName(name);
-    const last = getLastName(name);
-    if (!byFull.has(full)) byFull.set(full, []);
-    byFull.get(full)!.push(icon);
-    if (!byLast.has(last)) byLast.set(last, []);
-    byLast.get(last)!.push(icon);
+function buildEvMap(events: MatchEvent[]): Map<string, EvIcon[]> {
+  const byF = new Map<string, EvIcon[]>(), byL = new Map<string, EvIcon[]>();
+  const add = (name: string, icon: EvIcon) => {
+    const f = norm(name), l = lastName(name);
+    if (!byF.has(f)) byF.set(f, []); byF.get(f)!.push(icon);
+    if (!byL.has(l)) byL.set(l, []); byL.get(l)!.push(icon);
   };
   events.forEach(e => {
     if (e.type === 'goal') {
-      if (e.detail === 'Own Goal') {
-        addEvent(e.playerName, { type: 'own_goal', minute: e.minute });
-      } else {
-        addEvent(e.playerName, { type: 'goal', minute: e.minute });
-        if (e.assistName) addEvent(e.assistName, { type: 'assist', minute: e.minute });
-      }
-    } else if (e.type === 'yellow_card') addEvent(e.playerName, { type: 'yellow_card', minute: e.minute });
-    else if (e.type === 'red_card') addEvent(e.playerName, { type: 'red_card', minute: e.minute });
+      if (e.detail === 'Own Goal') add(e.playerName, { type: 'own_goal', minute: e.minute });
+      else { add(e.playerName, { type: 'goal', minute: e.minute }); if (e.assistName) add(e.assistName, { type: 'assist', minute: e.minute }); }
+    } else if (e.type === 'yellow_card') add(e.playerName, { type: 'yellow_card', minute: e.minute });
+    else if (e.type === 'red_card') add(e.playerName, { type: 'red_card', minute: e.minute });
     else if (e.type === 'substitution') {
-      addEvent(e.playerName, { type: 'sub_out', minute: e.minute });
-      if (e.assistName) addEvent(e.assistName, { type: 'sub_in', minute: e.minute });
+      add(e.playerName, { type: 'sub_out', minute: e.minute });
+      if (e.assistName) add(e.assistName, { type: 'sub_in', minute: e.minute });
     }
   });
-  return new Map([...byFull, ...byLast]);
+  return new Map([...byF, ...byL]);
 }
 
-function getPlayerIcons(playerName: string, playerEvents: Map<string, EventIcon[]>): EventIcon[] {
-  const full = normalizeName(playerName);
-  if (playerEvents.has(full)) return playerEvents.get(full)!;
-  const last = getLastName(playerName);
-  return playerEvents.get(last) || [];
+function getIcons(name: string, evMap: Map<string, EvIcon[]>): EvIcon[] {
+  return evMap.get(norm(name)) || evMap.get(lastName(name)) || [];
 }
 
-function getRatingColor(rating: string | null): string {
-  if (!rating) return 'bg-secondary text-muted-foreground';
-  const r = parseFloat(rating);
-  if (r >= 8.0) return 'bg-emerald-500 text-white';
-  if (r >= 7.0) return 'bg-emerald-600/80 text-white';
-  if (r >= 6.5) return 'bg-amber-500 text-white';
-  if (r >= 6.0) return 'bg-orange-500 text-white';
+function ratingColor(r: string | null): string {
+  if (!r) return 'bg-secondary text-muted-foreground';
+  const v = parseFloat(r);
+  if (v >= 8) return 'bg-emerald-500 text-white';
+  if (v >= 7) return 'bg-emerald-600/80 text-white';
+  if (v >= 6.5) return 'bg-amber-500 text-white';
+  if (v >= 6) return 'bg-orange-500 text-white';
   return 'bg-red-500 text-white';
 }
 
-// ─── Icon Renderer ──────────────────────────────────────────────────────────
-function EventIcons({ icons, size = 'sm' }: { icons: EventIcon[]; size?: 'sm' | 'md' }) {
-  const sz = size === 'sm' ? 'text-[9px]' : 'text-[11px]';
+// ─── Event Icons Component ──────────────────────────────────────────────────
+function EvIcons({ icons }: { icons: EvIcon[] }) {
+  if (!icons.length) return null;
   return (
-    <div className="flex items-center gap-[2px]">
-      {icons.slice(0, 4).map((icon, idx) => (
-        <span key={idx} title={`${icon.minute}'`} className="inline-flex">
-          {icon.type === 'goal' && <span className={sz}>⚽</span>}
-          {icon.type === 'own_goal' && <span className={sz}>🔴</span>}
-          {icon.type === 'assist' && <span className={sz}>👟</span>}
-          {icon.type === 'yellow_card' && <span className={`inline-block w-2 h-2.5 rounded-[1px] bg-yellow-400 ${size === 'md' ? 'w-2.5 h-3' : ''}`} />}
-          {icon.type === 'red_card' && <span className={`inline-block w-2 h-2.5 rounded-[1px] bg-red-500 ${size === 'md' ? 'w-2.5 h-3' : ''}`} />}
-          {icon.type === 'sub_out' && (
-            <span className="w-3 h-3 rounded-full bg-red-500/80 flex items-center justify-center">
-              <span className="text-[7px] text-white font-bold">↓</span>
-            </span>
-          )}
-          {icon.type === 'sub_in' && (
-            <span className="w-3 h-3 rounded-full bg-emerald-500/80 flex items-center justify-center">
-              <span className="text-[7px] text-white font-bold">↑</span>
-            </span>
-          )}
+    <span className="inline-flex items-center gap-[1px]">
+      {icons.slice(0, 4).map((ic, i) => (
+        <span key={i} title={`${ic.minute}'`}>
+          {ic.type === 'goal' && <span className="text-[10px]">⚽</span>}
+          {ic.type === 'own_goal' && <span className="text-[10px]">🔴</span>}
+          {ic.type === 'assist' && <span className="text-[10px]">👟</span>}
+          {ic.type === 'yellow_card' && <span className="inline-block w-2 h-2.5 rounded-[1px] bg-yellow-400" />}
+          {ic.type === 'red_card' && <span className="inline-block w-2 h-2.5 rounded-[1px] bg-red-500" />}
+          {ic.type === 'sub_out' && <span className="text-[10px] text-red-400">↓</span>}
+          {ic.type === 'sub_in' && <span className="text-[10px] text-emerald-400">↑</span>}
         </span>
       ))}
-    </div>
+    </span>
   );
 }
 
@@ -115,117 +84,167 @@ export default function LineupView({
   events = [], playerData = [], homeTeamId, awayTeamId,
 }: LineupViewProps) {
   const [selectedPlayer, setSelectedPlayer] = useState<{ player: MatchPlayerStats; teamName: string; teamLogo?: string } | null>(null);
-  const playerEvents = buildPlayerEventMap(events);
+  const evMap = buildEvMap(events);
 
-  const homePlayerMap = useMemo(() => {
-    const team = playerData.find(t => t.teamId === homeTeamId);
-    if (!team) return new Map<number, MatchPlayerStats>();
-    return new Map(team.players.map(p => [p.id, p]));
+  const homeMap = useMemo(() => {
+    const t = playerData.find(t => t.teamId === homeTeamId);
+    return t ? new Map(t.players.map(p => [p.id, p])) : new Map<number, MatchPlayerStats>();
   }, [playerData, homeTeamId]);
 
-  const awayPlayerMap = useMemo(() => {
-    const team = playerData.find(t => t.teamId === awayTeamId);
-    if (!team) return new Map<number, MatchPlayerStats>();
-    return new Map(team.players.map(p => [p.id, p]));
+  const awayMap = useMemo(() => {
+    const t = playerData.find(t => t.teamId === awayTeamId);
+    return t ? new Map(t.players.map(p => [p.id, p])) : new Map<number, MatchPlayerStats>();
   }, [playerData, awayTeamId]);
+
+  const selectHome = (p: MatchPlayerStats) => setSelectedPlayer({ player: p, teamName: homeTeamName, teamLogo: homeTeamLogo });
+  const selectAway = (p: MatchPlayerStats) => setSelectedPlayer({ player: p, teamName: awayTeamName, teamLogo: awayTeamLogo });
+
+  const homePositions = getPositions(lineups.home.formation, lineups.home.startXI, true);
+  const awayPositions = getPositions(lineups.away.formation, lineups.away.startXI, false);
 
   return (
     <div>
-      {/* ─── HOME PITCH ─────────────────────────────────────────────── */}
-      <PitchHalf
-        lineup={lineups.home}
-        teamName={homeTeamName}
-        teamLogo={homeTeamLogo}
-        isHome={true}
-        playerEvents={playerEvents}
-        playerMap={homePlayerMap}
-        onSelectPlayer={(p) => setSelectedPlayer({ player: p, teamName: homeTeamName, teamLogo: homeTeamLogo })}
-      />
-
-      {/* ─── AWAY PITCH ─────────────────────────────────────────────── */}
-      <PitchHalf
-        lineup={lineups.away}
-        teamName={awayTeamName}
-        teamLogo={awayTeamLogo}
-        isHome={false}
-        playerEvents={playerEvents}
-        playerMap={awayPlayerMap}
-        onSelectPlayer={(p) => setSelectedPlayer({ player: p, teamName: awayTeamName, teamLogo: awayTeamLogo })}
-      />
-
-      {/* ─── SUBSTITUTES ────────────────────────────────────────────── */}
-      <div className="px-3 py-4">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="flex-1 h-px bg-border" />
-          <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Substitutes</span>
-          <div className="flex-1 h-px bg-border" />
+      {/* ─── FORMATION HEADER ───────────────────────────────────────── */}
+      <div className="flex items-center justify-between px-4 py-2.5 bg-secondary/30">
+        <div className="flex items-center gap-2">
+          {homeTeamLogo && <OptimizedImage src={homeTeamLogo} alt="" className="w-5 h-5 object-contain" />}
+          <span className="text-xs font-bold text-foreground">{homeTeamName}</span>
+          <span className="text-xs font-mono text-primary bg-primary/10 px-2 py-0.5 rounded-full">{lineups.home.formation}</span>
         </div>
-
-        {/* Side-by-side subs: home left, away right */}
-        <div className="flex gap-2">
-          {/* Home subs */}
-          <div className="flex-1 space-y-1">
-            <div className="flex items-center gap-1.5 mb-2">
-              {homeTeamLogo && <OptimizedImage src={homeTeamLogo} alt="" className="w-4 h-4 object-contain" />}
-              <span className="text-[10px] font-bold text-muted-foreground uppercase">{homeTeamName}</span>
-            </div>
-            {lineups.home.substitutes.map(p => (
-              <SubRow
-                key={p.id || p.name}
-                player={p}
-                playerEvents={playerEvents}
-                stats={homePlayerMap.get(p.id)}
-                side="left"
-                onSelect={(s) => setSelectedPlayer({ player: s, teamName: homeTeamName, teamLogo: homeTeamLogo })}
-              />
-            ))}
-          </div>
-
-          {/* Divider */}
-          <div className="w-px bg-border/30 mx-1" />
-
-          {/* Away subs */}
-          <div className="flex-1 space-y-1">
-            <div className="flex items-center justify-end gap-1.5 mb-2">
-              <span className="text-[10px] font-bold text-muted-foreground uppercase">{awayTeamName}</span>
-              {awayTeamLogo && <OptimizedImage src={awayTeamLogo} alt="" className="w-4 h-4 object-contain" />}
-            </div>
-            {lineups.away.substitutes.map(p => (
-              <SubRow
-                key={p.id || p.name}
-                player={p}
-                playerEvents={playerEvents}
-                stats={awayPlayerMap.get(p.id)}
-                side="right"
-                onSelect={(s) => setSelectedPlayer({ player: s, teamName: awayTeamName, teamLogo: awayTeamLogo })}
-              />
-            ))}
-          </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-mono text-primary bg-primary/10 px-2 py-0.5 rounded-full">{lineups.away.formation}</span>
+          <span className="text-xs font-bold text-foreground">{awayTeamName}</span>
+          {awayTeamLogo && <OptimizedImage src={awayTeamLogo} alt="" className="w-5 h-5 object-contain" />}
         </div>
       </div>
 
-      {/* ─── MANAGERS ───────────────────────────────────────────────── */}
+      {/* ─── SINGLE CONTINUOUS PITCH ────────────────────────────────── */}
+      <div className="relative w-full overflow-hidden" style={{ aspectRatio: '68/105', maxWidth: '460px', margin: '0 auto' }}>
+        {/* Grass */}
+        <div className="absolute inset-0 bg-gradient-to-b from-[#1a5c1e] to-[#1f6b23]" />
+        <div className="absolute inset-0 opacity-[0.06]" style={{
+          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 8%, rgba(255,255,255,0.5) 8%, rgba(255,255,255,0.5) 8.5%)',
+        }} />
+
+        {/* Pitch markings */}
+        <div className="absolute inset-[3%] border-[1.5px] border-white/25 rounded-sm" />
+        <div className="absolute left-[3%] right-[3%] top-1/2 h-[1.5px] bg-white/25 -translate-y-px" />
+        <div className="absolute left-1/2 top-1/2 w-[18%] aspect-square rounded-full border-[1.5px] border-white/25 -translate-x-1/2 -translate-y-1/2" />
+        <div className="absolute left-1/2 top-1/2 w-1.5 h-1.5 rounded-full bg-white/30 -translate-x-1/2 -translate-y-1/2" />
+        {/* Top penalty area */}
+        <div className="absolute left-1/2 -translate-x-1/2 top-[3%] w-[44%] h-[16%] border-[1.5px] border-white/25 border-t-0" />
+        <div className="absolute left-1/2 -translate-x-1/2 top-[3%] w-[18%] h-[6%] border-[1.5px] border-white/25 border-t-0" />
+        {/* Bottom penalty area */}
+        <div className="absolute left-1/2 -translate-x-1/2 bottom-[3%] w-[44%] h-[16%] border-[1.5px] border-white/25 border-b-0" />
+        <div className="absolute left-1/2 -translate-x-1/2 bottom-[3%] w-[18%] h-[6%] border-[1.5px] border-white/25 border-b-0" />
+
+        {/* Home players — top half */}
+        {homePositions.map((pos, i) => (
+          <PitchPlayer
+            key={`h-${pos.player.id || i}`}
+            pos={pos}
+            stats={homeMap.get(pos.player.id)}
+            icons={getIcons(pos.player.name, evMap)}
+            isGK={pos.player.pos === 'G'}
+            teamStyle="home"
+            onSelect={selectHome}
+          />
+        ))}
+
+        {/* Away players — bottom half */}
+        {awayPositions.map((pos, i) => (
+          <PitchPlayer
+            key={`a-${pos.player.id || i}`}
+            pos={pos}
+            stats={awayMap.get(pos.player.id)}
+            icons={getIcons(pos.player.name, evMap)}
+            isGK={pos.player.pos === 'G'}
+            teamStyle="away"
+            onSelect={selectAway}
+          />
+        ))}
+      </div>
+
+      {/* ─── BENCH ──────────────────────────────────────────────────── */}
+      <div className="px-3 pt-5 pb-2">
+        {/* Bench header with team logos */}
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-1.5">
+            {homeTeamLogo && <OptimizedImage src={homeTeamLogo} alt="" className="w-4 h-4 object-contain" />}
+          </div>
+          <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Bench</span>
+          <div className="flex items-center gap-1.5">
+            {awayTeamLogo && <OptimizedImage src={awayTeamLogo} alt="" className="w-4 h-4 object-contain" />}
+          </div>
+        </div>
+
+        {/* Side-by-side bench rows */}
+        {Array.from({ length: Math.max(lineups.home.substitutes.length, lineups.away.substitutes.length) }).map((_, i) => {
+          const homeSub = lineups.home.substitutes[i];
+          const awaySub = lineups.away.substitutes[i];
+          return (
+            <div key={i} className="flex items-stretch border-b border-border/20 last:border-0">
+              {/* Home sub — left */}
+              <div className="flex-1 py-2 pr-2">
+                {homeSub ? (
+                  <BenchRow
+                    player={homeSub}
+                    stats={homeMap.get(homeSub.id)}
+                    icons={getIcons(homeSub.name, evMap)}
+                    side="left"
+                    onSelect={selectHome}
+                  />
+                ) : <div className="h-10" />}
+              </div>
+
+              {/* Divider */}
+              <div className="w-px bg-border/20" />
+
+              {/* Away sub — right */}
+              <div className="flex-1 py-2 pl-2">
+                {awaySub ? (
+                  <BenchRow
+                    player={awaySub}
+                    stats={awayMap.get(awaySub.id)}
+                    icons={getIcons(awaySub.name, evMap)}
+                    side="right"
+                    onSelect={selectAway}
+                  />
+                ) : <div className="h-10" />}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ─── MANAGER ────────────────────────────────────────────────── */}
       {((lineups.home.coach.name && lineups.home.coach.name !== 'Unknown') ||
         (lineups.away.coach.name && lineups.away.coach.name !== 'Unknown')) && (
-        <div className="px-3 pb-4">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="flex-1 h-px bg-border" />
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Manager</span>
-            <div className="flex-1 h-px bg-border" />
-          </div>
-          <div className="flex justify-between px-2">
-            <div className="flex items-center gap-2">
+        <div className="px-3 pb-4 pt-2">
+          <div className="flex items-stretch border-t border-border/30 pt-3">
+            {/* Home manager */}
+            <div className="flex-1 flex items-center gap-2">
               {lineups.home.coach.photo && (
                 <img src={lineups.home.coach.photo} alt="" className="w-8 h-8 rounded-full object-cover bg-secondary" />
               )}
-              <span className="text-sm font-medium text-foreground/80">
-                {lineups.home.coach.name !== 'Unknown' ? lineups.home.coach.name : '—'}
-              </span>
+              <div>
+                <div className="text-[12px] font-semibold text-foreground/80">
+                  {lineups.home.coach.name !== 'Unknown' ? lineups.home.coach.name : '—'}
+                </div>
+                <div className="text-[10px] text-muted-foreground">Manager</div>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-foreground/80">
-                {lineups.away.coach.name !== 'Unknown' ? lineups.away.coach.name : '—'}
-              </span>
+
+            <div className="w-px bg-border/20 mx-2" />
+
+            {/* Away manager */}
+            <div className="flex-1 flex items-center justify-end gap-2">
+              <div className="text-right">
+                <div className="text-[12px] font-semibold text-foreground/80">
+                  {lineups.away.coach.name !== 'Unknown' ? lineups.away.coach.name : '—'}
+                </div>
+                <div className="text-[10px] text-muted-foreground">Manager</div>
+              </div>
               {lineups.away.coach.photo && (
                 <img src={lineups.away.coach.photo} alt="" className="w-8 h-8 rounded-full object-cover bg-secondary" />
               )}
@@ -251,261 +270,168 @@ export default function LineupView({
   );
 }
 
-// ─── Pitch Half ─────────────────────────────────────────────────────────────
-function PitchHalf({
-  lineup, teamName, teamLogo, isHome, playerEvents, playerMap, onSelectPlayer,
+// ─── Pitch Player ───────────────────────────────────────────────────────────
+function PitchPlayer({
+  pos, stats, icons, isGK, teamStyle, onSelect,
 }: {
-  lineup: TeamLineup;
-  teamName: string;
-  teamLogo?: string;
-  isHome: boolean;
-  playerEvents: Map<string, EventIcon[]>;
-  playerMap: Map<number, MatchPlayerStats>;
-  onSelectPlayer: (p: MatchPlayerStats) => void;
+  pos: PlayerPosition;
+  stats?: MatchPlayerStats;
+  icons: EvIcon[];
+  isGK: boolean;
+  teamStyle: 'home' | 'away';
+  onSelect: (p: MatchPlayerStats) => void;
 }) {
-  const positions = getFormationPositions(lineup.formation, lineup.startXI, true); // always top-to-bottom
-
   return (
-    <div>
-      {/* Team header bar */}
-      <div className={cn(
-        'flex items-center justify-between px-4 py-2',
-        isHome ? 'bg-secondary/40' : 'bg-secondary/20',
-      )}>
-        <div className="flex items-center gap-2">
-          {teamLogo && <OptimizedImage src={teamLogo} alt="" className="w-5 h-5 object-contain" />}
-          <span className="text-xs font-bold text-foreground">{teamName}</span>
-        </div>
-        <span className="text-xs font-mono text-primary bg-primary/10 px-2 py-0.5 rounded-full">
-          {lineup.formation}
-        </span>
-      </div>
-
-      {/* Pitch */}
-      <div className="relative w-full overflow-hidden" style={{ aspectRatio: '68/50', maxWidth: '500px', margin: '0 auto' }}>
-        {/* Grass */}
-        <div className="absolute inset-0 bg-gradient-to-b from-[#1a5c1e] to-[#1f6b23]" />
-        <div className="absolute inset-0 opacity-[0.06]" style={{
-          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 12%, rgba(255,255,255,0.5) 12%, rgba(255,255,255,0.5) 12.5%)',
-        }} />
-
-        {/* Pitch lines */}
-        <div className="absolute inset-[3%] border-[1.5px] border-white/25 rounded-sm" />
-        {/* Goal area */}
-        {isHome ? (
-          <>
-            <div className="absolute left-1/2 -translate-x-1/2 top-[3%] w-[40%] h-[25%] border-[1.5px] border-white/25 border-t-0" />
-            <div className="absolute left-1/2 -translate-x-1/2 top-[3%] w-[18%] h-[12%] border-[1.5px] border-white/25 border-t-0" />
-          </>
+    <div
+      className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-10 cursor-pointer"
+      style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
+      onClick={() => stats && onSelect(stats)}
+    >
+      <div className="relative">
+        {/* Photo or number circle */}
+        {stats?.photo ? (
+          <img
+            src={stats.photo}
+            alt=""
+            className={cn(
+              'w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover shadow-lg',
+              isGK ? 'ring-2 ring-amber-400' : teamStyle === 'home' ? 'ring-2 ring-white/50' : 'ring-2 ring-blue-400/50',
+            )}
+          />
         ) : (
-          <>
-            <div className="absolute left-1/2 -translate-x-1/2 bottom-[3%] w-[40%] h-[25%] border-[1.5px] border-white/25 border-b-0" />
-            <div className="absolute left-1/2 -translate-x-1/2 bottom-[3%] w-[18%] h-[12%] border-[1.5px] border-white/25 border-b-0" />
-          </>
+          <div className={cn(
+            'w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-xs font-extrabold shadow-lg',
+            isGK ? 'bg-amber-500 text-black ring-2 ring-amber-300/50'
+              : teamStyle === 'home' ? 'bg-white text-gray-900 ring-2 ring-white/30'
+              : 'bg-[#2a2a3e] text-white ring-2 ring-[#3a3a5e]/50',
+          )}>
+            {pos.player.number}
+          </div>
         )}
 
-        {/* Players */}
-        {positions.map((pos, i) => {
-          const icons = getPlayerIcons(pos.player.name, playerEvents);
-          const stats = playerMap.get(pos.player.id);
-          const isGK = pos.player.pos === 'G';
+        {/* Event icons — top right */}
+        {icons.length > 0 && (
+          <div className="absolute -top-1 -right-3">
+            <EvIcons icons={icons} />
+          </div>
+        )}
 
-          return (
-            <div
-              key={pos.player.id || pos.player.name + i}
-              className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-10 cursor-pointer"
-              style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
-              onClick={() => stats && onSelectPlayer(stats)}
-            >
-              <div className="relative">
-                {/* Player photo or number circle */}
-                {stats?.photo ? (
-                  <img
-                    src={stats.photo}
-                    alt=""
-                    className={cn(
-                      'w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover shadow-lg',
-                      isGK ? 'ring-2 ring-amber-400' : isHome ? 'ring-2 ring-white/40' : 'ring-2 ring-blue-400/40',
-                    )}
-                  />
-                ) : (
-                  <div className={cn(
-                    'w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-xs font-extrabold shadow-lg',
-                    isGK ? 'bg-amber-500 text-black ring-2 ring-amber-300/50'
-                      : isHome ? 'bg-white text-gray-900 ring-2 ring-white/30'
-                      : 'bg-blue-900 text-white ring-2 ring-blue-400/40',
-                  )}>
-                    {pos.player.number}
-                  </div>
-                )}
-
-                {/* Event icons — top right */}
-                {icons.length > 0 && (
-                  <div className="absolute -top-1 -right-3 flex gap-[1px]">
-                    <EventIcons icons={icons} size="sm" />
-                  </div>
-                )}
-
-                {/* Captain badge */}
-                {stats?.captain && (
-                  <div className="absolute -bottom-0.5 -right-1 w-4 h-4 rounded-full bg-amber-400 flex items-center justify-center shadow">
-                    <span className="text-[7px] font-extrabold text-black">C</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Rating badge */}
-              {stats?.rating && (
-                <div className={cn(
-                  'mt-0.5 px-1.5 py-[1px] rounded text-[8px] sm:text-[9px] font-extrabold leading-tight shadow',
-                  getRatingColor(stats.rating),
-                )}>
-                  {parseFloat(stats.rating).toFixed(1)}
-                </div>
-              )}
-
-              {/* Player name */}
-              <span className="mt-[1px] text-[8px] sm:text-[10px] font-semibold text-white text-center leading-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] max-w-[60px] sm:max-w-[76px] truncate">
-                {getShortName(pos.player.name)}
-              </span>
-            </div>
-          );
-        })}
+        {/* Captain */}
+        {stats?.captain && (
+          <div className="absolute -bottom-0.5 -right-1 w-4 h-4 rounded-full bg-amber-400 flex items-center justify-center shadow">
+            <span className="text-[7px] font-extrabold text-black">C</span>
+          </div>
+        )}
       </div>
+
+      {/* Rating */}
+      {stats?.rating && (
+        <div className={cn('mt-0.5 px-1.5 py-[1px] rounded text-[8px] sm:text-[9px] font-extrabold leading-tight shadow', ratingColor(stats.rating))}>
+          {parseFloat(stats.rating).toFixed(1)} ★
+        </div>
+      )}
+
+      {/* Name */}
+      <span className="mt-[1px] text-[8px] sm:text-[10px] font-semibold text-white text-center leading-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] max-w-[60px] sm:max-w-[76px] truncate">
+        {shortName(pos.player.name)}
+      </span>
     </div>
   );
 }
 
-// ─── Substitute Row ─────────────────────────────────────────────────────────
-function SubRow({
-  player, playerEvents, stats, side, onSelect,
+// ─── Bench Row ──────────────────────────────────────────────────────────────
+function BenchRow({
+  player, stats, icons, side, onSelect,
 }: {
   player: LineupPlayer;
-  playerEvents: Map<string, EventIcon[]>;
   stats?: MatchPlayerStats;
+  icons: EvIcon[];
   side: 'left' | 'right';
-  onSelect: (s: MatchPlayerStats) => void;
+  onSelect: (p: MatchPlayerStats) => void;
 }) {
-  const icons = getPlayerIcons(player.name, playerEvents);
   const subIn = icons.find(i => i.type === 'sub_in');
-
-  const posLabel: Record<string, string> = { G: 'Goalkeeper', D: 'Defender', M: 'Midfielder', F: 'Striker' };
-  const posColor: Record<string, string> = {
-    G: 'text-amber-400', D: 'text-blue-400', M: 'text-emerald-400', F: 'text-red-400',
-  };
-
-  const photo = stats?.photo;
   const isRight = side === 'right';
 
   return (
     <div
-      className={cn(
-        'flex items-center gap-2 py-1.5 px-1 rounded hover:bg-secondary/30 transition-colors cursor-pointer',
-        isRight ? 'flex-row-reverse text-right' : '',
-      )}
+      className={cn('flex items-center gap-2 cursor-pointer hover:bg-secondary/20 rounded px-1 py-0.5 transition-colors', isRight && 'flex-row-reverse')}
       onClick={() => stats && onSelect(stats)}
     >
       {/* Photo */}
-      {photo ? (
-        <img src={photo} alt="" className="w-9 h-9 rounded-full object-cover bg-secondary flex-shrink-0 ring-1 ring-border" loading="lazy" />
+      {stats?.photo ? (
+        <img src={stats.photo} alt="" className="w-9 h-9 rounded-full object-cover bg-secondary flex-shrink-0 ring-1 ring-border" loading="lazy" />
       ) : (
         <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center flex-shrink-0 ring-1 ring-border">
           <span className="text-[11px] font-bold text-muted-foreground">{player.number}</span>
         </div>
       )}
 
-      {/* Event icons (next to photo) */}
-      {icons.length > 0 && (
-        <div className="flex-shrink-0">
-          <EventIcons icons={icons} size="sm" />
-        </div>
-      )}
-
-      {/* Name + position */}
-      <div className={cn('flex-1 min-w-0', isRight ? 'text-right' : '')}>
-        <div className="text-[12px] font-semibold text-foreground/90 truncate">{getShortName(player.name)}</div>
-        <div className={cn('text-[10px]', posColor[player.pos] || 'text-muted-foreground')}>
-          {posLabel[player.pos] || player.pos} #{player.number}
+      {/* Info */}
+      <div className={cn('flex-1 min-w-0', isRight && 'text-right')}>
+        <div className="text-[12px] font-semibold text-foreground/90 truncate leading-tight">{player.name}</div>
+        <div className="flex items-center gap-1.5 mt-0.5" style={{ justifyContent: isRight ? 'flex-end' : 'flex-start' }}>
+          {subIn && <span className="text-[10px] text-emerald-400 font-semibold">↑ {subIn.minute}'</span>}
+          <EvIcons icons={icons.filter(i => i.type !== 'sub_in')} />
         </div>
       </div>
-
-      {/* Sub minute */}
-      {subIn && (
-        <span className="text-[10px] text-emerald-400 font-semibold flex-shrink-0">{subIn.minute}'</span>
-      )}
     </div>
   );
 }
 
 // ─── Formation Positioning ──────────────────────────────────────────────────
-interface PlayerPosition {
-  player: LineupPlayer;
-  x: number;
-  y: number;
-}
+interface PlayerPosition { player: LineupPlayer; x: number; y: number }
 
-function getFormationPositions(formation: string, players: LineupPlayer[], _isHome: boolean): PlayerPosition[] {
+function getPositions(formation: string, players: LineupPlayer[], isHome: boolean): PlayerPosition[] {
   const hasGrid = players.some(p => p.grid);
-  if (hasGrid) return getPositionsFromGrid(players);
-  return getPositionsFromFormation(formation, players);
+  if (hasGrid) return gridPositions(players, isHome);
+  return formationPositions(formation, players, isHome);
 }
 
-function getPositionsFromGrid(players: LineupPlayer[]): PlayerPosition[] {
-  const positions: PlayerPosition[] = [];
+function gridPositions(players: LineupPlayer[], isHome: boolean): PlayerPosition[] {
   let maxRow = 1;
-  players.forEach(p => {
-    if (p.grid) {
-      const row = parseInt(p.grid.split(':')[0]);
-      if (row > maxRow) maxRow = row;
-    }
-  });
+  players.forEach(p => { if (p.grid) { const r = parseInt(p.grid.split(':')[0]); if (r > maxRow) maxRow = r; } });
 
   const rows = new Map<number, LineupPlayer[]>();
   players.forEach(p => {
     if (!p.grid) return;
-    const row = parseInt(p.grid.split(':')[0]);
-    if (!rows.has(row)) rows.set(row, []);
-    rows.get(row)!.push(p);
+    const r = parseInt(p.grid.split(':')[0]);
+    if (!rows.has(r)) rows.set(r, []);
+    rows.get(r)!.push(p);
   });
 
-  rows.forEach((rowPlayers, row) => {
-    const totalInRow = rowPlayers.length;
-    rowPlayers.forEach((player, colIdx) => {
-      const x = totalInRow === 1 ? 50 : 15 + (colIdx / (totalInRow - 1)) * 70;
-      const y = 8 + ((row - 1) / Math.max(maxRow - 1, 1)) * 82;
+  const positions: PlayerPosition[] = [];
+  rows.forEach((rp, row) => {
+    rp.forEach((player, ci) => {
+      const x = rp.length === 1 ? 50 : 15 + (ci / (rp.length - 1)) * 70;
+      const yBase = 6 + ((row - 1) / Math.max(maxRow - 1, 1)) * 40;
+      const y = isHome ? yBase : 94 - yBase;
       positions.push({ player, x, y });
     });
   });
-
   return positions;
 }
 
-function getPositionsFromFormation(formation: string, players: LineupPlayer[]): PlayerPosition[] {
+function formationPositions(formation: string, players: LineupPlayer[], isHome: boolean): PlayerPosition[] {
   const lines = formation.split('-').map(Number).filter(n => !isNaN(n));
-  if (!lines.length) {
-    return players.map((player, i) => ({
-      player, x: 50, y: 10 + (i / players.length) * 80,
-    }));
-  }
+  if (!lines.length) return players.map((p, i) => ({ player: p, x: 50, y: isHome ? 5 + (i / players.length) * 42 : 95 - (i / players.length) * 42 }));
 
   const positions: PlayerPosition[] = [];
-  let playerIdx = 0;
+  let idx = 0;
 
-  // Goalkeeper
-  if (playerIdx < players.length) {
-    positions.push({ player: players[playerIdx], x: 50, y: 8 });
-    playerIdx++;
+  // GK
+  if (idx < players.length) {
+    positions.push({ player: players[idx], x: 50, y: isHome ? 5 : 95 });
+    idx++;
   }
 
-  const totalLines = lines.length;
-  lines.forEach((count, lineIdx) => {
-    const y = 22 + (lineIdx / Math.max(totalLines - 1, 1)) * 68;
-    for (let i = 0; i < count && playerIdx < players.length; i++) {
+  lines.forEach((count, li) => {
+    const yBase = 14 + (li / Math.max(lines.length - 1, 1)) * 32;
+    const y = isHome ? yBase : 100 - yBase;
+    for (let i = 0; i < count && idx < players.length; i++) {
       const x = count === 1 ? 50 : 15 + (i / (count - 1)) * 70;
-      positions.push({ player: players[playerIdx], x, y });
-      playerIdx++;
+      positions.push({ player: players[idx], x, y });
+      idx++;
     }
   });
-
   return positions;
 }
