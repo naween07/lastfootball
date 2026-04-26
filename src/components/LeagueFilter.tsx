@@ -72,7 +72,7 @@ export default function LeagueFilter({ leagues, selectedLeagueId, onSelect }: Le
   return (
     <div className="sticky top-14 z-40 bg-background/95 backdrop-blur-md border-b border-border">
       <div className="container">
-        <div className="flex items-center gap-2 py-2.5">
+        <div className="flex items-center gap-2.5 py-3 px-1">
           {/* All chip */}
           <FilterChip label="All" active={selectedLeagueId === null} onClick={() => onSelect(null)} />
 
@@ -173,14 +173,14 @@ function FilterChip({ label, logo, active, onClick, closable }: {
     <button
       onClick={onClick}
       className={cn(
-        'flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-medium transition-colors flex-shrink-0',
+        'flex items-center gap-1.5 whitespace-nowrap px-3.5 py-2 rounded-full text-xs font-semibold transition-all duration-200 flex-shrink-0',
         active
-          ? 'bg-primary text-primary-foreground'
-          : 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
+          ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20'
+          : 'bg-secondary/70 text-secondary-foreground hover:bg-secondary hover:text-foreground hover:scale-[1.03] active:scale-[0.97]',
       )}
     >
       {logo?.startsWith('http') ? (
-        <OptimizedImage src={logo} alt="" className="w-3.5 h-3.5" priority={active} />
+        <OptimizedImage src={logo} alt="" className="w-4 h-4" priority={active} />
       ) : logo ? (
         <span>{logo}</span>
       ) : null}
