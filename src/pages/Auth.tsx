@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
-import { Mail, Lock, User, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Mail, Lock, User, Eye, EyeOff, Loader2, ArrowLeft, Trophy } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export default function Auth() {
-  const { user, loading, onboardingCompleted } = useAuth();
+  const { user, loading } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -22,19 +23,14 @@ export default function Auth() {
     );
   }
 
-  if (user) {
-    if (onboardingCompleted === false) return <Navigate to="/onboarding" replace />;
-    if (onboardingCompleted === true) return <Navigate to="/" replace />;
-    // Still loading onboarding status
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-primary" />
-      </div>
-    );
-  }
+  if (user) return <Navigate to="/" replace />;
 
-  const handleEmailAuth = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!email || !password) return toast.error('Please fill in all fields');
+    if (isSignUp && !name) return toast.error('Please enter your name');
+    if (password.length < 6) return toast.error('Password must be at least 6 characters');
+
     setSubmitting(true);
     try {
       if (isSignUp) {
@@ -43,11 +39,12 @@ export default function Auth() {
           password,
           options: {
             data: { full_name: name },
-            emailRedirectTo: window.location.origin,
           },
         });
         if (error) throw error;
-        toast.success('Check your email to confirm your account!');
+        toast.success('Account created! You can now sign in.');
+        setIsSignUp(false);
+        setPassword('');
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -60,78 +57,49 @@ export default function Auth() {
     }
   };
 
-  const handleOAuth = async (provider: 'google' | 'apple') => {
-    setSubmitting(true);
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo: window.location.origin,
-        },
-      });
-      if (error) {
-        toast.error(error.message || `${provider} sign-in failed`);
-      }
-    } catch (err: any) {
-      toast.error(err.message || 'OAuth failed');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-center pt-12 pb-6">
-        <span className="text-2xl font-extrabold tracking-tight">
-          ⚽ Last<span className="text-primary">Football</span>
-        </span>
+      {/* Background accent */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[600px] rounded-full bg-primary/5 blur-3xl" />
       </div>
 
-      <div className="flex-1 flex items-start justify-center px-4 pt-4">
+      {/* Back link */}
+      <div className="relative z-10 px-4 pt-4">
+        <Link to="/" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Back to LastFootball
+        </Link>
+      </div>
+
+      {/* Form */}
+      <div className="relative z-10 flex-1 flex items-start justify-center px-4 pt-8 sm:pt-16">
         <div className="w-full max-w-sm">
-          <h1 className="text-xl font-bold text-center mb-1">
-            {isSignUp ? 'Create your account' : 'Welcome back'}
-          </h1>
-          <p className="text-sm text-muted-foreground text-center mb-6">
-            {isSignUp ? 'Sign up to track your favorite teams' : 'Sign in to continue'}
-          </p>
-
-          {/* Social buttons */}
-          <div className="space-y-2 mb-6">
-            <button
-              onClick={() => handleOAuth('google')}
-              disabled={submitting}
-              className="w-full flex items-center justify-center gap-2 h-11 rounded-lg border border-border bg-card hover:bg-secondary transition-colors text-sm font-medium"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-              </svg>
-              Continue with Google
-            </button>
-            <button
-              onClick={() => handleOAuth('apple')}
-              disabled={submitting}
-              className="w-full flex items-center justify-center gap-2 h-11 rounded-lg border border-border bg-card hover:bg-secondary transition-colors text-sm font-medium"
-            >
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
-              </svg>
-              Continue with Apple
-            </button>
+          {/* Logo */}
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 mb-4">
+              <span className="text-2xl">⚽</span>
+            </div>
+            <h1 className="text-2xl font-black text-foreground">
+              {isSignUp ? 'Join LastFootball' : 'Welcome Back'}
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              {isSignUp ? 'Create your free account' : 'Sign in to your account'}
+            </p>
           </div>
 
-          <div className="flex items-center gap-3 mb-6">
-            <div className="flex-1 h-px bg-border" />
-            <span className="text-xs text-muted-foreground">or</span>
-            <div className="flex-1 h-px bg-border" />
+          {/* World Cup banner */}
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-6">
+            <Trophy className="w-8 h-8 text-amber-400 flex-shrink-0" />
+            <div>
+              <p className="text-xs font-bold text-amber-400">FIFA World Cup 2026</p>
+              <p className="text-[11px] text-muted-foreground">Sign up to pick your team and predict results!</p>
+            </div>
           </div>
 
-          {/* Email form */}
-          <form onSubmit={handleEmailAuth} className="space-y-3">
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-3">
+            {/* Name — sign up only */}
             {isSignUp && (
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -140,11 +108,13 @@ export default function Auth() {
                   placeholder="Full name"
                   value={name}
                   onChange={e => setName(e.target.value)}
-                  required={isSignUp}
-                  className="w-full h-11 pl-10 pr-3 rounded-lg border border-border bg-card text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="w-full h-12 pl-10 pr-4 rounded-xl bg-secondary/50 border border-border text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-colors"
+                  autoComplete="name"
                 />
               </div>
             )}
+
+            {/* Email */}
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <input
@@ -152,50 +122,95 @@ export default function Auth() {
                 placeholder="Email address"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
+                className="w-full h-12 pl-10 pr-4 rounded-xl bg-secondary/50 border border-border text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-colors"
+                autoComplete="email"
                 required
-                className="w-full h-11 pl-10 pr-3 rounded-lg border border-border bg-card text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
+
+            {/* Password */}
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <input
                 type={showPassword ? 'text' : 'password'}
-                placeholder="Password"
+                placeholder={isSignUp ? 'Create password (6+ chars)' : 'Password'}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
+                className="w-full h-12 pl-10 pr-12 rounded-xl bg-secondary/50 border border-border text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-colors"
+                autoComplete={isSignUp ? 'new-password' : 'current-password'}
                 required
                 minLength={6}
-                className="w-full h-11 pl-10 pr-10 rounded-lg border border-border bg-card text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
 
+            {/* Submit */}
             <button
               type="submit"
               disabled={submitting}
-              className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+              className={cn(
+                'w-full h-12 rounded-xl font-bold text-sm transition-all duration-200',
+                'bg-primary text-primary-foreground hover:opacity-90 active:scale-[0.98]',
+                submitting && 'opacity-70 cursor-not-allowed',
+              )}
             >
-              {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-              {isSignUp ? 'Create Account' : 'Sign In'}
+              {submitting ? (
+                <Loader2 className="w-4 h-4 animate-spin mx-auto" />
+              ) : isSignUp ? (
+                'Create Account'
+              ) : (
+                'Sign In'
+              )}
             </button>
           </form>
 
-          <p className="text-sm text-center mt-6 text-muted-foreground">
-            {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
-            <button
-              onClick={() => setIsSignUp(!isSignUp)}
-              className="text-primary font-medium hover:underline"
-            >
-              {isSignUp ? 'Sign in' : 'Sign up'}
-            </button>
-          </p>
+          {/* Toggle sign up / sign in */}
+          <div className="text-center mt-6">
+            <p className="text-sm text-muted-foreground">
+              {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
+              <button
+                onClick={() => { setIsSignUp(!isSignUp); setPassword(''); }}
+                className="text-primary font-semibold hover:underline"
+              >
+                {isSignUp ? 'Sign in' : 'Sign up free'}
+              </button>
+            </p>
+          </div>
+
+          {/* Features list */}
+          <div className="mt-8 pt-6 border-t border-border/30">
+            <p className="text-[10px] text-muted-foreground/50 uppercase tracking-widest font-bold text-center mb-3">
+              What you get
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                'Follow favorite teams',
+                'World Cup predictions',
+                'Match reactions',
+                'Personalized feed',
+              ].map(feature => (
+                <div key={feature} className="flex items-center gap-1.5">
+                  <span className="w-1 h-1 rounded-full bg-primary flex-shrink-0" />
+                  <span className="text-[11px] text-muted-foreground">{feature}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
+      </div>
+
+      {/* Footer */}
+      <div className="relative z-10 text-center py-4">
+        <p className="text-[10px] text-muted-foreground/40">
+          By signing up, you agree to our terms of service.
+        </p>
       </div>
     </div>
   );
