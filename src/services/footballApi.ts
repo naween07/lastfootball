@@ -178,24 +178,28 @@ export async function fetchMatchDetails(fixtureId: number): Promise<Match | null
     const homeTeamId = fixtures[0].teams.home.id;
 
     if (events.length > 0) {
-      match.events = events.map((e: any, i: number) => {
-        let type: MatchEvent["type"] = "goal";
-        if (e.type === "Goal") type = "goal";
-        else if (e.type === "Card" && e.detail?.includes("Yellow")) type = "yellow_card";
-        else if (e.type === "Card" && e.detail?.includes("Red")) type = "red_card";
-        else if (e.type === "subst") type = "substitution";
+      match.events = events
+        .map((e: any, i: number) => {
+          let type: MatchEvent["type"] | null = null;
+          if (e.type === "Goal") type = "goal";
+          else if (e.type === "Card" && e.detail?.includes("Yellow")) type = "yellow_card";
+          else if (e.type === "Card" && e.detail?.includes("Red")) type = "red_card";
+          else if (e.type === "subst") type = "substitution";
 
-        return {
-          id: i,
-          type,
-          minute: e.time?.elapsed || 0,
-          extraMinute: e.time?.extra || undefined,
-          team: (e.team?.id === homeTeamId ? "home" : "away") as "home" | "away",
-          playerName: e.player?.name || "Unknown",
-          assistName: e.assist?.name || undefined,
-          detail: e.detail || undefined,
-        };
-      });
+          if (!type) return null; // Skip unknown event types (Var, etc.)
+
+          return {
+            id: i,
+            type,
+            minute: e.time?.elapsed || 0,
+            extraMinute: e.time?.extra || undefined,
+            team: (e.team?.id === homeTeamId ? "home" : "away") as "home" | "away",
+            playerName: e.player?.name || "Unknown",
+            assistName: e.assist?.name || undefined,
+            detail: e.detail || undefined,
+          };
+        })
+        .filter((e): e is MatchEvent => e !== null);
     }
 
     match.stats = mapStats(stats);
