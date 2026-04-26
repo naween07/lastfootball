@@ -105,8 +105,8 @@ export default function HomePage() {
                   </span>
                 </div>
                 <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-white leading-[1.1] mb-4 drop-shadow-lg">
-                  ALL FOOTBALL,<br />
-                  <span className="text-primary">ONE PLACE.</span>
+                  NOBODY DOES IT<br />
+                  <span className="text-primary">BETTER.</span>
                 </h1>
                 <p className="text-base sm:text-lg text-gray-300 max-w-md mx-auto lg:mx-0 mb-8">
                   Live Scores, Stats, News and Much More. Track every match from top leagues worldwide.
