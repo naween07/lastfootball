@@ -3,16 +3,11 @@ import { Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import SEOHead, { buildWebsiteJsonLd } from '@/components/SEOHead';
 import OptimizedImage from '@/components/OptimizedImage';
-import { fetchMatchesByDate, fetchLiveMatches, fetchTopScorers, getToday } from '@/services/footballApi';
+import { fetchMatchesByDate, fetchLiveMatches, fetchTopScorers, getToday, PlayerStat } from '@/services/footballApi';
 import { fetchFootballNews } from '@/services/newsApi';
 import { Match } from '@/types/football';
 import { ArrowRight, Zap, Calendar, Trophy, Newspaper, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-interface PlayerStat {
-  player: { id: number; name: string; photo: string };
-  statistics: { goals?: { total: number }; team: { id: number; name: string; logo: string } }[];
-}
 
 interface NewsItem {
   title: string;
@@ -25,23 +20,39 @@ interface NewsItem {
 export default function HomePage() {
   const [liveMatches, setLiveMatches] = useState<Match[]>([]);
   const [todayMatches, setTodayMatches] = useState<Match[]>([]);
-  const [topScorers, setTopScorers] = useState<PlayerStat[]>([]);
+  const [topScorers, setTopScorers] = useState<{ league: string; scorers: PlayerStat[] }[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [live, today, scorers, newsData] = await Promise.allSettled([
+        const leagues = [
+          { id: 39, name: 'Premier League' },
+          { id: 140, name: 'La Liga' },
+          { id: 135, name: 'Serie A' },
+          { id: 78, name: 'Bundesliga' },
+          { id: 61, name: 'Ligue 1' },
+        ];
+
+        const [live, today, newsData, ...scorerResults] = await Promise.allSettled([
           fetchLiveMatches(),
           fetchMatchesByDate(getToday()),
-          fetchTopScorers(39, 2025), // Premier League
           fetchFootballNews(),
+          ...leagues.map(l => fetchTopScorers(l.id, 2025)),
         ]);
+
         if (live.status === 'fulfilled') setLiveMatches(live.value);
         if (today.status === 'fulfilled') setTodayMatches(today.value);
-        if (scorers.status === 'fulfilled') setTopScorers(scorers.value.slice(0, 5));
         if (newsData.status === 'fulfilled') setNews(newsData.value.slice(0, 4));
+
+        const allScorers: { league: string; scorers: PlayerStat[] }[] = [];
+        scorerResults.forEach((result, i) => {
+          if (result.status === 'fulfilled' && result.value.length > 0) {
+            allScorers.push({ league: leagues[i].name, scorers: result.value.slice(0, 5) });
+          }
+        });
+        setTopScorers(allScorers);
       } catch {}
       setLoading(false);
     };
@@ -163,30 +174,34 @@ export default function HomePage() {
               linkLabel="View All Matches"
             >
               {upcomingMatches.length > 0 ? (
-                <div className="space-y-1">
-                  {upcomingMatches.slice(0, 4).map(m => (
-                    <MiniFixture key={m.id} match={m} />
-                  ))}
-                </div>
+                <AutoPaginate items={upcomingMatches} pageSize={4} interval={5000} render={(m) => <MiniFixture key={m.id} match={m} />} />
               ) : (
                 <p className="text-sm text-muted-foreground py-4 text-center">No upcoming matches today</p>
               )}
             </DashboardCard>
 
-            {/* Top Scorers */}
+            {/* Top Scorers — cycling through leagues */}
             <DashboardCard
               title="Top Scorers"
               icon={<Trophy className="w-4 h-4" />}
               linkTo="/stats"
               linkLabel="View All Players"
-              subtitle="Premier League"
             >
               {topScorers.length > 0 ? (
-                <div className="space-y-1">
-                  {topScorers.map((s, i) => (
-                    <ScorerRow key={s.player.id} scorer={s} rank={i + 1} />
-                  ))}
-                </div>
+                <AutoSlider
+                  items={topScorers}
+                  interval={7000}
+                  render={(leagueData) => (
+                    <div>
+                      <div className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider mb-2">{leagueData.league}</div>
+                      <div className="space-y-1">
+                        {leagueData.scorers.map((s, i) => (
+                          <ScorerRow key={s.player.id} scorer={s} rank={i + 1} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                />
               ) : (
                 <p className="text-sm text-muted-foreground py-4 text-center">Loading...</p>
               )}
@@ -440,8 +455,6 @@ function MiniFixture({ match }: { match: Match }) {
 
 // ─── Scorer Row ─────────────────────────────────────────────────────────────
 function ScorerRow({ scorer, rank }: { scorer: PlayerStat; rank: number }) {
-  const goals = scorer.statistics?.[0]?.goals?.total || 0;
-  const team = scorer.statistics?.[0]?.team;
   return (
     <div className="flex items-center gap-2 py-1.5">
       <span className="text-[11px] font-bold text-muted-foreground w-4 text-center tabular-nums">{rank}</span>
@@ -449,11 +462,11 @@ function ScorerRow({ scorer, rank }: { scorer: PlayerStat; rank: number }) {
       <div className="flex-1 min-w-0">
         <span className="text-[12px] font-semibold text-foreground truncate block">{scorer.player.name}</span>
         <div className="flex items-center gap-1">
-          {team?.logo && <img src={team.logo} alt="" className="w-3 h-3 object-contain" />}
-          <span className="text-[10px] text-muted-foreground truncate">{team?.name}</span>
+          {scorer.team.logo && <img src={scorer.team.logo} alt="" className="w-3 h-3 object-contain" />}
+          <span className="text-[10px] text-muted-foreground truncate">{scorer.team.name}</span>
         </div>
       </div>
-      <span className="text-sm font-black text-primary tabular-nums">{goals}</span>
+      <span className="text-sm font-black text-primary tabular-nums">{scorer.goals}</span>
     </div>
   );
 }
