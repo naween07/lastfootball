@@ -181,12 +181,20 @@ export async function fetchMatchDetails(fixtureId: number): Promise<Match | null
       match.events = events
         .map((e: any, i: number) => {
           let type: MatchEvent["type"] | null = null;
-          if (e.type === "Goal") type = "goal";
-          else if (e.type === "Card" && e.detail?.includes("Yellow")) type = "yellow_card";
-          else if (e.type === "Card" && e.detail?.includes("Red")) type = "red_card";
-          else if (e.type === "subst") type = "substitution";
 
-          if (!type) return null; // Skip unknown event types (Var, etc.)
+          if (e.type === "Goal") {
+            // "Missed Penalty" comes as type "Goal" but is NOT a goal
+            if (e.detail === "Missed Penalty") return null;
+            type = "goal";
+          } else if (e.type === "Card") {
+            if (e.detail?.includes("Yellow")) type = "yellow_card";
+            else if (e.detail?.includes("Red")) type = "red_card";
+          } else if (e.type === "subst") {
+            type = "substitution";
+          }
+          // Skip: "Var", unknown types, null types
+
+          if (!type) return null;
 
           return {
             id: i,
