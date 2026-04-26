@@ -498,11 +498,11 @@ function timeAgo(dateStr: string): string {
 
 // ─── Hero Background with rotating images ───────────────────────────────────
 const HERO_IMAGES = [
-  'https://images.unsplash.com/photo-1489944440615-453fc2b6a9a9?w=1200&q=80', // stadium
-  'https://images.unsplash.com/photo-1522778119026-d647f0596c20?w=1200&q=80', // football action
-  'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=1200&q=80', // stadium night
-  'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?w=1200&q=80', // football close up
-  'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=1200&q=80', // match day
+  'https://images.unsplash.com/photo-1553778263-73a83bab9b0c?w=1400&q=80', // football boots close up on grass
+  'https://images.unsplash.com/photo-1606925797300-0b35e9d1794e?w=1400&q=80', // football on pitch close up
+  'https://images.unsplash.com/photo-1560272564-c83b66b1ad12?w=1400&q=80', // player boots kicking ball
+  'https://images.unsplash.com/photo-1517466787929-bc90951d0974?w=1400&q=80', // stadium atmosphere night
+  'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=1400&q=80', // football on grass moody
 ];
 
 function HeroBackground() {
@@ -510,22 +510,17 @@ function HeroBackground() {
   const [loaded, setLoaded] = useState<Set<number>>(new Set());
 
   useEffect(() => {
-    // Preload first image
-    const img = new Image();
-    img.onload = () => setLoaded(prev => new Set(prev).add(0));
-    img.src = HERO_IMAGES[0];
-
-    // Preload remaining
-    HERO_IMAGES.slice(1).forEach((src, i) => {
-      const im = new Image();
-      im.onload = () => setLoaded(prev => new Set(prev).add(i + 1));
-      im.src = src;
+    // Preload all images
+    HERO_IMAGES.forEach((src, i) => {
+      const img = new Image();
+      img.onload = () => setLoaded(prev => new Set(prev).add(i));
+      img.src = src;
     });
 
-    // Rotate every 5 seconds
+    // Rotate every 8 seconds — slow, cinematic
     const interval = setInterval(() => {
       setCurrentIdx(prev => (prev + 1) % HERO_IMAGES.length);
-    }, 5000);
+    }, 8000);
     return () => clearInterval(interval);
   }, []);
 
@@ -534,7 +529,7 @@ function HeroBackground() {
       {HERO_IMAGES.map((src, i) => (
         <div
           key={i}
-          className="absolute inset-0 bg-cover bg-center transition-opacity duration-1000 ease-in-out"
+          className="absolute inset-0 bg-cover bg-center transition-opacity duration-[2000ms] ease-in-out"
           style={{
             backgroundImage: loaded.has(i) ? `url(${src})` : undefined,
             opacity: i === currentIdx ? 1 : 0,
