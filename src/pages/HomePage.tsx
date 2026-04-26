@@ -498,11 +498,11 @@ function timeAgo(dateStr: string): string {
 
 // ─── Hero Background with rotating images ───────────────────────────────────
 const HERO_IMAGES = [
-  'https://images.unsplash.com/photo-1553778263-73a83bab9b0c?w=1400&q=80', // football boots close up on grass
-  'https://images.unsplash.com/photo-1606925797300-0b35e9d1794e?w=1400&q=80', // football on pitch close up
-  'https://images.unsplash.com/photo-1560272564-c83b66b1ad12?w=1400&q=80', // player boots kicking ball
-  'https://images.unsplash.com/photo-1517466787929-bc90951d0974?w=1400&q=80', // stadium atmosphere night
-  'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=1400&q=80', // football on grass moody
+  'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=1600&q=80&fit=crop', // football on dark grass — moody
+  'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?w=1600&q=80&fit=crop', // boots kicking ball close up
+  'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=1600&q=80&fit=crop', // stadium floodlights night atmosphere
+  'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=1600&q=80&fit=crop', // match day crowd atmosphere
+  'https://images.unsplash.com/photo-1522778119026-d647f0596c20?w=1600&q=80&fit=crop', // player silhouette action shot
 ];
 
 function HeroBackground() {
