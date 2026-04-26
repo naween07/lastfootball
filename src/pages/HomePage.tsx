@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import SEOHead, { buildWebsiteJsonLd } from '@/components/SEOHead';
 import OptimizedImage from '@/components/OptimizedImage';
-import { fetchMatchesByDate, fetchLiveMatches, fetchTopScorers, getToday, PlayerStat } from '@/services/footballApi';
+import { fetchMatchesByDate, fetchLiveMatches, fetchTopScorers, fetchStandings, getToday, PlayerStat } from '@/services/footballApi';
 import { fetchFootballNews } from '@/services/newsApi';
 import { Match } from '@/types/football';
 import { ArrowRight, Zap, Calendar, Trophy, Newspaper, ChevronRight } from 'lucide-react';
@@ -247,40 +247,14 @@ export default function HomePage() {
               )}
             </DashboardCard>
 
-            {/* Stats Zone — Featured match stats */}
+            {/* Stats Zone — rotating league standings */}
             <DashboardCard
-              title="Stats Zone"
-              icon={<Zap className="w-4 h-4" />}
+              title="Standings"
+              icon={<Trophy className="w-4 h-4" />}
               linkTo="/stats"
               linkLabel="View Full Stats"
             >
-              {featuredMatch && featuredMatch.stats ? (
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <OptimizedImage src={featuredMatch.homeTeam.logo} alt="" className="w-6 h-6 object-contain" />
-                      <span className="text-xs font-bold text-foreground">{featuredMatch.homeTeam.shortName}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-foreground">{featuredMatch.awayTeam.shortName}</span>
-                      <OptimizedImage src={featuredMatch.awayTeam.logo} alt="" className="w-6 h-6 object-contain" />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <StatBar label="Possession" home={featuredMatch.stats.possession?.[0]} away={featuredMatch.stats.possession?.[1]} />
-                    <StatBar label="Shots" home={featuredMatch.stats.shots?.[0]} away={featuredMatch.stats.shots?.[1]} />
-                    <StatBar label="Shots on Target" home={featuredMatch.stats.shotsOnTarget?.[0]} away={featuredMatch.stats.shotsOnTarget?.[1]} />
-                    <StatBar label="Corners" home={featuredMatch.stats.corners?.[0]} away={featuredMatch.stats.corners?.[1]} />
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center py-6">
-                  <p className="text-sm text-muted-foreground">Match stats appear here during live games</p>
-                  <Link to="/stats" className="text-xs text-primary hover:underline mt-2 inline-block">
-                    Browse league stats →
-                  </Link>
-                </div>
-              )}
+              <StandingsWidget />
             </DashboardCard>
           </div>
         </section>
@@ -510,6 +484,93 @@ function timeAgo(dateStr: string): string {
 }
 
 // ─── Hero Background with rotating images ───────────────────────────────────
+// ─── Standings Widget — rotating league tables ──────────────────────────────
+const STANDING_LEAGUES = [
+  { id: 39, name: 'Premier League' },
+  { id: 140, name: 'La Liga' },
+  { id: 135, name: 'Serie A' },
+  { id: 78, name: 'Bundesliga' },
+  { id: 61, name: 'Ligue 1' },
+];
+
+function StandingsWidget() {
+  const [tables, setTables] = useState<{ league: string; teams: { rank: number; name: string; logo: string; pts: number; played: number; gd: number }[] }[]>([]);
+  const [idx, setIdx] = useState(0);
+
+  useEffect(() => {
+    const load = async () => {
+      const results = await Promise.allSettled(
+        STANDING_LEAGUES.map(l => fetchStandings(l.id, 2025))
+      );
+      const loaded: typeof tables = [];
+      results.forEach((r, i) => {
+        if (r.status === 'fulfilled' && r.value.length > 0) {
+          loaded.push({
+            league: STANDING_LEAGUES[i].name,
+            teams: r.value.slice(0, 5).map(t => ({
+              rank: t.rank,
+              name: t.team.name,
+              logo: t.team.logo,
+              pts: t.points,
+              played: t.played,
+              gd: t.goalsDiff,
+            })),
+          });
+        }
+      });
+      setTables(loaded);
+    };
+    load();
+  }, []);
+
+  useEffect(() => {
+    if (tables.length <= 1) return;
+    const timer = setInterval(() => setIdx(prev => (prev + 1) % tables.length), 7000);
+    return () => clearInterval(timer);
+  }, [tables.length]);
+
+  if (!tables.length) return <p className="text-sm text-muted-foreground py-4 text-center">Loading...</p>;
+
+  const current = tables[idx];
+  return (
+    <div>
+      <div className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider mb-2">{current.league}</div>
+      {/* Header */}
+      <div className="flex items-center gap-2 py-1 text-[9px] text-muted-foreground/60 uppercase font-bold">
+        <span className="w-4 text-center">#</span>
+        <span className="flex-1">Team</span>
+        <span className="w-6 text-center">P</span>
+        <span className="w-6 text-center">GD</span>
+        <span className="w-7 text-center">Pts</span>
+      </div>
+      {current.teams.map(t => (
+        <div key={t.rank} className="flex items-center gap-2 py-1.5 border-t border-border/10">
+          <span className="text-[10px] font-bold text-muted-foreground w-4 text-center tabular-nums">{t.rank}</span>
+          <img src={t.logo} alt="" className="w-4 h-4 object-contain flex-shrink-0" loading="lazy" />
+          <span className="text-[11px] font-medium text-foreground flex-1 truncate">{t.name}</span>
+          <span className="text-[10px] text-muted-foreground w-6 text-center tabular-nums">{t.played}</span>
+          <span className={cn('text-[10px] w-6 text-center tabular-nums font-semibold', t.gd > 0 ? 'text-emerald-400' : t.gd < 0 ? 'text-red-400' : 'text-muted-foreground')}>
+            {t.gd > 0 ? `+${t.gd}` : t.gd}
+          </span>
+          <span className="text-[11px] font-black text-primary w-7 text-center tabular-nums">{t.pts}</span>
+        </div>
+      ))}
+      {/* Dots */}
+      {tables.length > 1 && (
+        <div className="flex items-center justify-center gap-1.5 mt-2 pt-1">
+          {tables.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setIdx(i)}
+              className={cn('h-1 rounded-full transition-all', i === idx ? 'w-3 bg-primary' : 'w-1.5 bg-muted-foreground/20')}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Auto Slider — crossfade between single items ───────────────────────────
 function AutoSlider<T>({ items, interval, render }: { items: T[]; interval: number; render: (item: T) => React.ReactNode }) {
   const [idx, setIdx] = useState(0);
