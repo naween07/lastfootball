@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import SEOHead from '@/components/SEOHead';
@@ -244,30 +244,18 @@ export default function WorldCup() {
 
                 {user ? (
                   <>
-                    {/* Team picker grid */}
-                    <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2 mb-5 max-h-[320px] overflow-y-auto">
-                      {ALL_TEAMS.map(team => (
-                        <button
-                          key={team.code}
-                          onClick={() => setSelectedTeam(team.code)}
-                          className={cn(
-                            'flex flex-col items-center gap-1 p-2 rounded-lg transition-all',
-                            selectedTeam === team.code
-                              ? 'bg-primary/10 ring-2 ring-primary scale-105'
-                              : 'bg-secondary/30 hover:bg-secondary/60',
-                          )}
-                        >
-                          <span className="text-2xl">{team.flag}</span>
-                          <span className="text-[9px] font-semibold text-foreground/80 truncate w-full text-center">{team.code}</span>
-                        </button>
-                      ))}
-                    </div>
+                    {/* Searchable team picker */}
+                    <TeamPicker
+                      teams={ALL_TEAMS}
+                      selected={selectedTeam}
+                      onSelect={setSelectedTeam}
+                    />
 
                     <button
                       onClick={handleEnroll}
                       disabled={!selectedTeam || enrolling}
                       className={cn(
-                        'w-full h-11 rounded-xl font-bold text-sm transition-all',
+                        'w-full h-11 rounded-xl font-bold text-sm transition-all mt-4',
                         selectedTeam
                           ? 'bg-amber-500 text-black hover:bg-amber-400 active:scale-[0.98]'
                           : 'bg-secondary text-muted-foreground cursor-not-allowed',
@@ -354,6 +342,104 @@ export default function WorldCup() {
         </section>
       </main>
     </>
+  );
+}
+
+// ─── Searchable Team Picker ─────────────────────────────────────────────────
+function TeamPicker({
+  teams, selected, onSelect,
+}: {
+  teams: { name: string; code: string; flag: string }[];
+  selected: string | null;
+  onSelect: (code: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  const filtered = search
+    ? teams.filter(t => t.name.toLowerCase().includes(search.toLowerCase()) || t.code.toLowerCase().includes(search.toLowerCase()))
+    : teams;
+
+  const selectedTeam = teams.find(t => t.code === selected);
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      {/* Selected / trigger button */}
+      <button
+        onClick={() => { setOpen(!open); setSearch(''); }}
+        className={cn(
+          'w-full flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors text-left',
+          open ? 'border-amber-500/50 bg-secondary/50' : 'border-border bg-secondary/30 hover:bg-secondary/50',
+        )}
+      >
+        {selectedTeam ? (
+          <>
+            <span className="text-2xl">{selectedTeam.flag}</span>
+            <span className="text-sm font-bold text-foreground flex-1">{selectedTeam.name}</span>
+            <span className="text-[10px] text-muted-foreground bg-secondary px-2 py-0.5 rounded">Change</span>
+          </>
+        ) : (
+          <>
+            <span className="text-2xl">🌍</span>
+            <span className="text-sm text-muted-foreground flex-1">Search and select your team...</span>
+            <ChevronRight className={cn('w-4 h-4 text-muted-foreground transition-transform', open && 'rotate-90')} />
+          </>
+        )}
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div className="absolute left-0 right-0 top-full mt-1 bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden">
+          {/* Search input */}
+          <div className="p-2 border-b border-border/30">
+            <input
+              type="text"
+              placeholder="Search country..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-secondary/50 border border-border text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-amber-500/50"
+              autoFocus
+            />
+          </div>
+
+          {/* Team list */}
+          <div className="max-h-[280px] overflow-y-auto">
+            {filtered.length > 0 ? (
+              filtered.map(team => (
+                <button
+                  key={team.code}
+                  onClick={() => { onSelect(team.code); setOpen(false); setSearch(''); }}
+                  className={cn(
+                    'w-full flex items-center gap-3 px-4 py-2.5 transition-colors text-left',
+                    selected === team.code
+                      ? 'bg-amber-500/10 text-foreground'
+                      : 'hover:bg-secondary/50 text-foreground/80',
+                  )}
+                >
+                  <span className="text-xl">{team.flag}</span>
+                  <span className="text-sm font-medium flex-1">{team.name}</span>
+                  {selected === team.code && (
+                    <Check className="w-4 h-4 text-amber-400" />
+                  )}
+                </button>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">No teams found</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
