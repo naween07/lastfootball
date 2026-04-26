@@ -30,7 +30,7 @@ export default function BottomTabBar() {
   }, [favoriteTeamIds]);
 
   const TABS = [
-    { to: '/', label: 'Live', icon: Zap },
+    { to: '/live', label: 'Live', icon: Zap },
     { to: '/fixtures', label: 'Fixtures', icon: CalendarDays },
     { to: '/news', label: 'News', icon: Flame },
     { to: '/favorites', label: 'My Club', icon: Star },
@@ -42,7 +42,7 @@ export default function BottomTabBar() {
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <div className="flex items-center justify-around h-14">
         {TABS.map(({ to, label, icon: Icon }) => {
-          const isActive = to === '/' ? pathname === '/' : pathname.startsWith(to);
+          const isActive = pathname === to || (to !== '/' && pathname.startsWith(to));
           const isFavTab = to === '/favorites';
           return (
             <Link

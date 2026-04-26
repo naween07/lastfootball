@@ -20,7 +20,8 @@ export default function Header() {
         </Link>
 
         <nav className="hidden md:flex items-center gap-1 flex-1 justify-center">
-          <NavItem to="/" label="Live" pathname={pathname} />
+          <NavItem to="/" label="Home" pathname={pathname} />
+          <NavItem to="/live" label="Live" pathname={pathname} />
           <NavItem to="/fixtures" label="Fixtures" pathname={pathname} />
           <NavItem to="/news" label="News" icon={<Flame className="w-3.5 h-3.5" />} pathname={pathname} />
           <NavItem to="/favorites" label="Favorites" icon={<Star className="w-3.5 h-3.5" />} pathname={pathname} />

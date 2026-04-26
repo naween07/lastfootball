@@ -10,6 +10,7 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import { Loader2 } from "lucide-react";
 
 // Lazy load all pages
+const HomePage = lazy(() => import("./pages/HomePage"));
 const Index = lazy(() => import("./pages/Index"));
 const Fixtures = lazy(() => import("./pages/Fixtures"));
 const MatchDetail = lazy(() => import("./pages/MatchDetail"));
@@ -65,7 +66,8 @@ function AppRoutes() {
       <Suspense fallback={<PageLoader />}>
         <PageTransition>
           <Routes>
-            <Route path="/" element={<Index />} />
+            <Route path="/" element={<HomePage />} />
+            <Route path="/live" element={<Index />} />
             <Route path="/fixtures" element={<Fixtures />} />
             <Route path="/match/:id" element={<MatchDetail />} />
             <Route path="/favorites" element={<Favorites />} />
