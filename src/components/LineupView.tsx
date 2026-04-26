@@ -23,12 +23,15 @@ function norm(n: string) { return n.normalize('NFD').replace(/[\u0300-\u036f]/g,
 function lastName(n: string) { const p = norm(n).split(/\s+/); return p[p.length - 1]; }
 function shortName(n: string) { const p = n.split(/\s+/); return p.length <= 1 ? n : `${p[0].charAt(0)}. ${p[p.length - 1]}`; }
 
-function buildEvMap(events: MatchEvent[]): Map<string, EvIcon[]> {
-  const byF = new Map<string, EvIcon[]>(), byL = new Map<string, EvIcon[]>();
+function buildEvMap(events: MatchEvent[]): { byFull: Map<string, EvIcon[]>; byLast: Map<string, EvIcon[]> } {
+  const byFull = new Map<string, EvIcon[]>();
+  const byLast = new Map<string, EvIcon[]>();
   const add = (name: string, icon: EvIcon) => {
     const f = norm(name), l = lastName(name);
-    if (!byF.has(f)) byF.set(f, []); byF.get(f)!.push(icon);
-    if (!byL.has(l)) byL.set(l, []); byL.get(l)!.push(icon);
+    if (!byFull.has(f)) byFull.set(f, []);
+    byFull.get(f)!.push(icon);
+    if (!byLast.has(l)) byLast.set(l, []);
+    byLast.get(l)!.push(icon);
   };
   events.forEach(e => {
     if (e.type === 'goal') {
@@ -41,11 +44,20 @@ function buildEvMap(events: MatchEvent[]): Map<string, EvIcon[]> {
       if (e.assistName) add(e.assistName, { type: 'sub_in', minute: e.minute });
     }
   });
-  return new Map([...byF, ...byL]);
+  return { byFull, byLast };
 }
 
-function getIcons(name: string, evMap: Map<string, EvIcon[]>): EvIcon[] {
-  return evMap.get(norm(name)) || evMap.get(lastName(name)) || [];
+function getIcons(name: string, evMap: { byFull: Map<string, EvIcon[]>; byLast: Map<string, EvIcon[]> }): EvIcon[] {
+  // Prefer full name match, fall back to last name
+  const icons = evMap.byFull.get(norm(name)) || evMap.byLast.get(lastName(name)) || [];
+  // Deduplicate by minute+type
+  const seen = new Set<string>();
+  return icons.filter(ic => {
+    const key = `${ic.type}-${ic.minute}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function ratingColor(r: string | null): string {
