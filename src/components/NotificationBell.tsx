@@ -26,30 +26,35 @@ export default function NotificationBell() {
   useEffect(() => {
     if (!user) return;
     const load = async () => {
-      const { data } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(20);
-      if (data) setNotifications(data as Notification[]);
+      try {
+        const { data, error } = await supabase
+          .from('notifications')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(20);
+        if (data && !error) setNotifications(data as Notification[]);
+      } catch {}
     };
     load();
 
-    // Realtime
-    const channel = supabase
-      .channel('user-notifications')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'notifications',
-        filter: `user_id=eq.${user.id}`,
-      }, (payload) => {
-        setNotifications(prev => [payload.new as Notification, ...prev]);
-      })
-      .subscribe();
+    // Realtime — wrap in try-catch
+    let channel: any;
+    try {
+      channel = supabase
+        .channel('user-notifications')
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${user.id}`,
+        }, (payload) => {
+          setNotifications(prev => [payload.new as Notification, ...prev]);
+        })
+        .subscribe();
+    } catch {}
 
-    return () => { supabase.removeChannel(channel); };
+    return () => { if (channel) supabase.removeChannel(channel); };
   }, [user]);
 
   // Close on outside click
@@ -63,11 +68,13 @@ export default function NotificationBell() {
 
   const markAllRead = async () => {
     if (!user) return;
-    await supabase
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('user_id', user.id)
-      .eq('is_read', false);
+    try {
+      await supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('user_id', user.id)
+        .eq('is_read', false);
+    } catch {}
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
   };
 

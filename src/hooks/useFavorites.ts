@@ -17,19 +17,21 @@ export function useFavorites() {
   // Get current user and load DB favorites
   useEffect(() => {
     const loadUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setUserId(user.id);
-        const { data } = await supabase
-          .from('user_favorites')
-          .select('team_id')
-          .eq('user_id', user.id);
-        if (data && data.length > 0) {
-          const dbIds = data.map((d: any) => d.team_id);
-          setFavoriteTeamIds(dbIds);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(dbIds));
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          setUserId(user.id);
+          const { data, error } = await supabase
+            .from('user_favorites')
+            .select('team_id')
+            .eq('user_id', user.id);
+          if (data && !error && data.length > 0) {
+            const dbIds = data.map((d: any) => d.team_id);
+            setFavoriteTeamIds(dbIds);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(dbIds));
+          }
         }
-      }
+      } catch {}
     };
     loadUser();
   }, []);
