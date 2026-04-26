@@ -117,12 +117,16 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {/* Right — featured match card */}
-              {featuredMatch && (
+              {/* Right — featured match carousel */}
+              {liveMatches.length > 0 ? (
+                <div className="flex-shrink-0 w-full max-w-sm">
+                  <AutoSlider items={liveMatches.slice(0, 6)} interval={6000} render={(m) => <FeaturedMatchCard match={m} />} />
+                </div>
+              ) : featuredMatch ? (
                 <div className="flex-shrink-0 w-full max-w-sm">
                   <FeaturedMatchCard match={featuredMatch} />
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
         </section>
@@ -134,16 +138,12 @@ export default function HomePage() {
             <DashboardCard
               title="Live Scores"
               icon={<Zap className="w-4 h-4" />}
-              linkTo="/fixtures"
+              linkTo="/live"
               linkLabel="View All Matches"
               accent
             >
               {liveMatches.length > 0 ? (
-                <div className="space-y-1">
-                  {liveMatches.slice(0, 4).map(m => (
-                    <MiniMatch key={m.id} match={m} />
-                  ))}
-                </div>
+                <AutoPaginate items={liveMatches} pageSize={4} interval={5000} render={(m) => <MiniMatch key={m.id} match={m} />} />
               ) : recentResults.length > 0 ? (
                 <div className="space-y-1">
                   {recentResults.map(m => (
@@ -494,6 +494,89 @@ function timeAgo(dateStr: string): string {
   } catch {
     return '';
   }
+}
+
+// ─── Hero Background with rotating images ───────────────────────────────────
+// ─── Auto Slider — crossfade between single items ───────────────────────────
+function AutoSlider<T>({ items, interval, render }: { items: T[]; interval: number; render: (item: T) => React.ReactNode }) {
+  const [idx, setIdx] = useState(0);
+
+  useEffect(() => {
+    if (items.length <= 1) return;
+    const timer = setInterval(() => setIdx(prev => (prev + 1) % items.length), interval);
+    return () => clearInterval(timer);
+  }, [items.length, interval]);
+
+  if (!items.length) return null;
+
+  return (
+    <div className="relative">
+      {items.map((item, i) => (
+        <div
+          key={i}
+          className={cn(
+            'transition-all duration-700 ease-in-out',
+            i === idx ? 'opacity-100 relative' : 'opacity-0 absolute inset-0 pointer-events-none',
+          )}
+        >
+          {render(item)}
+        </div>
+      ))}
+      {/* Dots indicator */}
+      {items.length > 1 && (
+        <div className="flex items-center justify-center gap-1.5 mt-3">
+          {items.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setIdx(i)}
+              className={cn(
+                'h-1.5 rounded-full transition-all',
+                i === idx ? 'w-4 bg-primary' : 'w-1.5 bg-muted-foreground/30',
+              )}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Auto Paginate — cycle through pages of items ───────────────────────────
+function AutoPaginate<T>({ items, pageSize, interval, render }: { items: T[]; pageSize: number; interval: number; render: (item: T) => React.ReactNode }) {
+  const totalPages = Math.ceil(items.length / pageSize);
+  const [page, setPage] = useState(0);
+
+  useEffect(() => {
+    if (totalPages <= 1) return;
+    const timer = setInterval(() => setPage(prev => (prev + 1) % totalPages), interval);
+    return () => clearInterval(timer);
+  }, [totalPages, interval]);
+
+  const start = page * pageSize;
+  const pageItems = items.slice(start, start + pageSize);
+
+  return (
+    <div>
+      <div className="space-y-1 transition-opacity duration-500">
+        {pageItems.map(item => render(item))}
+      </div>
+      {/* Page dots */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-1.5 mt-2 pt-1">
+          {Array.from({ length: totalPages }).map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setPage(i)}
+              className={cn(
+                'h-1 rounded-full transition-all',
+                i === page ? 'w-3 bg-primary' : 'w-1.5 bg-muted-foreground/20',
+              )}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─── Hero Background with rotating images ───────────────────────────────────
