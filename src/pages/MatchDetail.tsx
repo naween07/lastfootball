@@ -11,7 +11,7 @@ import MatchReactions from '@/components/MatchReactions';
 import OptimizedImage from '@/components/OptimizedImage';
 import { fetchMatchDetails, fetchMatchPlayers } from '@/services/footballApi';
 import { useState, useEffect, useMemo } from 'react';
-import { Match, MatchPlayerData } from '@/types/football';
+import { Match, MatchPlayerData, MatchEvent } from '@/types/football';
 import { cn } from '@/lib/utils';
 
 type Tab = 'overview' | 'lineups' | 'stats' | 'shots' | 'commentary';
@@ -216,6 +216,10 @@ function MatchHero({ match }: { match: Match }) {
             <p className="text-sm md:text-base font-semibold text-foreground leading-tight max-w-[120px] md:max-w-[180px]">
               {match.homeTeam.name}
             </p>
+            {/* Home goal scorers */}
+            {hasScore && match.events && (
+              <GoalScorers events={match.events} side="home" />
+            )}
           </div>
 
           <div className="flex flex-col items-center min-w-[110px]">
@@ -278,6 +282,10 @@ function MatchHero({ match }: { match: Match }) {
             <p className="text-sm md:text-base font-semibold text-foreground leading-tight max-w-[120px] md:max-w-[180px]">
               {match.awayTeam.name}
             </p>
+            {/* Away goal scorers */}
+            {hasScore && match.events && (
+              <GoalScorers events={match.events} side="away" />
+            )}
           </div>
         </div>
 
@@ -418,4 +426,29 @@ function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string;
 
 function EmptyState({ text }: { text: string }) {
   return <p className="text-sm text-muted-foreground text-center py-6">{text}</p>;
+}
+
+function GoalScorers({ events, side }: { events: MatchEvent[]; side: 'home' | 'away' }) {
+  const goals = events.filter(e => e.type === 'goal' && e.team === side);
+  if (!goals.length) return null;
+
+  // Get short last name
+  const shortName = (name: string) => {
+    const parts = name.split(/\s+/);
+    return parts.length > 1 ? `${parts[0].charAt(0)}. ${parts[parts.length - 1]}` : name;
+  };
+
+  return (
+    <div className="mt-1.5 space-y-0.5">
+      {goals.map((g, i) => (
+        <p key={i} className="text-[11px] text-muted-foreground leading-tight">
+          <span className="text-[9px]">⚽</span>{' '}
+          {shortName(g.playerName)}{' '}
+          <span className="text-muted-foreground/50">{g.minute}'</span>
+          {g.detail === 'Own Goal' && <span className="text-red-400 text-[9px] ml-0.5">(OG)</span>}
+          {g.detail === 'Penalty' && <span className="text-muted-foreground/50 text-[9px] ml-0.5">(P)</span>}
+        </p>
+      ))}
+    </div>
+  );
 }
