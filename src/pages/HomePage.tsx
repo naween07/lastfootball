@@ -69,12 +69,14 @@ export default function HomePage() {
       <Header />
       <main className="min-h-screen bg-background">
         {/* ─── HERO ──────────────────────────────────────────────────── */}
-        <section className="relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute inset-0 bg-gradient-to-br from-[#0a0f0a] via-[#0d1a0d] to-[#0a0a0a]" />
-          <div className="absolute inset-0 opacity-10" style={{
-            backgroundImage: 'radial-gradient(circle at 70% 30%, rgba(74,222,128,0.3), transparent 60%), radial-gradient(circle at 20% 80%, rgba(74,222,128,0.15), transparent 50%)',
-          }} />
+        <section className="relative overflow-hidden min-h-[480px] sm:min-h-[520px] flex items-center">
+          {/* Rotating background images */}
+          <HeroBackground />
+
+          {/* Overlay gradient */}
+          <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/70 to-black/40" />
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent" />
+
           {/* Grid pattern */}
           <div className="absolute inset-0 opacity-[0.03]" style={{
             backgroundImage: 'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)',
@@ -85,22 +87,22 @@ export default function HomePage() {
             <div className="flex flex-col lg:flex-row items-center gap-8 lg:gap-16">
               {/* Left — text */}
               <div className="flex-1 text-center lg:text-left">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 mb-6">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 mb-6 backdrop-blur-sm">
                   <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
                   <span className="text-xs font-semibold text-primary uppercase tracking-wider">
                     {liveMatches.length > 0 ? `${liveMatches.length} Live Now` : 'Live Scores'}
                   </span>
                 </div>
-                <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-foreground leading-[1.1] mb-4">
+                <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-white leading-[1.1] mb-4 drop-shadow-lg">
                   ALL FOOTBALL,<br />
                   <span className="text-primary">ONE PLACE.</span>
                 </h1>
-                <p className="text-base sm:text-lg text-muted-foreground max-w-md mx-auto lg:mx-0 mb-8">
+                <p className="text-base sm:text-lg text-gray-300 max-w-md mx-auto lg:mx-0 mb-8">
                   Live Scores, Stats, News and Much More. Track every match from top leagues worldwide.
                 </p>
                 <div className="flex items-center gap-3 justify-center lg:justify-start">
                   <Link
-                    to="/fixtures"
+                    to="/live"
                     className="px-6 py-3 rounded-lg bg-primary text-primary-foreground font-bold text-sm hover:opacity-90 transition-opacity flex items-center gap-2"
                   >
                     Explore Now
@@ -108,7 +110,7 @@ export default function HomePage() {
                   </Link>
                   <Link
                     to="/stats"
-                    className="px-6 py-3 rounded-lg bg-secondary text-foreground font-bold text-sm hover:bg-secondary/80 transition-colors"
+                    className="px-6 py-3 rounded-lg bg-white/10 backdrop-blur-sm text-white font-bold text-sm hover:bg-white/20 transition-colors border border-white/10"
                   >
                     View Stats
                   </Link>
@@ -492,4 +494,54 @@ function timeAgo(dateStr: string): string {
   } catch {
     return '';
   }
+}
+
+// ─── Hero Background with rotating images ───────────────────────────────────
+const HERO_IMAGES = [
+  'https://images.unsplash.com/photo-1489944440615-453fc2b6a9a9?w=1200&q=80', // stadium
+  'https://images.unsplash.com/photo-1522778119026-d647f0596c20?w=1200&q=80', // football action
+  'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=1200&q=80', // stadium night
+  'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?w=1200&q=80', // football close up
+  'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=1200&q=80', // match day
+];
+
+function HeroBackground() {
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const [loaded, setLoaded] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    // Preload first image
+    const img = new Image();
+    img.onload = () => setLoaded(prev => new Set(prev).add(0));
+    img.src = HERO_IMAGES[0];
+
+    // Preload remaining
+    HERO_IMAGES.slice(1).forEach((src, i) => {
+      const im = new Image();
+      im.onload = () => setLoaded(prev => new Set(prev).add(i + 1));
+      im.src = src;
+    });
+
+    // Rotate every 5 seconds
+    const interval = setInterval(() => {
+      setCurrentIdx(prev => (prev + 1) % HERO_IMAGES.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <>
+      {HERO_IMAGES.map((src, i) => (
+        <div
+          key={i}
+          className="absolute inset-0 bg-cover bg-center transition-opacity duration-1000 ease-in-out"
+          style={{
+            backgroundImage: loaded.has(i) ? `url(${src})` : undefined,
+            opacity: i === currentIdx ? 1 : 0,
+            backgroundColor: '#0a0a0a',
+          }}
+        />
+      ))}
+    </>
+  );
 }
