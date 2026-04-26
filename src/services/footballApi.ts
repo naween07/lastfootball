@@ -294,13 +294,20 @@ export const TOP_LEAGUES = [
   { id: 78, name: 'Bundesliga', country: 'Germany' },
   { id: 61, name: 'Ligue 1', country: 'France' },
   { id: 3, name: 'Europa League', country: 'World' },
+  { id: 45, name: 'FA Cup', country: 'England' },
+  { id: 48, name: 'League Cup', country: 'England' },
+  { id: 143, name: 'Copa del Rey', country: 'Spain' },
+  { id: 137, name: 'Coppa Italia', country: 'Italy' },
+  { id: 81, name: 'DFB Pokal', country: 'Germany' },
+  { id: 66, name: 'Coupe de France', country: 'France' },
+  { id: 848, name: 'Conference League', country: 'World' },
   { id: 94, name: 'Primeira Liga', country: 'Portugal' },
   { id: 88, name: 'Eredivisie', country: 'Netherlands' },
   { id: 307, name: 'Saudi Pro League', country: 'Saudi Arabia' },
   { id: 253, name: 'MLS', country: 'USA' },
 ];
 
-export const CUP_LEAGUE_IDS = [2, 3, 848, 45, 1, 4, 5, 6, 9, 15, 16];
+export const CUP_LEAGUE_IDS = [2, 3, 848, 45, 48, 143, 137, 81, 66, 1, 4, 5, 6, 9, 15, 16];
 
 export function getCurrentSeason(): number {
   const now = new Date();

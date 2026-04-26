@@ -1,8 +1,9 @@
 import { League } from '@/types/football';
 import OptimizedImage from './OptimizedImage';
 
-// Top 10 most-watched football leagues by API-Football ID
+// Top leagues + major cup competitions by API-Football ID
 const TOP_LEAGUES: { id: number; name: string; logo: string }[] = [
+  // Top Leagues
   { id: 39,  name: 'Premier League',       logo: 'https://media.api-sports.io/football/leagues/39.png' },
   { id: 2,   name: 'Champions League',     logo: 'https://media.api-sports.io/football/leagues/2.png' },
   { id: 140, name: 'La Liga',              logo: 'https://media.api-sports.io/football/leagues/140.png' },
@@ -10,6 +11,15 @@ const TOP_LEAGUES: { id: number; name: string; logo: string }[] = [
   { id: 78,  name: 'Bundesliga',           logo: 'https://media.api-sports.io/football/leagues/78.png' },
   { id: 61,  name: 'Ligue 1',             logo: 'https://media.api-sports.io/football/leagues/61.png' },
   { id: 3,   name: 'Europa League',        logo: 'https://media.api-sports.io/football/leagues/3.png' },
+  // Major Cups
+  { id: 45,  name: 'FA Cup',              logo: 'https://media.api-sports.io/football/leagues/45.png' },
+  { id: 48,  name: 'League Cup',          logo: 'https://media.api-sports.io/football/leagues/48.png' },
+  { id: 143, name: 'Copa del Rey',        logo: 'https://media.api-sports.io/football/leagues/143.png' },
+  { id: 137, name: 'Coppa Italia',        logo: 'https://media.api-sports.io/football/leagues/137.png' },
+  { id: 81,  name: 'DFB Pokal',           logo: 'https://media.api-sports.io/football/leagues/81.png' },
+  { id: 66,  name: 'Coupe de France',     logo: 'https://media.api-sports.io/football/leagues/66.png' },
+  { id: 848, name: 'Conference League',    logo: 'https://media.api-sports.io/football/leagues/848.png' },
+  // Other Leagues
   { id: 94,  name: 'Primeira Liga',        logo: 'https://media.api-sports.io/football/leagues/94.png' },
   { id: 88,  name: 'Eredivisie',           logo: 'https://media.api-sports.io/football/leagues/88.png' },
   { id: 307, name: 'Saudi Pro League',     logo: 'https://media.api-sports.io/football/leagues/307.png' },
