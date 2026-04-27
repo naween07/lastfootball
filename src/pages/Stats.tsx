@@ -47,7 +47,7 @@ export default function Stats() {
       <Header />
 
       <div className="sticky top-14 z-40 bg-background/95 backdrop-blur-md border-b border-border">
-        <div className="container overflow-x-auto">
+        <div className="container overflow-x-auto scrollbar-hide">
           <div className="flex items-center gap-0 min-w-max">
             {TOP_LEAGUES.map(league => (
               <button

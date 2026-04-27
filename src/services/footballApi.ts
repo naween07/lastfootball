@@ -271,10 +271,24 @@ export async function fetchMatchPlayers(fixtureId: number): Promise<MatchPlayerD
 
 export async function searchTeamsAndLeagues(query: string): Promise<Match[]> {
   try {
-    const teams = await callApi("teams", { search: query });
+    // Try direct search first
+    let teams = await callApi("teams", { search: query });
+    
+    // If no results and query has multiple words, try each word
+    if (!teams.length && query.includes(' ')) {
+      const words = query.split(/\s+/).filter(w => w.length >= 3);
+      for (const word of words) {
+        teams = await callApi("teams", { search: word });
+        if (teams.length) break;
+      }
+    }
+
     if (!teams.length) return [];
+    
+    // Get fixtures for the best matching team
     const teamId = teams[0]?.team?.id;
     if (!teamId) return [];
+    
     const fixtures = await callApi("fixtures", { team: String(teamId), last: "5" });
     return fixtures.map(mapFixtureToMatch);
   } catch (err) {
