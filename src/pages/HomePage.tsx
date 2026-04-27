@@ -98,12 +98,23 @@ export default function HomePage() {
             <div className="flex flex-col lg:flex-row items-center gap-8 lg:gap-16">
               {/* Left — text */}
               <div className="flex-1 text-center lg:text-left">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 mb-6 backdrop-blur-sm">
-                  <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                  <span className="text-xs font-semibold text-primary uppercase tracking-wider">
-                    {liveMatches.length > 0 ? `${liveMatches.length} Live Now` : 'Live Scores'}
-                  </span>
-                </div>
+                {liveMatches.length > 0 ? (
+                  <Link
+                    to="/live?filter=live"
+                    className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/30 mb-6 backdrop-blur-sm hover:bg-red-500/20 transition-colors group"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
+                    <span className="text-xs font-semibold text-red-400 uppercase tracking-wider">
+                      {liveMatches.length} Live Now
+                    </span>
+                    <ChevronRight className="w-3 h-3 text-red-400 group-hover:translate-x-0.5 transition-transform" />
+                  </Link>
+                ) : (
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 mb-6 backdrop-blur-sm">
+                    <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                    <span className="text-xs font-semibold text-primary uppercase tracking-wider">Live Scores</span>
+                  </div>
+                )}
                 <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-white leading-[1.1] mb-4 drop-shadow-lg">
                   EVERY KICK. EVERY STAT.<br />
                   <span className="text-primary">EVERY STORY.</span>

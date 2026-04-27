@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Navigate, Link } from 'react-router-dom';
+import { Navigate, Link, useSearchParams } from 'react-router-dom';
 import Header from '@/components/Header';
 import SEOHead, { buildWebsiteJsonLd } from '@/components/SEOHead';
 import { useAuth } from '@/hooks/useAuth';
@@ -8,7 +8,7 @@ import LeagueGroup from '@/components/LeagueGroup';
 import MatchCard from '@/components/MatchCard';
 import DateNavigator from '@/components/DateNavigator';
 import { useFavorites } from '@/hooks/useFavorites';
-import { Star } from 'lucide-react';
+import { Star, X } from 'lucide-react';
 import {
   fetchLiveMatches,
   fetchMatchesByDate,
@@ -30,6 +30,8 @@ function mergeLiveMatches(liveMatches: Match[], scheduledMatches: Match[]) {
 
 export default function Index() {
   const { user, onboardingCompleted } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const liveFilterActive = searchParams.get('filter') === 'live';
   const dates = getDateRange();
   const todayStr = getToday();
   const [selectedDate, setSelectedDate] = useState(todayStr);
@@ -39,7 +41,15 @@ export default function Index() {
   const [loading, setLoading] = useState(true);
   const [visibleGroupCount, setVisibleGroupCount] = useState(INITIAL_GROUP_BATCH);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const liveFilterRef = useRef<HTMLDivElement | null>(null);
   const { isFavorite, toggleFavorite, favoriteTeamIds } = useFavorites();
+
+  // Auto-scroll to live filter when coming from homepage
+  useEffect(() => {
+    if (liveFilterActive && liveFilterRef.current && !loading) {
+      setTimeout(() => liveFilterRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+    }
+  }, [liveFilterActive, loading]);
 
   useEffect(() => {
     setVisibleGroupCount(INITIAL_GROUP_BATCH);
@@ -114,6 +124,12 @@ export default function Index() {
       window.clearInterval(interval);
     };
   }, [selectedDate, todayStr]);
+
+  const liveMatches = useMemo(() =>
+    matches.filter(m => ['LIVE', '1H', '2H', 'HT', 'ET', 'P', 'BT'].includes(m.status)),
+  [matches]);
+
+  const liveGroups = useMemo(() => getMatchesGroupedByLeague(liveMatches), [liveMatches]);
 
   const leagues = useMemo(() => {
     const leagueMap = new Map<number, Match['league']>();
@@ -195,10 +211,36 @@ export default function Index() {
         ) : (
           <>
             {liveCount > 0 && selectedDate === todayStr && (
-              <div className="flex items-center gap-2 mb-4 px-1">
-                <span className="w-2 h-2 rounded-full bg-live animate-pulse-live" />
-                <span className="text-sm font-semibold text-live">{liveCount} Live</span>
-                <span className="text-xs text-muted-foreground">matches right now</span>
+              <div ref={liveFilterRef} className="mb-4">
+                <button
+                  onClick={() => {
+                    if (liveFilterActive) { searchParams.delete('filter'); setSearchParams(searchParams); }
+                    else setSearchParams({ filter: 'live' });
+                  }}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg border transition-colors mb-3 ${
+                    liveFilterActive ? 'bg-red-500/10 border-red-500/30' : 'bg-card border-border hover:border-red-500/30 hover:bg-red-500/5'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse flex-shrink-0" />
+                    <span className={`text-sm font-bold ${liveFilterActive ? 'text-red-400' : 'text-foreground'}`}>
+                      {liveCount} {liveCount === 1 ? 'Match' : 'Matches'} Live Now
+                    </span>
+                    {!liveFilterActive && <span className="text-xs text-muted-foreground">— tap to view all</span>}
+                  </div>
+                  {liveFilterActive ? (
+                    <span className="flex items-center gap-1 text-xs text-red-400 font-semibold"><X className="w-3.5 h-3.5" /> Clear filter</span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground font-medium">View →</span>
+                  )}
+                </button>
+                {liveFilterActive && liveGroups.length > 0 && (
+                  <div className="space-y-3 mb-4">
+                    {liveGroups.map(group => (
+                      <LeagueGroup key={`live-${group.league.id}`} group={group} isFavorite={isFavorite} onToggleFavorite={toggleFavorite} />
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
