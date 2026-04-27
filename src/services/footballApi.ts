@@ -282,11 +282,18 @@ export async function fetchHeadToHead(team1Id: number, team2Id: number): Promise
 export interface SearchResult {
   teams: { id: number; name: string; logo: string; country: string }[];
   matches: Match[];
+  selectedTeamId: number | null;
 }
 
-export async function searchTeamsAndLeagues(query: string): Promise<SearchResult> {
+export async function searchTeamsAndLeagues(query: string, teamId?: number): Promise<SearchResult> {
   try {
-    // Try direct search first
+    // If a specific team is requested, just get their fixtures
+    if (teamId) {
+      const fixtures = await callApi("fixtures", { team: String(teamId), last: "5" });
+      return { teams: [], matches: fixtures.map(mapFixtureToMatch), selectedTeamId: teamId };
+    }
+
+    // Search for teams
     let teams = await callApi("teams", { search: query });
     
     // If no results and query has multiple words, try each word
@@ -298,25 +305,18 @@ export async function searchTeamsAndLeagues(query: string): Promise<SearchResult
       }
     }
 
-    // Map teams
-    const mappedTeams = teams.slice(0, 8).map((t: any) => ({
+    // Map all matched teams (up to 12)
+    const mappedTeams = teams.slice(0, 12).map((t: any) => ({
       id: t.team?.id,
       name: t.team?.name || 'Unknown',
       logo: t.team?.logo || '',
       country: t.venue?.country || t.team?.country || '',
     })).filter((t: any) => t.id);
 
-    if (!mappedTeams.length) return { teams: [], matches: [] };
-    
-    // Get fixtures for the best matching team
-    const teamId = mappedTeams[0].id;
-    const fixtures = await callApi("fixtures", { team: String(teamId), last: "5" });
-    const matches = fixtures.map(mapFixtureToMatch);
-
-    return { teams: mappedTeams, matches };
+    return { teams: mappedTeams, matches: [], selectedTeamId: null };
   } catch (err) {
     console.error("Search failed:", err);
-    return { teams: [], matches: [] };
+    return { teams: [], matches: [], selectedTeamId: null };
   }
 }
 
