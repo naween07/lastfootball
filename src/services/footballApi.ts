@@ -269,6 +269,16 @@ export async function fetchMatchPlayers(fixtureId: number): Promise<MatchPlayerD
   }
 }
 
+export async function fetchHeadToHead(team1Id: number, team2Id: number): Promise<Match[]> {
+  try {
+    const data = await callApi("fixtures/headtohead", { h2h: `${team1Id}-${team2Id}`, last: "10" });
+    return data.map(mapFixtureToMatch);
+  } catch (err) {
+    console.error("Failed to fetch H2H:", err);
+    return [];
+  }
+}
+
 export async function searchTeamsAndLeagues(query: string): Promise<Match[]> {
   try {
     // Try direct search first

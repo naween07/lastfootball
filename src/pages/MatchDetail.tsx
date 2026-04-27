@@ -8,13 +8,14 @@ import LineupView from '@/components/LineupView';
 import ShotStatsView from '@/components/ShotStatsView';
 import ShareButton from '@/components/ShareButton';
 import MatchReactions from '@/components/MatchReactions';
+import HeadToHead from '@/components/HeadToHead';
 import OptimizedImage from '@/components/OptimizedImage';
 import { fetchMatchDetails, fetchMatchPlayers } from '@/services/footballApi';
 import { useState, useEffect, useMemo } from 'react';
 import { Match, MatchPlayerData, MatchEvent } from '@/types/football';
 import { cn } from '@/lib/utils';
 
-type Tab = 'overview' | 'lineups' | 'stats' | 'shots' | 'commentary';
+type Tab = 'overview' | 'lineups' | 'stats' | 'shots' | 'h2h' | 'commentary';
 
 export default function MatchDetail() {
   const { id } = useParams<{ id: string }>();
@@ -145,6 +146,19 @@ export default function MatchDetail() {
             <SectionTitle>Shot analysis</SectionTitle>
             <ShotStatsView
               playerData={playerData}
+              homeTeamId={match.homeTeam.id}
+              awayTeamId={match.awayTeam.id}
+              homeTeamName={match.homeTeam.name}
+              awayTeamName={match.awayTeam.name}
+              homeTeamLogo={match.homeTeam.logo}
+              awayTeamLogo={match.awayTeam.logo}
+            />
+          </Card>
+        )}
+        {tab === 'h2h' && (
+          <Card padded>
+            <SectionTitle>Head to Head</SectionTitle>
+            <HeadToHead
               homeTeamId={match.homeTeam.id}
               awayTeamId={match.awayTeam.id}
               homeTeamName={match.homeTeam.name}
@@ -303,6 +317,7 @@ function TabBar({ match, tab, setTab }: { match: Match; tab: Tab; setTab: (t: Ta
     { id: 'lineups', label: 'Lineups', show: !!match.lineups },
     { id: 'stats', label: 'Stats', show: !!match.stats },
     { id: 'shots', label: 'Shots', show: !!match.stats },
+    { id: 'h2h', label: 'H2H', show: true },
     { id: 'commentary', label: 'Commentary', show: !!match.events?.length },
   ];
 
