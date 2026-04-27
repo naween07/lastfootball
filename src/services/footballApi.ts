@@ -310,12 +310,21 @@ export async function searchTeamsAndLeagues(query: string, teamId?: number): Pro
     }
 
     // Map all matched teams (up to 12)
+    const q = query.toLowerCase();
     const mappedTeams = teams.slice(0, 12).map((t: any) => ({
       id: t.team?.id,
       name: t.team?.name || 'Unknown',
       logo: t.team?.logo || '',
       country: t.venue?.country || t.team?.country || '',
-    })).filter((t: any) => t.id);
+    })).filter((t: any) => t.id)
+    .sort((a: any, b: any) => {
+      const aStarts = a.name.toLowerCase().startsWith(q);
+      const bStarts = b.name.toLowerCase().startsWith(q);
+      if (aStarts && !bStarts) return -1;
+      if (!aStarts && bStarts) return 1;
+      // Within same group, sort by name length (shorter = more relevant)
+      return a.name.length - b.name.length;
+    });
 
     return { teams: mappedTeams, matches: [], selectedTeamId: null };
   } catch (err) {
