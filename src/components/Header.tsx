@@ -14,8 +14,8 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-50 bg-card/95 backdrop-blur-md border-b border-border">
       <div className="container flex items-center justify-between h-14 gap-2">
-        <Link to="/" className="flex items-center gap-2 shrink-0">
-          <img src="/favicon.svg" alt="LastFootball" className="w-8 h-8" />
+        <Link to="/" className="flex items-center gap-1.5 shrink-0">
+          <span className="text-xl">⚽</span>
           <span className="text-lg font-bold tracking-tight">
             Last<span className="text-primary">Football</span>
           </span>
