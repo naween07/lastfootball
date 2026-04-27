@@ -254,9 +254,9 @@ function MatchRow({ match, teamId }: { match: Match; teamId: number }) {
   if (isFinished && hasScore) {
     const teamScore = isHomeTeam ? match.homeScore! : match.awayScore!;
     const oppScore = isHomeTeam ? match.awayScore! : match.homeScore!;
-    if (teamScore > oppScore) resultClass = 'border-l-4 border-l-primary';
-    else if (teamScore < oppScore) resultClass = 'border-l-4 border-l-red-400';
-    else resultClass = 'border-l-4 border-l-muted-foreground/30';
+    if (teamScore > oppScore) resultClass = 'border-l-[3px] border-l-emerald-400';
+    else if (teamScore < oppScore) resultClass = 'border-l-[3px] border-l-red-400';
+    else resultClass = 'border-l-[3px] border-l-amber-400/60';
   }
 
   return (
@@ -275,7 +275,7 @@ function MatchRow({ match, teamId }: { match: Match; teamId: number }) {
         <span className={cn(
           'text-sm truncate',
           match.homeTeam.id === teamId ? 'font-bold text-foreground' : 'text-muted-foreground',
-        )}>{match.homeTeam.shortName}</span>
+        )}>{match.homeTeam.name}</span>
       </div>
 
       {/* Score / Time */}
@@ -300,7 +300,7 @@ function MatchRow({ match, teamId }: { match: Match; teamId: number }) {
         <span className={cn(
           'text-sm truncate',
           match.awayTeam.id === teamId ? 'font-bold text-foreground' : 'text-muted-foreground',
-        )}>{match.awayTeam.shortName}</span>
+        )}>{match.awayTeam.name}</span>
         <OptimizedImage src={match.awayTeam.logo} alt="" className="w-5 h-5 object-contain flex-shrink-0" />
       </div>
     </Link>
