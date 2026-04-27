@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
-import { Search as SearchIcon, Loader2, X, ChevronRight } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Search as SearchIcon, Loader2, X, ChevronRight, Trophy, Calendar } from 'lucide-react';
 import Header from '@/components/Header';
-import LeagueGroup from '@/components/LeagueGroup';
 import OptimizedImage from '@/components/OptimizedImage';
 import { useFavorites } from '@/hooks/useFavorites';
-import { searchTeamsAndLeagues, getMatchesGroupedByLeague, SearchResult } from '@/services/footballApi';
+import { searchTeamsAndLeagues, SearchResult, Match } from '@/services/footballApi';
 import { cn } from '@/lib/utils';
 
 export default function SearchPage() {
@@ -13,7 +13,8 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(false);
   const [loadingMatches, setLoadingMatches] = useState(false);
   const [selectedTeam, setSelectedTeam] = useState<{ id: number; name: string; logo: string } | null>(null);
-  const { isFavorite, toggleFavorite } = useFavorites();
+  const matchesRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
 
   // Search teams on query change
   useEffect(() => {
@@ -34,8 +35,9 @@ export default function SearchPage() {
     return () => clearTimeout(timeout);
   }, [query]);
 
-  // Load matches when a team is selected
-  const handleTeamClick = async (team: { id: number; name: string; logo: string }) => {
+  // Load matches when a team is selected (single click)
+  const handleTeamClick = useCallback(async (team: { id: number; name: string; logo: string }) => {
+    if (selectedTeam?.id === team.id) return; // Already selected
     setSelectedTeam(team);
     setLoadingMatches(true);
     try {
@@ -43,9 +45,30 @@ export default function SearchPage() {
       setResults(prev => ({ ...prev, matches: res.matches, selectedTeamId: team.id }));
     } catch {}
     setLoadingMatches(false);
-  };
 
-  const groups = getMatchesGroupedByLeague(results.matches);
+    // Auto-scroll to matches after a short delay
+    setTimeout(() => {
+      matchesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  }, [selectedTeam]);
+
+  // Double click → team profile page (future)
+  const handleTeamDoubleClick = useCallback((team: { id: number; name: string }) => {
+    // For now, navigate to search with team selected
+    // In future: navigate(`/team/${team.id}`)
+    // toast.info(`Team page for ${team.name} coming soon!`);
+  }, [navigate]);
+
+  // Separate results and upcoming
+  const recentResults = results.matches.filter(m =>
+    m.status === 'FT' || m.status === 'AET' || m.status === 'PEN'
+  );
+  const upcomingFixtures = results.matches.filter(m =>
+    m.status === 'NS' || m.status === 'TBD'
+  );
+  const liveMatches = results.matches.filter(m =>
+    m.status === 'LIVE' || m.status === '1H' || m.status === '2H' || m.status === 'HT'
+  );
 
   return (
     <div className="min-h-screen bg-background">
@@ -73,6 +96,22 @@ export default function SearchPage() {
             )}
           </div>
         </div>
+
+        {/* Sticky selected team bar */}
+        {selectedTeam && (
+          <div className="bg-primary/5 border-t border-primary/20 px-4 py-2.5">
+            <div className="container flex items-center gap-3">
+              <OptimizedImage src={selectedTeam.logo} alt="" className="w-7 h-7 object-contain" />
+              <span className="text-sm font-bold text-foreground flex-1">{selectedTeam.name}</span>
+              <button
+                onClick={() => { setSelectedTeam(null); setResults(prev => ({ ...prev, matches: [], selectedTeamId: null })); }}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                ✕ Clear
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <main className="container py-4 pb-20 md:pb-4">
@@ -94,76 +133,176 @@ export default function SearchPage() {
           </div>
         ) : (
           <>
-            {/* Matched teams */}
-            <div className="mb-5">
-              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3 px-1">
-                {results.teams.length} team{results.teams.length !== 1 ? 's' : ''} found
-              </h3>
-              <div className="space-y-1">
-                {results.teams.map(team => (
-                  <button
-                    key={team.id}
-                    onClick={() => handleTeamClick(team)}
-                    className={cn(
-                      'w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-left',
-                      selectedTeam?.id === team.id
-                        ? 'bg-primary/10 border border-primary/30'
-                        : 'bg-card border border-border/50 hover:border-primary/20 hover:bg-card/80',
-                    )}
-                  >
-                    <OptimizedImage src={team.logo} alt="" className="w-9 h-9 object-contain flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-foreground">{team.name}</p>
-                      <p className="text-[11px] text-muted-foreground">{team.country}</p>
-                    </div>
-                    <ChevronRight className={cn(
-                      'w-4 h-4 text-muted-foreground transition-colors',
-                      selectedTeam?.id === team.id && 'text-primary',
-                    )} />
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Selected team matches */}
-            {selectedTeam && (
-              <div>
-                <div className="flex items-center gap-2 mb-3 px-1">
-                  <OptimizedImage src={selectedTeam.logo} alt="" className="w-5 h-5 object-contain" />
-                  <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">
-                    {selectedTeam.name} — Recent Matches
-                  </h3>
-                </div>
-
-                {loadingMatches ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                    <span className="ml-2 text-sm text-muted-foreground">Loading matches...</span>
-                  </div>
-                ) : groups.length > 0 ? (
-                  groups.map(group => (
-                    <LeagueGroup
-                      key={group.league.id}
-                      group={group}
-                      isFavorite={isFavorite}
-                      onToggleFavorite={toggleFavorite}
-                    />
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground text-center py-6">No recent matches found</p>
-                )}
-              </div>
-            )}
-
-            {/* Prompt to select a team */}
+            {/* Matched teams list */}
             {!selectedTeam && (
-              <div className="text-center py-6 text-muted-foreground">
-                <p className="text-sm">Tap a team to see their recent matches</p>
+              <div className="mb-5">
+                <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3 px-1">
+                  {results.teams.length} team{results.teams.length !== 1 ? 's' : ''} found
+                </h3>
+                <div className="space-y-1">
+                  {results.teams.map(team => (
+                    <button
+                      key={team.id}
+                      onClick={() => handleTeamClick(team)}
+                      onDoubleClick={() => handleTeamDoubleClick(team)}
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-card border border-border/50 hover:border-primary/20 hover:bg-card/80 transition-all text-left"
+                    >
+                      <OptimizedImage src={team.logo} alt="" className="w-9 h-9 object-contain flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-foreground">{team.name}</p>
+                        <p className="text-[11px] text-muted-foreground">{team.country}</p>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
+
+            {/* Matches section — auto-scrolled into view */}
+            <div ref={matchesRef}>
+              {loadingMatches ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                  <span className="ml-2 text-sm text-muted-foreground">Loading matches...</span>
+                </div>
+              ) : selectedTeam ? (
+                <div className="space-y-5">
+                  {/* Live matches */}
+                  {liveMatches.length > 0 && (
+                    <MatchSection
+                      title="Live Now"
+                      icon={<span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />}
+                      matches={liveMatches}
+                      teamId={selectedTeam.id}
+                      accentColor="text-red-400"
+                    />
+                  )}
+
+                  {/* Recent results */}
+                  {recentResults.length > 0 && (
+                    <MatchSection
+                      title="Recent Results"
+                      icon={<Trophy className="w-3.5 h-3.5 text-primary" />}
+                      matches={recentResults}
+                      teamId={selectedTeam.id}
+                    />
+                  )}
+
+                  {/* Upcoming fixtures */}
+                  {upcomingFixtures.length > 0 && (
+                    <MatchSection
+                      title="Upcoming Fixtures"
+                      icon={<Calendar className="w-3.5 h-3.5 text-amber-400" />}
+                      matches={upcomingFixtures}
+                      teamId={selectedTeam.id}
+                    />
+                  )}
+
+                  {recentResults.length === 0 && upcomingFixtures.length === 0 && liveMatches.length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-8">No matches found</p>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-6 text-muted-foreground">
+                  <p className="text-sm">Tap a team to see their matches</p>
+                </div>
+              )}
+            </div>
           </>
         )}
       </main>
     </div>
+  );
+}
+
+// ─── Match Section ──────────────────────────────────────────────────────────
+function MatchSection({
+  title, icon, matches, teamId, accentColor,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  matches: Match[];
+  teamId: number;
+  accentColor?: string;
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-2 px-1">
+        {icon}
+        <h3 className={cn('text-xs font-bold uppercase tracking-wider', accentColor || 'text-muted-foreground')}>{title}</h3>
+      </div>
+      <div className="bg-card border border-border/50 rounded-xl overflow-hidden divide-y divide-border/20">
+        {matches.map(m => (
+          <MatchRow key={m.id} match={m} teamId={teamId} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Match Row ──────────────────────────────────────────────────────────────
+function MatchRow({ match, teamId }: { match: Match; teamId: number }) {
+  const isFinished = match.status === 'FT' || match.status === 'AET' || match.status === 'PEN';
+  const isLive = match.status === 'LIVE' || match.status === '1H' || match.status === '2H' || match.status === 'HT';
+  const isUpcoming = match.status === 'NS' || match.status === 'TBD';
+  const hasScore = match.homeScore !== null;
+
+  // Determine if this team won/lost
+  const isHomeTeam = match.homeTeam.id === teamId;
+  let resultClass = '';
+  if (isFinished && hasScore) {
+    const teamScore = isHomeTeam ? match.homeScore! : match.awayScore!;
+    const oppScore = isHomeTeam ? match.awayScore! : match.homeScore!;
+    if (teamScore > oppScore) resultClass = 'border-l-4 border-l-primary';
+    else if (teamScore < oppScore) resultClass = 'border-l-4 border-l-red-400';
+    else resultClass = 'border-l-4 border-l-muted-foreground/30';
+  }
+
+  return (
+    <Link
+      to={`/match/${match.id}`}
+      className={cn('flex items-center gap-3 px-4 py-3 hover:bg-secondary/20 transition-colors', resultClass)}
+    >
+      {/* League logo */}
+      {match.league.logo && (
+        <OptimizedImage src={match.league.logo} alt="" className="w-4 h-4 object-contain flex-shrink-0 opacity-50" />
+      )}
+
+      {/* Home team */}
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        <OptimizedImage src={match.homeTeam.logo} alt="" className="w-5 h-5 object-contain flex-shrink-0" />
+        <span className={cn(
+          'text-sm truncate',
+          match.homeTeam.id === teamId ? 'font-bold text-foreground' : 'text-muted-foreground',
+        )}>{match.homeTeam.shortName}</span>
+      </div>
+
+      {/* Score / Time */}
+      <div className="text-center min-w-[55px]">
+        {hasScore ? (
+          <span className={cn(
+            'text-sm font-black tabular-nums',
+            isLive ? 'text-red-400' : 'text-foreground',
+          )}>
+            {match.homeScore} - {match.awayScore}
+          </span>
+        ) : (
+          <span className="text-xs font-semibold text-muted-foreground">{match.time}</span>
+        )}
+        <div className="text-[8px] text-muted-foreground uppercase">
+          {isLive ? (match.minute ? `${match.minute}'` : 'LIVE') : isFinished ? match.status : match.date?.slice(5)}
+        </div>
+      </div>
+
+      {/* Away team */}
+      <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
+        <span className={cn(
+          'text-sm truncate',
+          match.awayTeam.id === teamId ? 'font-bold text-foreground' : 'text-muted-foreground',
+        )}>{match.awayTeam.shortName}</span>
+        <OptimizedImage src={match.awayTeam.logo} alt="" className="w-5 h-5 object-contain flex-shrink-0" />
+      </div>
+    </Link>
   );
 }

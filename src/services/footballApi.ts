@@ -287,10 +287,14 @@ export interface SearchResult {
 
 export async function searchTeamsAndLeagues(query: string, teamId?: number): Promise<SearchResult> {
   try {
-    // If a specific team is requested, just get their fixtures
+    // If a specific team is requested, get last 3 results + next 3 fixtures
     if (teamId) {
-      const fixtures = await callApi("fixtures", { team: String(teamId), last: "5" });
-      return { teams: [], matches: fixtures.map(mapFixtureToMatch), selectedTeamId: teamId };
+      const [lastMatches, nextMatches] = await Promise.all([
+        callApi("fixtures", { team: String(teamId), last: "3" }),
+        callApi("fixtures", { team: String(teamId), next: "3" }),
+      ]);
+      const matches = [...lastMatches.map(mapFixtureToMatch), ...nextMatches.map(mapFixtureToMatch)];
+      return { teams: [], matches, selectedTeamId: teamId };
     }
 
     // Search for teams
