@@ -279,7 +279,12 @@ export async function fetchHeadToHead(team1Id: number, team2Id: number): Promise
   }
 }
 
-export async function searchTeamsAndLeagues(query: string): Promise<Match[]> {
+export interface SearchResult {
+  teams: { id: number; name: string; logo: string; country: string }[];
+  matches: Match[];
+}
+
+export async function searchTeamsAndLeagues(query: string): Promise<SearchResult> {
   try {
     // Try direct search first
     let teams = await callApi("teams", { search: query });
@@ -293,17 +298,25 @@ export async function searchTeamsAndLeagues(query: string): Promise<Match[]> {
       }
     }
 
-    if (!teams.length) return [];
+    // Map teams
+    const mappedTeams = teams.slice(0, 8).map((t: any) => ({
+      id: t.team?.id,
+      name: t.team?.name || 'Unknown',
+      logo: t.team?.logo || '',
+      country: t.venue?.country || t.team?.country || '',
+    })).filter((t: any) => t.id);
+
+    if (!mappedTeams.length) return { teams: [], matches: [] };
     
     // Get fixtures for the best matching team
-    const teamId = teams[0]?.team?.id;
-    if (!teamId) return [];
-    
+    const teamId = mappedTeams[0].id;
     const fixtures = await callApi("fixtures", { team: String(teamId), last: "5" });
-    return fixtures.map(mapFixtureToMatch);
+    const matches = fixtures.map(mapFixtureToMatch);
+
+    return { teams: mappedTeams, matches };
   } catch (err) {
     console.error("Search failed:", err);
-    return [];
+    return { teams: [], matches: [] };
   }
 }
 
