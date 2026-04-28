@@ -22,7 +22,7 @@ export default function LeagueGroup({ group, isFavorite, onToggleFavorite }: Lea
       <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-3 min-w-0">
           {group.league.logo?.startsWith('http') ? (
-            <OptimizedImage src={group.league.logo} alt="" className="w-7 h-7 flex-shrink-0 object-contain rounded-md bg-white/10 p-0.5" />
+            <OptimizedImage src={group.league.logo} alt="" className="w-7 h-7 flex-shrink-0 object-contain rounded-md bg-white/20 p-1" />
           ) : (
             <span className="text-xl">{group.league.logo}</span>
           )}
