@@ -60,8 +60,8 @@ export default function Fixtures() {
       {/* League Filter */}
       <LeagueFilter leagues={leagues} selectedLeagueId={selectedLeagueId} onSelect={setSelectedLeagueId} />
 
-      {/* Date Navigation Bar */}
-      <div className="sticky top-[6.5rem] z-30 bg-background/95 backdrop-blur-md border-b border-border">
+      {/* Date Navigation Bar — stacks below header + league filter */}
+      <div className="sticky top-[6.25rem] z-30 bg-background/95 backdrop-blur-md border-b border-border">
         <DateNavigator dates={dates} selectedDate={selectedDate} onSelectDate={setSelectedDate} />
       </div>
 

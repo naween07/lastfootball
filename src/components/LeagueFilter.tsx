@@ -70,9 +70,9 @@ export default function LeagueFilter({ leagues, selectedLeagueId, onSelect }: Le
   const selectedLeague = selectedInMore ? allDropdownLeagues.find(l => l.id === selectedLeagueId) : null;
 
   return (
-    <div className="sticky top-14 z-40 bg-background/95 backdrop-blur-md border-b border-border">
+    <div className="sticky top-14 z-40 bg-background/95 backdrop-blur-md border-b border-border overflow-hidden">
       <div className="container">
-        <div className="flex items-center gap-2.5 py-3 px-1">
+        <div className="flex items-center gap-2 py-2.5 px-1 overflow-x-auto no-scrollbar">
           {/* All chip */}
           <FilterChip label="All" active={selectedLeagueId === null} onClick={() => onSelect(null)} />
 
