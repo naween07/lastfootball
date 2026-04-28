@@ -145,7 +145,7 @@ export default function LeagueFilter({ leagues, selectedLeagueId, onSelect }: Le
                         selectedLeagueId === league.id && 'bg-primary/10',
                       )}
                     >
-                      <OptimizedImage src={league.logo} alt="" className="w-4 h-4 object-contain flex-shrink-0 rounded bg-white/20 p-[2px]" />
+                      <OptimizedImage src={league.logo} alt="" className="w-4 h-4 object-contain flex-shrink-0 brightness-150 drop-shadow-[0_0_2px_rgba(255,255,255,0.3)]" />
                       <span className={cn(
                         'text-xs truncate',
                         selectedLeagueId === league.id ? 'font-bold text-primary' : 'text-foreground/80',
@@ -180,7 +180,7 @@ function FilterChip({ label, logo, active, onClick, closable }: {
       )}
     >
       {logo?.startsWith('http') ? (
-        <OptimizedImage src={logo} alt="" className="w-4 h-4 rounded bg-white/20 p-[2px]" priority={active} />
+        <OptimizedImage src={logo} alt="" className="w-4 h-4 brightness-150 drop-shadow-[0_0_2px_rgba(255,255,255,0.3)]" priority={active} />
       ) : logo ? (
         <span>{logo}</span>
       ) : null}
