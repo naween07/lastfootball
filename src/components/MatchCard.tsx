@@ -25,21 +25,21 @@ export default function MatchCard({ match, isFavoriteHome, isFavoriteAway, onTog
     >
       <div className="flex items-center px-3 py-2.5">
         {/* Status / Time column */}
-        <div className="w-[52px] flex-shrink-0 text-center">
+        <div className="w-[56px] flex-shrink-0 text-center">
           {isLive && (
             <div className="flex flex-col items-center gap-0">
-              <span className="text-[10px] font-extrabold text-live uppercase tracking-wider">Live</span>
-              <span className="text-xs font-bold text-live tabular-nums">{match.minute}</span>
+              <span className="text-xs font-extrabold text-live uppercase tracking-wider">Live</span>
+              <span className="text-sm font-bold text-live tabular-nums">{match.minute}</span>
             </div>
           )}
           {isHT && (
-            <span className="text-xs font-extrabold text-amber-400 tracking-wider">HT</span>
+            <span className="text-sm font-extrabold text-amber-400 tracking-wider">HT</span>
           )}
           {isFinished && (
-            <span className="text-xs font-semibold text-muted-foreground/70">FT</span>
+            <span className="text-sm font-semibold text-muted-foreground/70">FT</span>
           )}
           {isNotStarted && (
-            <span className="text-sm font-bold text-primary tabular-nums">{match.time}</span>
+            <span className="text-base font-bold text-primary tabular-nums">{match.time}</span>
           )}
         </div>
 
@@ -129,26 +129,26 @@ function TeamRow({
   const initials = (shortName || name.substring(0, 3)).toUpperCase().slice(0, 3);
 
   return (
-    <div className="flex items-center justify-between py-[3px]">
-      <div className="flex items-center gap-2 min-w-0">
+    <div className="flex items-center justify-between py-[4px]">
+      <div className="flex items-center gap-2.5 min-w-0">
         {logo ? (
           <OptimizedImage
             src={logo}
             alt=""
-            className="w-[18px] h-[18px] flex-shrink-0 object-contain"
+            className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0 object-contain"
           />
         ) : (
-          <div className="w-[18px] h-[18px] flex-shrink-0 rounded-full bg-secondary flex items-center justify-center">
-            <span className="text-[7px] font-bold text-muted-foreground">{initials}</span>
+          <div className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0 rounded-full bg-secondary flex items-center justify-center">
+            <span className="text-[8px] font-bold text-muted-foreground">{initials}</span>
           </div>
         )}
-        <span className={`text-[13px] truncate ${
+        <span className={`text-sm sm:text-[15px] truncate ${
           isWinning ? 'font-bold text-foreground' : 'text-muted-foreground'
         } ${isFinished && !isWinning ? 'text-muted-foreground/70' : ''}`}>
           {name}
         </span>
       </div>
-      <span className={`text-[15px] font-extrabold tabular-nums min-w-[24px] text-right ${
+      <span className={`text-base sm:text-lg font-extrabold tabular-nums min-w-[28px] text-right ${
         isLive && isWinning ? 'text-foreground' :
         isLive ? 'text-muted-foreground' :
         isFinished && isWinning ? 'text-foreground' :

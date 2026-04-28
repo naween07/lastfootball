@@ -139,18 +139,18 @@ export default function Index() {
               <Link
                 key={m.id}
                 to={`/match/${m.id}`}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md hover:bg-secondary/50 transition-colors flex-shrink-0"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-secondary/50 transition-colors flex-shrink-0"
               >
-                <OptimizedImage src={m.homeTeam.logo} alt="" className="w-3.5 h-3.5 object-contain" />
-                <span className="text-[11px] font-bold text-foreground tabular-nums">
+                <OptimizedImage src={m.homeTeam.logo} alt="" className="w-4 h-4 object-contain" />
+                <span className="text-xs font-bold text-foreground tabular-nums">
                   {m.homeScore ?? 0}
                 </span>
-                <span className="text-[10px] text-muted-foreground/40">-</span>
-                <span className="text-[11px] font-bold text-foreground tabular-nums">
+                <span className="text-xs text-muted-foreground/40">-</span>
+                <span className="text-xs font-bold text-foreground tabular-nums">
                   {m.awayScore ?? 0}
                 </span>
-                <OptimizedImage src={m.awayTeam.logo} alt="" className="w-3.5 h-3.5 object-contain" />
-                <span className="text-[9px] text-red-400 font-semibold tabular-nums">
+                <OptimizedImage src={m.awayTeam.logo} alt="" className="w-4 h-4 object-contain" />
+                <span className="text-[10px] text-red-400 font-semibold tabular-nums">
                   {m.minute ? `${m.minute}'` : m.status}
                 </span>
               </Link>
