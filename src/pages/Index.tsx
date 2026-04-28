@@ -1,151 +1,108 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Navigate, Link, useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import SEOHead, { buildWebsiteJsonLd } from '@/components/SEOHead';
 import { useAuth } from '@/hooks/useAuth';
-import LeagueFilter from '@/components/LeagueFilter';
 import LeagueGroup from '@/components/LeagueGroup';
 import MatchCard from '@/components/MatchCard';
-import DateNavigator from '@/components/DateNavigator';
+import OptimizedImage from '@/components/OptimizedImage';
 import { useFavorites } from '@/hooks/useFavorites';
-import { Star, X } from 'lucide-react';
+import { Star, Zap, Clock, CheckCircle, Loader2 } from 'lucide-react';
 import {
   fetchLiveMatches,
   fetchMatchesByDate,
   getMatchesGroupedByLeague,
-  getDateRange,
-  getDateLabel,
   getToday,
 } from '@/services/footballApi';
 import { Match } from '@/types/football';
 import { MatchListSkeleton } from '@/components/MatchListSkeleton';
-
-const INITIAL_GROUP_BATCH = 6;
-const GROUP_BATCH = 6;
+import { cn } from '@/lib/utils';
 
 function mergeLiveMatches(liveMatches: Match[], scheduledMatches: Match[]) {
-  const liveIds = new Set(liveMatches.map((match) => match.id));
-  return [...liveMatches, ...scheduledMatches.filter((match) => !liveIds.has(match.id))];
+  const liveIds = new Set(liveMatches.map((m) => m.id));
+  return [...liveMatches, ...scheduledMatches.filter((m) => !liveIds.has(m.id))];
 }
 
+type StatusTab = 'all' | 'live' | 'upcoming' | 'finished';
+
 export default function Index() {
-  const { user, onboardingCompleted } = useAuth();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const liveFilterActive = searchParams.get('filter') === 'live';
-  const dates = getDateRange();
+  const { user } = useAuth();
   const todayStr = getToday();
-  const [selectedDate, setSelectedDate] = useState(todayStr);
-  const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
   const [matches, setMatches] = useState<Match[]>([]);
   const [liveCount, setLiveCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [visibleGroupCount, setVisibleGroupCount] = useState(INITIAL_GROUP_BATCH);
-  const loadMoreRef = useRef<HTMLDivElement | null>(null);
-  const liveFilterRef = useRef<HTMLDivElement | null>(null);
+  const [activeTab, setActiveTab] = useState<StatusTab>('all');
   const { isFavorite, toggleFavorite, favoriteTeamIds } = useFavorites();
 
-  // Auto-scroll to live filter when coming from homepage
-  useEffect(() => {
-    if (liveFilterActive && liveFilterRef.current && !loading) {
-      setTimeout(() => liveFilterRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
-    }
-  }, [liveFilterActive, loading]);
-
-  useEffect(() => {
-    setVisibleGroupCount(INITIAL_GROUP_BATCH);
-  }, [selectedDate, selectedLeagueId]);
-
+  // Fetch today's matches + live matches
   useEffect(() => {
     let active = true;
-
-    const loadMatches = async () => {
+    const load = async () => {
       setLoading(true);
-
       try {
-        if (selectedDate !== todayStr) {
-          const data = await fetchMatchesByDate(selectedDate);
-          if (!active) return;
-          setMatches(data);
-          setLiveCount(0);
-          setLoading(false);
-          return;
-        }
-
-        const todayMatches = await fetchMatchesByDate(selectedDate);
+        const todayMatches = await fetchMatchesByDate(todayStr);
         if (!active) return;
-
         setMatches(todayMatches);
-        setLiveCount(0);
         setLoading(false);
 
-        void fetchLiveMatches()
-          .then((liveMatches) => {
-            if (!active) return;
-            setMatches(mergeLiveMatches(liveMatches, todayMatches));
-            setLiveCount(liveMatches.length);
-          })
-          .catch((error) => {
-            console.error('Failed to fetch live matches:', error);
-          });
-      } catch (error) {
-        console.error('Failed to load matches:', error);
+        // Then fetch live overlay
+        const liveMatches = await fetchLiveMatches();
+        if (!active) return;
+        setMatches(mergeLiveMatches(liveMatches, todayMatches));
+        setLiveCount(liveMatches.length);
+      } catch (err) {
+        console.error('Failed to load:', err);
         if (!active) return;
         setMatches([]);
-        setLiveCount(0);
         setLoading(false);
       }
     };
+    load();
 
-    void loadMatches();
-
-    if (selectedDate !== todayStr) {
-      return () => {
-        active = false;
-      };
-    }
-
-    const interval = window.setInterval(() => {
-      void Promise.all([
-        fetchMatchesByDate(selectedDate),
-        fetchLiveMatches(),
-      ])
-        .then(([todayMatches, liveMatches]) => {
+    // Auto-refresh every 15s
+    const interval = setInterval(() => {
+      Promise.all([fetchMatchesByDate(todayStr), fetchLiveMatches()])
+        .then(([today, live]) => {
           if (!active) return;
-          setMatches(mergeLiveMatches(liveMatches, todayMatches));
-          setLiveCount(liveMatches.length);
+          setMatches(mergeLiveMatches(live, today));
+          setLiveCount(live.length);
         })
-        .catch((error) => {
-          console.error('Failed to refresh live matches:', error);
-        });
+        .catch(console.error);
     }, 15000);
 
-    return () => {
-      active = false;
-      window.clearInterval(interval);
-    };
-  }, [selectedDate, todayStr]);
+    return () => { active = false; clearInterval(interval); };
+  }, [todayStr]);
 
+  // Group matches by status
   const liveMatches = useMemo(() =>
     matches.filter(m => ['LIVE', '1H', '2H', 'HT', 'ET', 'P', 'BT'].includes(m.status)),
   [matches]);
 
-  const liveGroups = useMemo(() => getMatchesGroupedByLeague(liveMatches), [liveMatches]);
+  const htMatches = useMemo(() =>
+    matches.filter(m => m.status === 'HT'),
+  [matches]);
 
-  const leagues = useMemo(() => {
-    const leagueMap = new Map<number, Match['league']>();
-    matches.forEach((match) => leagueMap.set(match.league.id, match.league));
-    return Array.from(leagueMap.values());
-  }, [matches]);
+  const upcomingMatches = useMemo(() =>
+    matches.filter(m => m.status === 'NS' || m.status === 'TBD'),
+  [matches]);
 
-  const filtered = useMemo(() => {
-    return selectedLeagueId
-      ? matches.filter((match) => match.league.id === selectedLeagueId)
-      : matches;
-  }, [matches, selectedLeagueId]);
+  const finishedMatches = useMemo(() =>
+    matches.filter(m => m.status === 'FT' || m.status === 'AET' || m.status === 'PEN'),
+  [matches]);
 
-  const groups = useMemo(() => getMatchesGroupedByLeague(filtered), [filtered]);
+  // Filtered by tab
+  const displayMatches = useMemo(() => {
+    switch (activeTab) {
+      case 'live': return liveMatches;
+      case 'upcoming': return upcomingMatches;
+      case 'finished': return finishedMatches;
+      default: return matches;
+    }
+  }, [activeTab, matches, liveMatches, upcomingMatches, finishedMatches]);
 
-  // Favorite team matches — shown at top
+  const groups = useMemo(() => getMatchesGroupedByLeague(displayMatches), [displayMatches]);
+
+  // Favorite matches
   const favoriteMatches = useMemo(() => {
     if (!favoriteTeamIds.length) return [];
     return matches.filter(m =>
@@ -153,56 +110,82 @@ export default function Index() {
     );
   }, [matches, favoriteTeamIds]);
 
-  const visibleGroups = useMemo(() => {
-    if (selectedLeagueId !== null) {
-      return groups;
-    }
-
-    return groups.slice(0, visibleGroupCount);
-  }, [groups, selectedLeagueId, visibleGroupCount]);
-
-  useEffect(() => {
-    if (selectedLeagueId !== null || visibleGroupCount >= groups.length) return;
-
-    const target = loadMoreRef.current;
-    if (!target) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (!entries[0]?.isIntersecting) return;
-        setVisibleGroupCount((current) => Math.min(current + GROUP_BATCH, groups.length));
-      },
-      { rootMargin: '400px 0px' },
-    );
-
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [groups.length, selectedLeagueId, visibleGroupCount]);
-
-  // Date navigation
-  const currentDateIdx = dates.indexOf(selectedDate);
-  const canGoPrev = currentDateIdx > 0;
-  const canGoNext = currentDateIdx < dates.length - 1;
-
-  // Onboarding is optional — don't force redirect
-  // if (user && onboardingCompleted === false) {
-  //   return <Navigate to="/onboarding" replace />;
-  // }
+  const tabs: { id: StatusTab; label: string; count: number; icon: React.ReactNode; color: string }[] = [
+    { id: 'all', label: 'All', count: matches.length, icon: null, color: 'text-foreground' },
+    { id: 'live', label: 'Live', count: liveMatches.length, icon: <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />, color: 'text-red-400' },
+    { id: 'upcoming', label: 'Upcoming', count: upcomingMatches.length, icon: <Clock className="w-3 h-3" />, color: 'text-amber-400' },
+    { id: 'finished', label: 'Finished', count: finishedMatches.length, icon: <CheckCircle className="w-3 h-3" />, color: 'text-muted-foreground' },
+  ];
 
   return (
     <div className="min-h-screen bg-background">
       <SEOHead
-        title="Live Football Scores & Results"
-        description="Real-time football live scores, fixtures, results, and match stats from top leagues worldwide. Track your favorite teams."
-        path="/"
+        title="Live Football Scores & Results — LastFootball"
+        description="Real-time football live scores, fixtures, results, and match stats from top leagues worldwide."
+        path="/live"
         jsonLd={buildWebsiteJsonLd()}
       />
       <Header />
-      <LeagueFilter leagues={leagues} selectedLeagueId={selectedLeagueId} onSelect={setSelectedLeagueId} />
 
-      {/* Date Navigation Bar */}
-      <div className="sticky top-[6.5rem] z-30 bg-background/95 backdrop-blur-md border-b border-border">
-        <DateNavigator dates={dates} selectedDate={selectedDate} onSelectDate={setSelectedDate} />
+      {/* Score Ticker — horizontal scrolling live scores */}
+      {liveMatches.length > 0 && (
+        <div className="bg-card/80 border-b border-border overflow-hidden">
+          <div className="flex items-center gap-1 py-1.5 px-2 overflow-x-auto no-scrollbar">
+            <span className="flex items-center gap-1.5 px-2 py-1 flex-shrink-0">
+              <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
+              <span className="text-[10px] font-bold text-red-400 uppercase">Live</span>
+            </span>
+            {liveMatches.map(m => (
+              <Link
+                key={m.id}
+                to={`/match/${m.id}`}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md hover:bg-secondary/50 transition-colors flex-shrink-0"
+              >
+                <OptimizedImage src={m.homeTeam.logo} alt="" className="w-3.5 h-3.5 object-contain" />
+                <span className="text-[11px] font-bold text-foreground tabular-nums">
+                  {m.homeScore ?? 0}
+                </span>
+                <span className="text-[10px] text-muted-foreground/40">-</span>
+                <span className="text-[11px] font-bold text-foreground tabular-nums">
+                  {m.awayScore ?? 0}
+                </span>
+                <OptimizedImage src={m.awayTeam.logo} alt="" className="w-3.5 h-3.5 object-contain" />
+                <span className="text-[9px] text-red-400 font-semibold tabular-nums">
+                  {m.minute ? `${m.minute}'` : m.status}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Status Tabs */}
+      <div className="sticky top-14 z-30 bg-background/95 backdrop-blur-md border-b border-border">
+        <div className="container flex items-center gap-1 py-2 overflow-x-auto no-scrollbar">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                'flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold transition-all whitespace-nowrap flex-shrink-0',
+                activeTab === tab.id
+                  ? tab.id === 'live' ? 'bg-red-500/15 text-red-400 ring-1 ring-red-500/30' : 'bg-primary/10 text-primary ring-1 ring-primary/20'
+                  : 'bg-secondary/50 text-muted-foreground hover:text-foreground hover:bg-secondary',
+              )}
+            >
+              {tab.icon}
+              {tab.label}
+              <span className={cn(
+                'text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded-full',
+                activeTab === tab.id
+                  ? tab.id === 'live' ? 'bg-red-500/20 text-red-400' : 'bg-primary/20 text-primary'
+                  : 'bg-secondary text-muted-foreground/70',
+              )}>
+                {tab.count}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
 
       <main className="container py-4 pb-20 md:pb-4">
@@ -210,42 +193,8 @@ export default function Index() {
           <MatchListSkeleton groups={4} />
         ) : (
           <>
-            {liveCount > 0 && selectedDate === todayStr && (
-              <div ref={liveFilterRef} className="mb-4">
-                <button
-                  onClick={() => {
-                    if (liveFilterActive) { searchParams.delete('filter'); setSearchParams(searchParams); }
-                    else setSearchParams({ filter: 'live' });
-                  }}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg border transition-colors mb-3 ${
-                    liveFilterActive ? 'bg-red-500/10 border-red-500/30' : 'bg-card border-border hover:border-red-500/30 hover:bg-red-500/5'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse flex-shrink-0" />
-                    <span className={`text-sm font-bold ${liveFilterActive ? 'text-red-400' : 'text-foreground'}`}>
-                      {liveCount} {liveCount === 1 ? 'Match' : 'Matches'} Live Now
-                    </span>
-                    {!liveFilterActive && <span className="text-xs text-muted-foreground">— tap to view all</span>}
-                  </div>
-                  {liveFilterActive ? (
-                    <span className="flex items-center gap-1 text-xs text-red-400 font-semibold"><X className="w-3.5 h-3.5" /> Clear filter</span>
-                  ) : (
-                    <span className="text-xs text-muted-foreground font-medium">View →</span>
-                  )}
-                </button>
-                {liveFilterActive && liveGroups.length > 0 && (
-                  <div className="space-y-3 mb-4">
-                    {liveGroups.map(group => (
-                      <LeagueGroup key={`live-${group.league.id}`} group={group} isFavorite={isFavorite} onToggleFavorite={toggleFavorite} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Your Matches — favorite teams */}
-            {favoriteMatches.length > 0 && selectedLeagueId === null && (
+            {favoriteMatches.length > 0 && activeTab === 'all' && (
               <div className="mb-4">
                 <div className="flex items-center gap-2 px-3 py-2">
                   <Star className="w-3.5 h-3.5 fill-primary text-primary" />
@@ -265,32 +214,113 @@ export default function Index() {
               </div>
             )}
 
-            {groups.length === 0 ? (
-              <div className="text-center py-20 text-muted-foreground">
-                <p className="text-lg font-medium">No matches found</p>
-                <p className="text-sm mt-1">No matches scheduled for {getDateLabel(selectedDate).toLowerCase()}</p>
-              </div>
-            ) : (
+            {/* Status-grouped display */}
+            {activeTab === 'all' ? (
               <>
-                {visibleGroups.map(group => (
-                  <LeagueGroup
-                    key={group.league.id}
-                    group={group}
-                    isFavorite={isFavorite}
-                    onToggleFavorite={toggleFavorite}
-                  />
-                ))}
+                {/* Live section */}
+                {liveMatches.length > 0 && (
+                  <StatusSection
+                    title={`${liveMatches.length} Live`}
+                    icon={<span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />}
+                    color="text-red-400"
+                    borderColor="border-red-500/20"
+                  >
+                    {getMatchesGroupedByLeague(liveMatches).map(group => (
+                      <LeagueGroup key={`live-${group.league.id}`} group={group} isFavorite={isFavorite} onToggleFavorite={toggleFavorite} />
+                    ))}
+                  </StatusSection>
+                )}
 
-                {selectedLeagueId === null && visibleGroups.length < groups.length && (
-                  <div ref={loadMoreRef} className="pt-2">
-                    <MatchListSkeleton groups={1} />
+                {/* Upcoming section */}
+                {upcomingMatches.length > 0 && (
+                  <StatusSection
+                    title={`${upcomingMatches.length} Upcoming`}
+                    icon={<Clock className="w-3.5 h-3.5 text-amber-400" />}
+                    color="text-amber-400"
+                    borderColor="border-amber-500/20"
+                  >
+                    {getMatchesGroupedByLeague(upcomingMatches).map(group => (
+                      <LeagueGroup key={`up-${group.league.id}`} group={group} isFavorite={isFavorite} onToggleFavorite={toggleFavorite} />
+                    ))}
+                  </StatusSection>
+                )}
+
+                {/* Finished section */}
+                {finishedMatches.length > 0 && (
+                  <StatusSection
+                    title={`${finishedMatches.length} Finished`}
+                    icon={<CheckCircle className="w-3.5 h-3.5 text-muted-foreground" />}
+                    color="text-muted-foreground"
+                    borderColor="border-border/30"
+                    collapsed
+                  >
+                    {getMatchesGroupedByLeague(finishedMatches).map(group => (
+                      <LeagueGroup key={`fin-${group.league.id}`} group={group} isFavorite={isFavorite} onToggleFavorite={toggleFavorite} />
+                    ))}
+                  </StatusSection>
+                )}
+
+                {matches.length === 0 && (
+                  <div className="text-center py-20 text-muted-foreground">
+                    <p className="text-lg font-medium">No matches today</p>
+                    <p className="text-sm mt-1">Check back later or browse <Link to="/fixtures" className="text-primary hover:underline">fixtures</Link></p>
                   </div>
                 )}
               </>
+            ) : (
+              /* Tab-filtered view — show by league */
+              groups.length > 0 ? (
+                groups.map(group => (
+                  <LeagueGroup key={group.league.id} group={group} isFavorite={isFavorite} onToggleFavorite={toggleFavorite} />
+                ))
+              ) : (
+                <div className="text-center py-20 text-muted-foreground">
+                  <p className="text-lg font-medium">No {activeTab} matches</p>
+                  <p className="text-sm mt-1">
+                    {activeTab === 'live' ? 'No matches are live right now' : 
+                     activeTab === 'upcoming' ? 'No upcoming matches today' :
+                     'No finished matches today'}
+                  </p>
+                </div>
+              )
             )}
+
+            {/* Auto-refresh indicator */}
+            <div className="flex items-center justify-center gap-1.5 py-3 mt-2">
+              <Loader2 className="w-3 h-3 text-muted-foreground/30 animate-spin" />
+              <span className="text-[10px] text-muted-foreground/30">Auto-refreshing every 15s</span>
+            </div>
           </>
         )}
       </main>
+    </div>
+  );
+}
+
+// ─── Status Section — collapsible container ─────────────────────────────────
+function StatusSection({
+  title, icon, color, borderColor, collapsed, children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  color: string;
+  borderColor: string;
+  collapsed?: boolean;
+  children: React.ReactNode;
+}) {
+  const [isOpen, setIsOpen] = useState(!collapsed);
+
+  return (
+    <div className={cn('mb-5 rounded-xl border overflow-hidden', borderColor)}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center gap-2 px-4 py-2.5 bg-card/50 hover:bg-card/80 transition-colors"
+      >
+        {icon}
+        <span className={cn('text-sm font-bold uppercase tracking-wider', color)}>{title}</span>
+        <span className="ml-auto text-muted-foreground text-xs">{isOpen ? '▼' : '▶'}</span>
+      </button>
+      {isOpen && <div className="bg-background">{children}</div>}
     </div>
   );
 }
