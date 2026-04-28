@@ -18,6 +18,7 @@ const Favorites = lazy(() => import("./pages/Favorites"));
 const SearchPage = lazy(() => import("./pages/SearchPage"));
 const Stats = lazy(() => import("./pages/Stats"));
 const News = lazy(() => import("./pages/News"));
+const ArticleDetail = lazy(() => import("./pages/ArticleDetail"));
 const WorldCup = lazy(() => import("./pages/WorldCup"));
 const Auth = lazy(() => import("./pages/Auth"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
@@ -73,6 +74,7 @@ function AppRoutes() {
             <Route path="/match/:id" element={<MatchDetail />} />
             <Route path="/favorites" element={<Favorites />} />
             <Route path="/news" element={<News />} />
+            <Route path="/news/:slug" element={<ArticleDetail />} />
             <Route path="/stats" element={<Stats />} />
             <Route path="/worldcup" element={<WorldCup />} />
             <Route path="/search" element={<SearchPage />} />
