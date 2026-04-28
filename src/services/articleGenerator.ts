@@ -210,8 +210,238 @@ export function generateMatchReport(match: Match): Article | null {
 
 // Generate reports for multiple matches
 export function generateDailyReports(matches: Match[]): Article[] {
-  return matches
-    .filter(m => m.status === 'FT' || m.status === 'AET' || m.status === 'PEN')
+  const finished = matches.filter(m => m.status === 'FT' || m.status === 'AET' || m.status === 'PEN');
+  
+  const matchReports = finished
     .map(generateMatchReport)
     .filter((a): a is Article => a !== null);
+
+  const roundups = generateLeagueRoundups(finished);
+  const topMatches = generateTopMatchesArticle(finished);
+  const playerOfDay = generatePlayerOfDay(finished);
+
+  // Interleave: roundups first, then top matches, then individual reports
+  return [...roundups, ...topMatches, ...playerOfDay, ...matchReports];
+}
+
+// ─── League Round-up ────────────────────────────────────────────────────────
+
+const ROUNDUP_INTROS = [
+  'Here\'s everything that happened in the',
+  'A packed day of action in the',
+  'All the results and talking points from the',
+  'It was a thrilling day in the',
+];
+
+function generateLeagueRoundups(matches: Match[]): Article[] {
+  // Group finished matches by league
+  const byLeague = new Map<string, Match[]>();
+  matches.forEach(m => {
+    const key = m.league.name;
+    if (!byLeague.has(key)) byLeague.set(key, []);
+    byLeague.get(key)!.push(m);
+  });
+
+  const articles: Article[] = [];
+
+  byLeague.forEach((leagueMatches, leagueName) => {
+    // Only generate roundups for leagues with 3+ matches
+    if (leagueMatches.length < 3) return;
+
+    const league = leagueMatches[0].league;
+    const totalGoals = leagueMatches.reduce((sum, m) => sum + (m.homeScore || 0) + (m.awayScore || 0), 0);
+    const biggestWin = leagueMatches.reduce((best, m) => {
+      const margin = Math.abs((m.homeScore || 0) - (m.awayScore || 0));
+      const bestMargin = Math.abs((best.homeScore || 0) - (best.awayScore || 0));
+      return margin > bestMargin ? m : best;
+    }, leagueMatches[0]);
+
+    const draws = leagueMatches.filter(m => m.homeScore === m.awayScore);
+    const homeWins = leagueMatches.filter(m => (m.homeScore || 0) > (m.awayScore || 0));
+    const awayWins = leagueMatches.filter(m => (m.awayScore || 0) > (m.homeScore || 0));
+
+    const title = `${leagueName} Round-up: ${totalGoals} goals across ${leagueMatches.length} matches`;
+
+    const summary = `${pick(ROUNDUP_INTROS)} ${leagueName} today. ${leagueMatches.length} matches produced ${totalGoals} goals, with ${homeWins.length} home wins, ${awayWins.length} away wins, and ${draws.length} draw${draws.length !== 1 ? 's' : ''}.`;
+
+    const paragraphs: string[] = [];
+
+    // Overview
+    paragraphs.push(
+      `A busy day in the ${leagueName} saw ${leagueMatches.length} matches take place, producing a combined ${totalGoals} goals. Home sides claimed ${homeWins.length} victor${homeWins.length !== 1 ? 'ies' : 'y'}, while ${awayWins.length} away win${awayWins.length !== 1 ? 's were' : ' was'} recorded. ${draws.length > 0 ? `${draws.length} match${draws.length !== 1 ? 'es' : ''} ended in a draw.` : 'There were no draws on the day.'}`
+    );
+
+    // Biggest win
+    if (biggestWin.homeScore !== null && biggestWin.awayScore !== null) {
+      const margin = Math.abs(biggestWin.homeScore - biggestWin.awayScore);
+      if (margin >= 2) {
+        const winner = biggestWin.homeScore > biggestWin.awayScore ? biggestWin.homeTeam.name : biggestWin.awayTeam.name;
+        const loser = biggestWin.homeScore > biggestWin.awayScore ? biggestWin.awayTeam.name : biggestWin.homeTeam.name;
+        paragraphs.push(
+          `The standout result of the day saw ${winner} record a convincing ${biggestWin.homeScore}-${biggestWin.awayScore} victory over ${loser}. It was a dominant display that highlighted the gulf in quality between the two sides.`
+        );
+      }
+    }
+
+    // Results list
+    const resultsList = leagueMatches.map(m =>
+      `${m.homeTeam.name} ${m.homeScore}-${m.awayScore} ${m.awayTeam.name}`
+    ).join(', ');
+    paragraphs.push(`Full results: ${resultsList}.`);
+
+    const slug = slugify(`${leagueName}-roundup-${new Date().toISOString().split('T')[0]}`);
+
+    articles.push({
+      id: `roundup-${league.id}`,
+      slug,
+      title,
+      summary,
+      body: paragraphs.join('\n\n'),
+      category: 'roundup',
+      leagueName,
+      leagueLogo: league.logo,
+      homeTeam: { name: leagueName, logo: league.logo },
+      awayTeam: { name: '', logo: undefined },
+      matchId: leagueMatches[0].id,
+      publishedAt: new Date().toISOString(),
+    });
+  });
+
+  return articles;
+}
+
+// ─── Top Matches of the Day ─────────────────────────────────────────────────
+
+function generateTopMatchesArticle(matches: Match[]): Article[] {
+  if (matches.length < 5) return [];
+
+  // Score matches by excitement: total goals + margin closeness
+  const scored = matches
+    .filter(m => m.homeScore !== null && m.awayScore !== null)
+    .map(m => {
+      const total = (m.homeScore || 0) + (m.awayScore || 0);
+      const margin = Math.abs((m.homeScore || 0) - (m.awayScore || 0));
+      const excitement = total * 2 + (margin <= 1 ? 3 : 0) + (total >= 5 ? 5 : 0);
+      return { match: m, excitement, total };
+    })
+    .sort((a, b) => b.excitement - a.excitement)
+    .slice(0, 5);
+
+  if (scored.length < 3) return [];
+
+  const totalGoalsAll = matches.reduce((sum, m) => sum + (m.homeScore || 0) + (m.awayScore || 0), 0);
+
+  const title = `Top ${scored.length} Matches of the Day: ${totalGoalsAll} goals across ${matches.length} fixtures`;
+
+  const summary = `From high-scoring thrillers to nail-biting finishes, here are today's most exciting matches from around the football world.`;
+
+  const paragraphs: string[] = [];
+
+  paragraphs.push(
+    `It was a spectacular day of football with ${totalGoalsAll} goals scored across ${matches.length} matches worldwide. Here are the games that stood out above the rest.`
+  );
+
+  scored.forEach((s, i) => {
+    const m = s.match;
+    const isDraw = m.homeScore === m.awayScore;
+    const homeWon = (m.homeScore || 0) > (m.awayScore || 0);
+    const winner = homeWon ? m.homeTeam.name : m.awayTeam.name;
+
+    if (isDraw) {
+      paragraphs.push(
+        `${i + 1}. ${m.homeTeam.name} ${m.homeScore}-${m.awayScore} ${m.awayTeam.name} (${m.league.name}) — An entertaining draw that saw both sides create plenty of chances. ${s.total} goals were shared in a match that could have gone either way.`
+      );
+    } else if (s.total >= 5) {
+      paragraphs.push(
+        `${i + 1}. ${m.homeTeam.name} ${m.homeScore}-${m.awayScore} ${m.awayTeam.name} (${m.league.name}) — A goal-fest that produced ${s.total} goals. ${winner} emerged victorious in a match that had everything.`
+      );
+    } else {
+      paragraphs.push(
+        `${i + 1}. ${m.homeTeam.name} ${m.homeScore}-${m.awayScore} ${m.awayTeam.name} (${m.league.name}) — ${winner} claimed the points in a ${s.total > 3 ? 'thrilling' : 'competitive'} encounter in the ${m.league.name}.`
+      );
+    }
+  });
+
+  const slug = slugify(`top-matches-of-the-day-${new Date().toISOString().split('T')[0]}`);
+
+  return [{
+    id: 'top-matches',
+    slug,
+    title,
+    summary,
+    body: paragraphs.join('\n\n'),
+    category: 'roundup',
+    leagueName: 'All Leagues',
+    leagueLogo: undefined,
+    homeTeam: { name: 'Top Matches', logo: undefined },
+    awayTeam: { name: '', logo: undefined },
+    matchId: scored[0].match.id,
+    publishedAt: new Date().toISOString(),
+  }];
+}
+
+// ─── Player of the Day ──────────────────────────────────────────────────────
+
+function generatePlayerOfDay(matches: Match[]): Article[] {
+  // Find player with most goals today
+  const scorerMap = new Map<string, { name: string; goals: number; teams: string[]; leagues: string[] }>();
+
+  matches.forEach(m => {
+    if (!m.events) return;
+    m.events.forEach(e => {
+      if (e.type !== 'goal' || e.detail === 'Own Goal') return;
+      const existing = scorerMap.get(e.playerName) || { name: e.playerName, goals: 0, teams: [], leagues: [] };
+      existing.goals++;
+      const teamName = e.team === 'home' ? m.homeTeam.name : m.awayTeam.name;
+      if (!existing.teams.includes(teamName)) existing.teams.push(teamName);
+      if (!existing.leagues.includes(m.league.name)) existing.leagues.push(m.league.name);
+      scorerMap.set(e.playerName, existing);
+    });
+  });
+
+  if (scorerMap.size === 0) return [];
+
+  // Find top scorer
+  const topScorer = Array.from(scorerMap.values()).sort((a, b) => b.goals - a.goals)[0];
+  if (topScorer.goals < 2) return []; // Only generate if someone scored 2+
+
+  const title = `Player of the Day: ${topScorer.name} scores ${topScorer.goals} goals`;
+  const summary = `${topScorer.name} was the standout performer today, finding the net ${topScorer.goals} times for ${topScorer.teams[0]} in the ${topScorer.leagues[0]}.`;
+
+  const paragraphs: string[] = [];
+
+  paragraphs.push(
+    `${topScorer.name} stole the headlines today with an impressive ${topScorer.goals}-goal haul for ${topScorer.teams[0]}. The striker was in scintillating form, causing problems for the opposition defence throughout the match.`
+  );
+
+  if (topScorer.goals >= 3) {
+    paragraphs.push(
+      `A hat-trick is always a special occasion, and ${topScorer.name} delivered in style. Each goal showcased different aspects of the player's ability, from clinical finishing to intelligent movement.`
+    );
+  } else {
+    paragraphs.push(
+      `The brace demonstrated ${topScorer.name}'s eye for goal and ability to be in the right place at the right time. It was a performance that will have caught the attention of fans and pundits alike.`
+    );
+  }
+
+  paragraphs.push(
+    `${topScorer.name} will be hoping to carry this form into the next match and continue climbing the league's scoring charts.`
+  );
+
+  const slug = slugify(`player-of-the-day-${topScorer.name}-${new Date().toISOString().split('T')[0]}`);
+
+  return [{
+    id: 'player-of-day',
+    slug,
+    title,
+    summary,
+    body: paragraphs.join('\n\n'),
+    category: 'roundup',
+    leagueName: topScorer.leagues[0],
+    leagueLogo: undefined,
+    homeTeam: { name: topScorer.name, logo: undefined },
+    awayTeam: { name: '', logo: undefined },
+    matchId: matches[0].id,
+    publishedAt: new Date().toISOString(),
+  }];
 }
