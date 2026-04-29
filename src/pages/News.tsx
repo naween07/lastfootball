@@ -36,7 +36,7 @@ export default function News() {
         if (matchResults.status === 'fulfilled') {
           const allMatches = matchResults.value.flat();
           const reports = generateDailyReports(allMatches);
-          // Sort: featured first, then by date
+          // Sort: featured first (by importance), then by date
           reports.sort((a, b) => {
             if (a.isFeatured && !b.isFeatured) return -1;
             if (!a.isFeatured && b.isFeatured) return 1;
@@ -130,7 +130,7 @@ export default function News() {
                     <span className="text-sm">🔥</span> Featured Matches
                   </h3>
                   <div className="space-y-3">
-                    {articles.filter(a => a.isFeatured).slice(0, 5).map(article => (
+                    {articles.filter(a => a.isFeatured).slice(0, 4).map(article => (
                       <FeaturedReport key={article.id} article={article} />
                     ))}
                   </div>

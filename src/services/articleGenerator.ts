@@ -30,23 +30,43 @@ const TOP_CLUBS = [
 
 const CUP_KNOCKOUT_STAGES = ['Quarter-final', 'Semi-final', 'Final', 'Round of 16'];
 
-function isBigMatch(match: Match): boolean {
+// Featured match priority score — higher = more important
+// Only matches scoring 5+ are featured
+export function getMatchImportance(match: Match): number {
   const homeName = match.homeTeam.name;
   const awayName = match.awayTeam.name;
   const homeIsTop = TOP_CLUBS.some(c => homeName.includes(c) || c.includes(homeName));
   const awayIsTop = TOP_CLUBS.some(c => awayName.includes(c) || c.includes(awayName));
+  const totalGoals = (match.homeScore || 0) + (match.awayScore || 0);
 
-  // Both teams are top clubs
-  if (homeIsTop && awayIsTop) return true;
+  let score = 0;
 
-  // Cup competition knockout stages (UCL, UEL, FA Cup etc.)
-  const cupLeagues = [2, 3, 848, 45, 48, 143, 137, 81, 66];
-  if (cupLeagues.includes(match.league.id)) return true;
+  // Tier 1: Major European competition (UCL, UEL only — not domestic cups)
+  const majorCups = [2, 3]; // Champions League, Europa League
+  if (majorCups.includes(match.league.id)) score += 8;
 
-  // High-scoring match (5+ goals)
-  if ((match.homeScore || 0) + (match.awayScore || 0) >= 5) return true;
+  // Tier 2: Both teams are top clubs (El Clasico, NLD, Milan derby etc.)
+  if (homeIsTop && awayIsTop) score += 7;
 
-  return false;
+  // Tier 3: Top domestic cup (FA Cup, Copa del Rey) — only if a top club is involved
+  const domesticCups = [45, 48, 143, 137, 81, 66, 848];
+  if (domesticCups.includes(match.league.id) && (homeIsTop || awayIsTop)) score += 5;
+
+  // Tier 4: Top 5 league match with at least one top club
+  const topLeagues = [39, 140, 135, 78, 61]; // PL, La Liga, Serie A, Bundesliga, Ligue 1
+  if (topLeagues.includes(match.league.id) && (homeIsTop || awayIsTop)) score += 3;
+
+  // Bonus: High-scoring match involving a top club
+  if (totalGoals >= 5 && (homeIsTop || awayIsTop)) score += 2;
+
+  // Bonus: High-scoring match in top league
+  if (totalGoals >= 6 && topLeagues.includes(match.league.id)) score += 2;
+
+  return score;
+}
+
+function isBigMatch(match: Match): boolean {
+  return getMatchImportance(match) >= 5;
 }
 
 // ─── Narrative templates ────────────────────────────────────────────────────
