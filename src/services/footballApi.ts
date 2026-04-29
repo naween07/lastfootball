@@ -493,15 +493,6 @@ export async function fetchTopRedCards(leagueId: number, season: number): Promis
   }
 }
 
-export interface TeamStatSummary {
-  team: { id: number; name: string; logo: string };
-  form: string;
-  fixtures: { played: number; wins: number; draws: number; losses: number };
-  goals: { for: number; against: number };
-  cleanSheets: number;
-  failedToScore: number;
-}
-
 export async function fetchTeamsInLeague(leagueId: number, season: number): Promise<{ id: number; name: string; logo: string }[]> {
   try {
     const data = await callApi("teams", { league: String(leagueId), season: String(season) });
@@ -512,10 +503,28 @@ export async function fetchTeamsInLeague(leagueId: number, season: number): Prom
   }
 }
 
+export interface TeamStatSummary {
+  team: { id: number; name: string; logo: string };
+  form: string;
+  fixtures: { played: number; wins: number; draws: number; losses: number };
+  fixturesHome: { played: number; wins: number; draws: number; losses: number };
+  fixturesAway: { played: number; wins: number; draws: number; losses: number };
+  goals: { for: number; against: number };
+  goalsHome: { for: number; against: number };
+  goalsAway: { for: number; against: number };
+  cleanSheets: number;
+  failedToScore: number;
+  penalty: { scored: number; missed: number };
+  biggestWin: { home: string; away: string };
+  biggestStreak: { wins: number; draws: number; loses: number };
+  goalsAvgPerGame: number;
+}
+
 export async function fetchTeamStatistics(teamId: number, leagueId: number, season: number): Promise<TeamStatSummary | null> {
   try {
     const data = await callApi("teams/statistics", { team: String(teamId), league: String(leagueId), season: String(season) });
     if (!data) return null;
+    const played = data.fixtures?.played?.total || 1;
     return {
       team: { id: data.team?.id || teamId, name: data.team?.name || '', logo: data.team?.logo || '' },
       form: data.form || '',
@@ -525,12 +534,46 @@ export async function fetchTeamStatistics(teamId: number, leagueId: number, seas
         draws: data.fixtures?.draws?.total || 0,
         losses: data.fixtures?.loses?.total || 0,
       },
+      fixturesHome: {
+        played: data.fixtures?.played?.home || 0,
+        wins: data.fixtures?.wins?.home || 0,
+        draws: data.fixtures?.draws?.home || 0,
+        losses: data.fixtures?.loses?.home || 0,
+      },
+      fixturesAway: {
+        played: data.fixtures?.played?.away || 0,
+        wins: data.fixtures?.wins?.away || 0,
+        draws: data.fixtures?.draws?.away || 0,
+        losses: data.fixtures?.loses?.away || 0,
+      },
       goals: {
         for: data.goals?.for?.total?.total || 0,
         against: data.goals?.against?.total?.total || 0,
       },
+      goalsHome: {
+        for: data.goals?.for?.total?.home || 0,
+        against: data.goals?.against?.total?.home || 0,
+      },
+      goalsAway: {
+        for: data.goals?.for?.total?.away || 0,
+        against: data.goals?.against?.total?.away || 0,
+      },
       cleanSheets: data.clean_sheet?.total || 0,
       failedToScore: data.failed_to_score?.total || 0,
+      penalty: {
+        scored: data.penalty?.scored?.total || 0,
+        missed: data.penalty?.missed?.total || 0,
+      },
+      biggestWin: {
+        home: data.biggest?.wins?.home || '',
+        away: data.biggest?.wins?.away || '',
+      },
+      biggestStreak: {
+        wins: data.biggest?.streak?.wins || 0,
+        draws: data.biggest?.streak?.draws || 0,
+        loses: data.biggest?.streak?.loses || 0,
+      },
+      goalsAvgPerGame: (data.goals?.for?.total?.total || 0) / played,
     };
   } catch (err) {
     console.error("Failed to fetch team statistics:", err);

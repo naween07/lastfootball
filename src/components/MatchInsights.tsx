@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { fetchHeadToHead } from '@/services/footballApi';
+import { fetchHeadToHead, fetchTeamStatistics } from '@/services/footballApi';
 import { generateMatchInsights, MatchInsight } from '@/services/insightGenerator';
 import { Match } from '@/types/football';
 import { Sparkles, Loader2 } from 'lucide-react';
@@ -16,12 +16,19 @@ export default function MatchInsights({ match }: MatchInsightsProps) {
   useEffect(() => {
     const load = async () => {
       try {
-        // Fetch H2H data for deeper insights
-        const h2h = await fetchHeadToHead(match.homeTeam.id, match.awayTeam.id);
-        const generated = generateMatchInsights(match, h2h);
+        const [h2h, homeStats, awayStats] = await Promise.allSettled([
+          fetchHeadToHead(match.homeTeam.id, match.awayTeam.id),
+          fetchTeamStatistics(match.homeTeam.id, match.league.id, 2025),
+          fetchTeamStatistics(match.awayTeam.id, match.league.id, 2025),
+        ]);
+
+        const h2hData = h2h.status === 'fulfilled' ? h2h.value : undefined;
+        const homeData = homeStats.status === 'fulfilled' ? homeStats.value : null;
+        const awayData = awayStats.status === 'fulfilled' ? awayStats.value : null;
+
+        const generated = generateMatchInsights(match, h2hData, homeData, awayData);
         setInsights(generated);
       } catch {
-        // Generate insights without H2H
         const generated = generateMatchInsights(match);
         setInsights(generated);
       }
