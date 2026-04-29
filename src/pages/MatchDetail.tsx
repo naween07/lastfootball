@@ -9,6 +9,7 @@ import ShotStatsView from '@/components/ShotStatsView';
 import ShareButton from '@/components/ShareButton';
 import MatchReactions from '@/components/MatchReactions';
 import HeadToHead from '@/components/HeadToHead';
+import MatchInsights from '@/components/MatchInsights';
 import OptimizedImage from '@/components/OptimizedImage';
 import { fetchMatchDetails, fetchMatchPlayers } from '@/services/footballApi';
 import { useState, useEffect, useMemo } from 'react';
@@ -112,6 +113,12 @@ export default function MatchDetail() {
       <Header />
 
       <MatchHero match={match} />
+
+      {/* Smart Insights */}
+      <div className="container max-w-3xl px-4 py-3">
+        <MatchInsights match={match} />
+      </div>
+
       <TabBar match={match} tab={tab} setTab={setTab} />
 
       <main className="container py-4 md:py-6 pb-20 md:pb-6 max-w-3xl">

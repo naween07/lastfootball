@@ -53,21 +53,31 @@ export default function SEOHead({
 
 export function buildMatchJsonLd(match: {
   id: number;
-  homeTeam: { name: string };
-  awayTeam: { name: string };
+  homeTeam: { name: string; logo?: string };
+  awayTeam: { name: string; logo?: string };
   date: string;
   time: string;
   league: { name: string; country: string };
   homeScore: number | null;
   awayScore: number | null;
   status: string;
+  events?: { type: string; playerName: string; minute: number; team: string }[];
 }) {
   const startDate = `${match.date}T${match.time || '00:00'}:00`;
+  const isFinished = match.status === 'FT' || match.status === 'AET' || match.status === 'PEN';
+  const isLive = ['LIVE', '1H', '2H', 'HT', 'ET'].includes(match.status);
+  const isUpcoming = match.status === 'NS' || match.status === 'TBD';
+
   const jsonLd: Record<string, unknown> = {
     '@context': 'https://schema.org',
     '@type': 'SportsEvent',
     name: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
+    description: isFinished && match.homeScore !== null
+      ? `${match.homeTeam.name} ${match.homeScore}-${match.awayScore} ${match.awayTeam.name} in the ${match.league.name}.`
+      : `${match.homeTeam.name} take on ${match.awayTeam.name} in the ${match.league.name}.`,
     startDate,
+    url: `https://lastfootball.com/match/${match.id}`,
+    sport: 'Football',
     location: {
       '@type': 'Place',
       name: `${match.league.name} - ${match.league.country}`,
@@ -75,20 +85,33 @@ export function buildMatchJsonLd(match: {
     homeTeam: {
       '@type': 'SportsTeam',
       name: match.homeTeam.name,
+      ...(match.homeTeam.logo ? { logo: match.homeTeam.logo } : {}),
     },
     awayTeam: {
       '@type': 'SportsTeam',
       name: match.awayTeam.name,
+      ...(match.awayTeam.logo ? { logo: match.awayTeam.logo } : {}),
     },
     competitor: [
       { '@type': 'SportsTeam', name: match.homeTeam.name },
       { '@type': 'SportsTeam', name: match.awayTeam.name },
     ],
+    organizer: {
+      '@type': 'SportsOrganization',
+      name: match.league.name,
+    },
   };
 
-  if (match.status === 'FT' && match.homeScore !== null && match.awayScore !== null) {
+  if (isFinished) {
+    jsonLd.eventStatus = 'https://schema.org/EventCompleted';
+    if (match.homeScore !== null && match.awayScore !== null) {
+      jsonLd.result = `${match.homeTeam.name} ${match.homeScore} - ${match.awayScore} ${match.awayTeam.name}`;
+    }
+  } else if (isLive) {
     jsonLd.eventStatus = 'https://schema.org/EventScheduled';
-    jsonLd.result = `${match.homeTeam.name} ${match.homeScore} - ${match.awayScore} ${match.awayTeam.name}`;
+    jsonLd.eventAttendanceMode = 'https://schema.org/OfflineEventAttendanceMode';
+  } else if (isUpcoming) {
+    jsonLd.eventStatus = 'https://schema.org/EventScheduled';
   }
 
   return jsonLd;
