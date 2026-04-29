@@ -244,6 +244,14 @@ export default function TeamProfile() {
                 </div>
               </div>
             )}
+
+            {/* SEO: Team Analysis Narrative */}
+            {stats && (
+              <TeamAnalysis team={team} stats={stats} recentResults={recentResults} />
+            )}
+
+            {/* SEO: People Also Ask */}
+            <PeopleAlsoAsk team={team} stats={stats} />
           </div>
         )}
 
@@ -361,5 +369,171 @@ function MatchRow({ match, teamId }: { match: Match; teamId: number }) {
         <OptimizedImage src={match.awayTeam.logo} alt="" className="w-5 h-5 object-contain flex-shrink-0" />
       </div>
     </Link>
+  );
+}
+
+// ─── SEO: Team Analysis Narrative ───────────────────────────────────────────
+function TeamAnalysis({ team, stats, recentResults }: { team: TeamInfo; stats: TeamStatSummary; recentResults: Match[] }) {
+  const { fixtures, goals, goalsHome, goalsAway, cleanSheets, failedToScore, penalty, fixturesHome, fixturesAway, biggestStreak } = stats;
+  const winRate = fixtures.played > 0 ? ((fixtures.wins / fixtures.played) * 100).toFixed(0) : '0';
+  const homeWinRate = fixturesHome.played > 0 ? ((fixturesHome.wins / fixturesHome.played) * 100).toFixed(0) : '0';
+  const awayWinRate = fixturesAway.played > 0 ? ((fixturesAway.wins / fixturesAway.played) * 100).toFixed(0) : '0';
+  const goalsPerGame = fixtures.played > 0 ? (goals.for / fixtures.played).toFixed(1) : '0';
+  const concededPerGame = fixtures.played > 0 ? (goals.against / fixtures.played).toFixed(1) : '0';
+
+  const recentForm = recentResults.slice(0, 5).map(m => {
+    const isHome = m.homeTeam.id === team.id;
+    const teamScore = isHome ? m.homeScore! : m.awayScore!;
+    const oppScore = isHome ? m.awayScore! : m.homeScore!;
+    return teamScore > oppScore ? 'W' : teamScore < oppScore ? 'L' : 'D';
+  }).join('');
+
+  return (
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
+        <Swords className="w-4 h-4 text-primary" />
+        <h3 className="text-sm font-bold text-foreground">{team.name} — Season Analysis</h3>
+      </div>
+      <div className="p-4 space-y-4">
+        {/* Narrative text */}
+        <p className="text-sm text-foreground/80 leading-relaxed">
+          {team.name} have played {fixtures.played} matches this season, recording {fixtures.wins} victories,
+          {' '}{fixtures.draws} draws, and {fixtures.losses} defeats — a {winRate}% win rate.
+          With {goals.for} goals scored at an average of {goalsPerGame} per match, they have proven to be
+          {Number(goalsPerGame) >= 2.0 ? ' a potent attacking force' : Number(goalsPerGame) >= 1.5 ? ' a consistent offensive unit' : ' a side that can struggle for goals'}.
+          Defensively, they have conceded {goals.against} goals ({concededPerGame} per game)
+          {cleanSheets >= 10 ? `, keeping an impressive ${cleanSheets} clean sheets` : cleanSheets >= 5 ? ` with ${cleanSheets} clean sheets to their name` : ''}.
+        </p>
+
+        <p className="text-sm text-foreground/80 leading-relaxed">
+          At home, {team.name} boast a {homeWinRate}% win rate ({fixturesHome.wins}W {fixturesHome.draws}D {fixturesHome.losses}L),
+          scoring {goalsHome.for} and conceding {goalsHome.against}.
+          On the road, their record reads {fixturesAway.wins}W {fixturesAway.draws}D {fixturesAway.losses}L ({awayWinRate}% win rate),
+          with {goalsAway.for} goals scored and {goalsAway.against} conceded away from home.
+          {Number(homeWinRate) >= 70 ? ` Their home ground has been a genuine fortress this season.` : ''}
+          {Number(awayWinRate) >= 50 ? ` They are strong travellers, picking up consistent points on the road.` : ''}
+        </p>
+
+        {(penalty.scored > 0 || biggestStreak.wins >= 3) && (
+          <p className="text-sm text-foreground/80 leading-relaxed">
+            {penalty.scored > 0 ? `From the penalty spot, ${team.name} have converted ${penalty.scored} of ${penalty.scored + penalty.missed} attempts this season. ` : ''}
+            {biggestStreak.wins >= 3 ? `Their longest winning streak stands at ${biggestStreak.wins} consecutive matches. ` : ''}
+            {failedToScore >= 5 ? `However, they have failed to score in ${failedToScore} matches, suggesting inconsistency in the final third.` : ''}
+          </p>
+        )}
+
+        {/* Stats comparison table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border/30">
+                <th className="text-left py-2 text-xs text-muted-foreground font-semibold">Metric</th>
+                <th className="text-center py-2 text-xs text-muted-foreground font-semibold">Home</th>
+                <th className="text-center py-2 text-xs text-muted-foreground font-semibold">Away</th>
+                <th className="text-center py-2 text-xs text-muted-foreground font-semibold">Total</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/10">
+              <tr>
+                <td className="py-2 text-xs text-muted-foreground">Matches</td>
+                <td className="py-2 text-xs text-foreground text-center font-semibold">{fixturesHome.played}</td>
+                <td className="py-2 text-xs text-foreground text-center font-semibold">{fixturesAway.played}</td>
+                <td className="py-2 text-xs text-primary text-center font-bold">{fixtures.played}</td>
+              </tr>
+              <tr>
+                <td className="py-2 text-xs text-muted-foreground">Wins</td>
+                <td className="py-2 text-xs text-emerald-400 text-center font-semibold">{fixturesHome.wins}</td>
+                <td className="py-2 text-xs text-emerald-400 text-center font-semibold">{fixturesAway.wins}</td>
+                <td className="py-2 text-xs text-emerald-400 text-center font-bold">{fixtures.wins}</td>
+              </tr>
+              <tr>
+                <td className="py-2 text-xs text-muted-foreground">Draws</td>
+                <td className="py-2 text-xs text-amber-400 text-center font-semibold">{fixturesHome.draws}</td>
+                <td className="py-2 text-xs text-amber-400 text-center font-semibold">{fixturesAway.draws}</td>
+                <td className="py-2 text-xs text-amber-400 text-center font-bold">{fixtures.draws}</td>
+              </tr>
+              <tr>
+                <td className="py-2 text-xs text-muted-foreground">Losses</td>
+                <td className="py-2 text-xs text-red-400 text-center font-semibold">{fixturesHome.losses}</td>
+                <td className="py-2 text-xs text-red-400 text-center font-semibold">{fixturesAway.losses}</td>
+                <td className="py-2 text-xs text-red-400 text-center font-bold">{fixtures.losses}</td>
+              </tr>
+              <tr>
+                <td className="py-2 text-xs text-muted-foreground">Goals For</td>
+                <td className="py-2 text-xs text-foreground text-center font-semibold">{goalsHome.for}</td>
+                <td className="py-2 text-xs text-foreground text-center font-semibold">{goalsAway.for}</td>
+                <td className="py-2 text-xs text-primary text-center font-bold">{goals.for}</td>
+              </tr>
+              <tr>
+                <td className="py-2 text-xs text-muted-foreground">Goals Against</td>
+                <td className="py-2 text-xs text-foreground text-center font-semibold">{goalsHome.against}</td>
+                <td className="py-2 text-xs text-foreground text-center font-semibold">{goalsAway.against}</td>
+                <td className="py-2 text-xs text-foreground text-center font-bold">{goals.against}</td>
+              </tr>
+              <tr>
+                <td className="py-2 text-xs text-muted-foreground">Clean Sheets</td>
+                <td className="py-2 text-xs text-foreground text-center font-semibold">-</td>
+                <td className="py-2 text-xs text-foreground text-center font-semibold">-</td>
+                <td className="py-2 text-xs text-primary text-center font-bold">{cleanSheets}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── SEO: People Also Ask ───────────────────────────────────────────────────
+function PeopleAlsoAsk({ team, stats }: { team: TeamInfo; stats: TeamStatSummary | null }) {
+  const [openIdx, setOpenIdx] = useState<number | null>(null);
+
+  const questions = [
+    {
+      q: `How many goals have ${team.name} scored this season?`,
+      a: stats ? `${team.name} have scored ${stats.goals.for} goals in ${stats.fixtures.played} matches this season, averaging ${stats.goalsAvgPerGame.toFixed(1)} goals per game. At home they've netted ${stats.goalsHome.for}, and ${stats.goalsAway.for} away from home.` : 'Stats are currently being loaded.',
+    },
+    {
+      q: `What is ${team.name}'s home record this season?`,
+      a: stats ? `${team.name} have played ${stats.fixturesHome.played} home matches, winning ${stats.fixturesHome.wins}, drawing ${stats.fixturesHome.draws}, and losing ${stats.fixturesHome.losses}. They've scored ${stats.goalsHome.for} and conceded ${stats.goalsHome.against} at ${team.venue.name || 'home'}.` : 'Stats are currently being loaded.',
+    },
+    {
+      q: `How many clean sheets have ${team.name} kept?`,
+      a: stats ? `${team.name} have kept ${stats.cleanSheets} clean sheets this season across ${stats.fixtures.played} matches. ${stats.cleanSheets >= 10 ? 'This is an impressive defensive record.' : 'They will be looking to improve this tally.'}` : 'Stats are currently being loaded.',
+    },
+    {
+      q: `When was ${team.name} founded?`,
+      a: team.founded ? `${team.name} were founded in ${team.founded}. They are based in ${team.venue.city || team.country}${team.venue.name ? ` and play their home matches at ${team.venue.name}` : ''}${team.venue.capacity ? ` which has a capacity of ${team.venue.capacity.toLocaleString()}` : ''}.` : `${team.name} are based in ${team.country}.`,
+    },
+    {
+      q: `What is ${team.name}'s away form like?`,
+      a: stats ? `On the road, ${team.name} have won ${stats.fixturesAway.wins}, drawn ${stats.fixturesAway.draws}, and lost ${stats.fixturesAway.losses} from ${stats.fixturesAway.played} away matches. They've scored ${stats.goalsAway.for} and conceded ${stats.goalsAway.against} away from home.` : 'Stats are currently being loaded.',
+    },
+  ];
+
+  return (
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
+        <Users className="w-4 h-4 text-primary" />
+        <h3 className="text-sm font-bold text-foreground">People Also Ask about {team.name}</h3>
+      </div>
+      <div className="divide-y divide-border/10">
+        {questions.map((item, i) => (
+          <button
+            key={i}
+            onClick={() => setOpenIdx(openIdx === i ? null : i)}
+            className="w-full text-left px-4 py-3 hover:bg-secondary/20 transition-colors"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold text-foreground">{item.q}</span>
+              <ChevronRight className={cn('w-4 h-4 text-muted-foreground flex-shrink-0 transition-transform', openIdx === i && 'rotate-90')} />
+            </div>
+            {openIdx === i && (
+              <p className="text-sm text-foreground/75 leading-relaxed mt-2 pr-6">{item.a}</p>
+            )}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
