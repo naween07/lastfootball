@@ -16,26 +16,61 @@ if (!API_KEY) {
 
 // ─── In-memory cache ────────────────────────────────────────────────────────
 const cache = new Map();
-const MAX_ENTRIES = 500;
+const MAX_ENTRIES = 2000;
 const inflight = new Map();
 
 function getTtl(endpoint, params) {
+  // Live matches — very short cache
   if (params.live === 'all') return { fresh: 20, stale: 40 };
-  if (endpoint.startsWith('fixtures/')) return { fresh: 30, stale: 60 };
+  
+  // H2H — historical data, cache for 24h
+  if (endpoint === 'fixtures/headtohead') return { fresh: 86400, stale: 172800 };
+  
+  // Match events/stats/lineups for specific fixture
+  if (endpoint.startsWith('fixtures/') && params.fixture) {
+    // Check if it's a past fixture (we can cache longer)
+    return { fresh: 300, stale: 3600 };
+  }
+  
+  // Fixtures by date
   if (endpoint === 'fixtures') {
+    if (params.team && (params.last || params.next)) {
+      // Team's last/next fixtures — cache 1h
+      return { fresh: 3600, stale: 7200 };
+    }
     const date = params.date;
     if (date) {
       const today = new Date().toISOString().split('T')[0];
-      if (date < today) return { fresh: 86400, stale: 604800 };
-      if (date === today) return { fresh: 60, stale: 120 };
-      return { fresh: 600, stale: 1800 };
+      if (date < today) return { fresh: 86400, stale: 604800 }; // Past dates — 24h
+      if (date === today) return { fresh: 60, stale: 120 };      // Today — 1min
+      return { fresh: 600, stale: 1800 };                         // Future — 10min
     }
     return { fresh: 60, stale: 120 };
   }
+  
+  // Team statistics — changes once per day at most
+  if (endpoint === 'teams/statistics') return { fresh: 21600, stale: 43200 }; // 6h fresh, 12h stale
+  
+  // Squad data — rarely changes (transfers only)
+  if (endpoint === 'players/squads') return { fresh: 86400, stale: 172800 }; // 24h fresh, 48h stale
+  
+  // Standings — update every hour
   if (endpoint === 'standings') return { fresh: 3600, stale: 21600 };
+  
+  // Player stats (top scorers etc.) — hourly
   if (endpoint.startsWith('players/')) return { fresh: 3600, stale: 21600 };
-  if (endpoint === 'teams' || endpoint === 'fixtures/rounds') return { fresh: 21600, stale: 86400 };
-  if (params.search) return { fresh: 300, stale: 900 };
+  
+  // Team info — very stable
+  if (endpoint === 'teams') {
+    if (params.id) return { fresh: 86400, stale: 604800 }; // Single team — 24h
+    if (params.search) return { fresh: 300, stale: 900 };   // Search — 5min
+    return { fresh: 21600, stale: 86400 };                   // League teams — 6h
+  }
+  
+  // Rounds — stable
+  if (endpoint === 'fixtures/rounds') return { fresh: 21600, stale: 86400 };
+  
+  // Default — 5min
   return { fresh: 300, stale: 900 };
 }
 
@@ -353,11 +388,33 @@ const server = http.createServer(async (req, res) => {
 
     // API quota status (no rate limit)
     if (path === '/api/quota') {
+      // Count cache entries by type
+      const cacheBreakdown = {};
+      for (const [key] of cache) {
+        const type = key.split('?')[0] || 'unknown';
+        cacheBreakdown[type] = (cacheBreakdown[type] || 0) + 1;
+      }
+
+      // Count fresh vs stale entries
+      const now = Date.now();
+      let freshEntries = 0, staleEntries = 0;
+      for (const [, entry] of cache) {
+        if (now < entry.freshUntil) freshEntries++;
+        else staleEntries++;
+      }
+
       return json(req, res, {
         quota: quota.daily,
         callsFromServer: quota.callsToday,
         lastChecked: quota.lastChecked,
-        cacheEntries: cache.size,
+        cache: {
+          totalEntries: cache.size,
+          maxEntries: MAX_ENTRIES,
+          freshEntries,
+          staleEntries,
+          hitRate: `${cache.size > 0 ? 'active' : 'empty'}`,
+          breakdown: cacheBreakdown,
+        },
         pctUsed: quota.daily.limit > 0 ? Math.round((quota.daily.used / quota.daily.limit) * 100) : 0,
       });
     }
