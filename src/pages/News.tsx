@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import SEOHead from '@/components/SEOHead';
 import OptimizedImage from '@/components/OptimizedImage';
-import { fetchMatchesByDate, getToday } from '@/services/footballApi';
+import { fetchMatchesByDate } from '@/services/footballApi';
 import { generateDailyReports, Article } from '@/services/articleGenerator';
 import { fetchFootballNews, NewsItem } from '@/services/newsApi';
 import { Flame, Clock, Loader2, Newspaper, FileText, ExternalLink } from 'lucide-react';
@@ -20,13 +20,28 @@ export default function News() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [matches, news] = await Promise.allSettled([
-          fetchMatchesByDate(getToday()),
+        // Fetch last 3 days for plenty of content
+        const today = new Date();
+        const dates = [0, 1, 2].map(d => {
+          const date = new Date(today);
+          date.setDate(date.getDate() - d);
+          return date.toISOString().split('T')[0];
+        });
+
+        const [matchResults, news] = await Promise.allSettled([
+          Promise.all(dates.map(date => fetchMatchesByDate(date))),
           fetchFootballNews(),
         ]);
 
-        if (matches.status === 'fulfilled') {
-          const reports = generateDailyReports(matches.value);
+        if (matchResults.status === 'fulfilled') {
+          const allMatches = matchResults.value.flat();
+          const reports = generateDailyReports(allMatches);
+          // Sort: featured first, then by date
+          reports.sort((a, b) => {
+            if (a.isFeatured && !b.isFeatured) return -1;
+            if (!a.isFeatured && b.isFeatured) return 1;
+            return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+          });
           setArticles(reports);
         }
 
@@ -104,16 +119,35 @@ export default function News() {
             <div className="text-center py-20 text-muted-foreground">
               <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
               <p className="text-lg font-medium">No match reports yet</p>
-              <p className="text-sm mt-1">Reports are generated after matches finish today</p>
+              <p className="text-sm mt-1">Reports are generated after matches finish</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {/* Featured report */}
-              {articles.length > 0 && <FeaturedReport article={articles[0]} />}
-              {/* Rest */}
-              {articles.slice(1).map(article => (
-                <ReportCard key={article.id} article={article} />
-              ))}
+            <div className="space-y-4">
+              {/* Featured / Big Matches */}
+              {articles.filter(a => a.isFeatured).length > 0 && (
+                <div>
+                  <h3 className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-3 px-1 flex items-center gap-1.5">
+                    <span className="text-sm">🔥</span> Featured Matches
+                  </h3>
+                  <div className="space-y-3">
+                    {articles.filter(a => a.isFeatured).slice(0, 5).map(article => (
+                      <FeaturedReport key={article.id} article={article} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* All Reports */}
+              <div>
+                <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3 px-1 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5" /> All Reports
+                </h3>
+                <div className="space-y-2">
+                  {articles.filter(a => !a.isFeatured).map(article => (
+                    <ReportCard key={article.id} article={article} />
+                  ))}
+                </div>
+              </div>
             </div>
           )
         ) : (

@@ -6,13 +6,47 @@ export interface Article {
   title: string;
   summary: string;
   body: string;
-  category: 'match-report' | 'preview' | 'roundup';
+  category: 'match-report' | 'preview' | 'roundup' | 'featured';
   leagueName: string;
   leagueLogo?: string;
   homeTeam: { name: string; logo?: string };
   awayTeam: { name: string; logo?: string };
   matchId: number;
   publishedAt: string;
+  isFeatured: boolean;
+}
+
+// ─── Big Match Detection ────────────────────────────────────────────────────
+
+const TOP_CLUBS = [
+  'Real Madrid', 'Barcelona', 'Atletico Madrid',
+  'Manchester City', 'Manchester United', 'Liverpool', 'Arsenal', 'Chelsea', 'Tottenham',
+  'Bayern Munich', 'Bayern München', 'Borussia Dortmund',
+  'Paris Saint Germain', 'Paris Saint-Germain', 'PSG',
+  'Juventus', 'AC Milan', 'Inter', 'Inter Milan', 'Napoli',
+  'Ajax', 'Benfica', 'Porto',
+  'Newcastle', 'Aston Villa', 'Brighton',
+];
+
+const CUP_KNOCKOUT_STAGES = ['Quarter-final', 'Semi-final', 'Final', 'Round of 16'];
+
+function isBigMatch(match: Match): boolean {
+  const homeName = match.homeTeam.name;
+  const awayName = match.awayTeam.name;
+  const homeIsTop = TOP_CLUBS.some(c => homeName.includes(c) || c.includes(homeName));
+  const awayIsTop = TOP_CLUBS.some(c => awayName.includes(c) || c.includes(awayName));
+
+  // Both teams are top clubs
+  if (homeIsTop && awayIsTop) return true;
+
+  // Cup competition knockout stages (UCL, UEL, FA Cup etc.)
+  const cupLeagues = [2, 3, 848, 45, 48, 143, 137, 81, 66];
+  if (cupLeagues.includes(match.league.id)) return true;
+
+  // High-scoring match (5+ goals)
+  if ((match.homeScore || 0) + (match.awayScore || 0) >= 5) return true;
+
+  return false;
 }
 
 // ─── Narrative templates ────────────────────────────────────────────────────
@@ -198,13 +232,14 @@ export function generateMatchReport(match: Match): Article | null {
     title,
     summary,
     body,
-    category: 'match-report',
+    category: isBigMatch(match) ? 'featured' as const : 'match-report' as const,
     leagueName: match.league.name,
     leagueLogo: match.league.logo,
     homeTeam: { name: home, logo: match.homeTeam.logo },
     awayTeam: { name: away, logo: match.awayTeam.logo },
     matchId: match.id,
-    publishedAt: new Date().toISOString(),
+    publishedAt: match.date || new Date().toISOString(),
+    isFeatured: isBigMatch(match),
   };
 }
 
@@ -304,6 +339,7 @@ function generateLeagueRoundups(matches: Match[]): Article[] {
       awayTeam: { name: '', logo: undefined },
       matchId: leagueMatches[0].id,
       publishedAt: new Date().toISOString(),
+    isFeatured: false,
     });
   });
 
@@ -377,6 +413,7 @@ function generateTopMatchesArticle(matches: Match[]): Article[] {
     awayTeam: { name: '', logo: undefined },
     matchId: scored[0].match.id,
     publishedAt: new Date().toISOString(),
+    isFeatured: false,
   }];
 }
 
@@ -443,5 +480,6 @@ function generatePlayerOfDay(matches: Match[]): Article[] {
     awayTeam: { name: '', logo: undefined },
     matchId: matches[0].id,
     publishedAt: new Date().toISOString(),
+    isFeatured: false,
   }];
 }

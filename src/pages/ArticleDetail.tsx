@@ -18,10 +18,19 @@ export default function ArticleDetail() {
     // We'll try to find it by fetching today's matches and generating reports
     const load = async () => {
       try {
-        const { fetchMatchesByDate, getToday } = await import('@/services/footballApi');
-        const matches = await fetchMatchesByDate(getToday());
+        const { fetchMatchesByDate } = await import('@/services/footballApi');
         const { generateDailyReports } = await import('@/services/articleGenerator');
-        const reports = generateDailyReports(matches);
+        
+        // Search last 3 days for the article
+        const today = new Date();
+        const dates = [0, 1, 2].map(d => {
+          const date = new Date(today);
+          date.setDate(date.getDate() - d);
+          return date.toISOString().split('T')[0];
+        });
+
+        const allMatches = (await Promise.all(dates.map(date => fetchMatchesByDate(date)))).flat();
+        const reports = generateDailyReports(allMatches);
         const found = reports.find(a => a.slug === slug);
         setArticle(found || null);
       } catch {}
