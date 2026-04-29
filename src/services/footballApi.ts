@@ -603,6 +603,88 @@ export async function fetchLeagueRounds(leagueId: number, season: number): Promi
   }
 }
 
+// ─── Team Profile ───────────────────────────────────────────────────────────
+
+export interface TeamInfo {
+  id: number;
+  name: string;
+  logo: string;
+  country: string;
+  founded: number | null;
+  venue: { name: string; city: string; capacity: number | null; image: string | null };
+}
+
+export interface SquadPlayer {
+  id: number;
+  name: string;
+  photo: string;
+  age: number | null;
+  number: number | null;
+  position: string;
+  nationality: string;
+}
+
+export async function fetchTeamInfo(teamId: number): Promise<TeamInfo | null> {
+  try {
+    const data = await callApi("teams", { id: String(teamId) });
+    if (!data?.length) return null;
+    const t = data[0];
+    return {
+      id: t.team?.id || teamId,
+      name: t.team?.name || '',
+      logo: t.team?.logo || '',
+      country: t.team?.country || '',
+      founded: t.team?.founded || null,
+      venue: {
+        name: t.venue?.name || '',
+        city: t.venue?.city || '',
+        capacity: t.venue?.capacity || null,
+        image: t.venue?.image || null,
+      },
+    };
+  } catch (err) {
+    console.error("Failed to fetch team info:", err);
+    return null;
+  }
+}
+
+export async function fetchSquad(teamId: number): Promise<SquadPlayer[]> {
+  try {
+    const data = await callApi("players/squads", { team: String(teamId) });
+    if (!data?.length || !data[0]?.players) return [];
+    return data[0].players.map((p: any) => ({
+      id: p.id || 0,
+      name: p.name || '',
+      photo: p.photo || '',
+      age: p.age || null,
+      number: p.number || null,
+      position: p.position || 'Unknown',
+      nationality: p.nationality || '',
+    }));
+  } catch (err) {
+    console.error("Failed to fetch squad:", err);
+    return [];
+  }
+}
+
+export async function fetchTeamFixtures(teamId: number, last?: number, next?: number): Promise<Match[]> {
+  try {
+    const matches: Match[] = [];
+    if (last) {
+      const data = await callApi("fixtures", { team: String(teamId), last: String(last) });
+      matches.push(...data.map(mapFixtureToMatch));
+    }
+    if (next) {
+      const data = await callApi("fixtures", { team: String(teamId), next: String(next) });
+      matches.push(...data.map(mapFixtureToMatch));
+    }
+    return matches;
+  } catch (err) {
+    console.error("Failed to fetch team fixtures:", err);
+    return [];
+  }
+}
+
 export function getMatchesGroupedByLeague(matches: Match[]): LeagueMatches[] {
   const groups = new Map<number, LeagueMatches>();
   for (const match of matches) {

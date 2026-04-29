@@ -234,9 +234,9 @@ function MatchHero({ match }: { match: Match }) {
                 priority
               />
             )}
-            <p className="text-sm md:text-base font-semibold text-foreground leading-tight max-w-[120px] md:max-w-[180px]">
+            <Link to={`/team/${match.homeTeam.id}`} className="text-sm md:text-base font-semibold text-foreground leading-tight max-w-[120px] md:max-w-[180px] hover:text-primary transition-colors">
               {match.homeTeam.name}
-            </p>
+            </Link>
             {/* Home goal scorers */}
             {hasScore && match.events && (
               <GoalScorers events={match.events} side="home" />
@@ -300,9 +300,9 @@ function MatchHero({ match }: { match: Match }) {
                 priority
               />
             )}
-            <p className="text-sm md:text-base font-semibold text-foreground leading-tight max-w-[120px] md:max-w-[180px]">
+            <Link to={`/team/${match.awayTeam.id}`} className="text-sm md:text-base font-semibold text-foreground leading-tight max-w-[120px] md:max-w-[180px] hover:text-primary transition-colors">
               {match.awayTeam.name}
-            </p>
+            </Link>
             {/* Away goal scorers */}
             {hasScore && match.events && (
               <GoalScorers events={match.events} side="away" />
