@@ -7,6 +7,7 @@ import TeamStatsView from '@/components/stats/TeamStatsView';
 import LeagueFixturesView from '@/components/stats/LeagueFixturesView';
 import KnockoutBracket from '@/components/stats/KnockoutBracket';
 import { TOP_LEAGUES, CUP_LEAGUE_IDS, getCurrentSeason, getSeasonOptions, fetchStandings, StandingTeam } from '@/services/footballApi';
+import LeagueSummary from '@/components/stats/LeagueSummary';
 
 const BASE_TABS = ['Tables', 'Player', 'Team', 'Fixtures'] as const;
 type Tab = 'Tables' | 'Player' | 'Team' | 'Fixtures' | 'Bracket';
@@ -40,8 +41,11 @@ export default function Stats() {
   return (
     <div className="min-h-screen bg-background">
       <SEOHead
-        title={`${TOP_LEAGUES.find(l => l.id === activeLeague)?.name || 'League'} Standings & Stats`}
-        description={`Football standings, player stats, team stats, and fixtures for ${TOP_LEAGUES.find(l => l.id === activeLeague)?.name || 'top leagues'}.`}
+        title={`${TOP_LEAGUES.find(l => l.id === activeLeague)?.name || 'League'} Standings & Stats — LastFootball`}
+        description={standings.length > 0
+          ? `${TOP_LEAGUES.find(l => l.id === activeLeague)?.name} standings: ${standings[0]?.team.name} lead with ${standings[0]?.points} points. Full table, player stats, team stats, and fixtures.`
+          : `Football standings, player stats, team stats, and fixtures for ${TOP_LEAGUES.find(l => l.id === activeLeague)?.name || 'top leagues'}.`
+        }
         path="/stats"
       />
       <Header />
@@ -99,7 +103,16 @@ export default function Stats() {
 
         <div className="bg-card rounded-xl border border-border overflow-hidden">
           {activeTab === 'Tables' && (
-            <StandingsTable standings={standings} loading={standingsLoading} />
+            <>
+              <StandingsTable standings={standings} loading={standingsLoading} />
+              {!standingsLoading && standings.length > 0 && !isCup && (
+                <LeagueSummary
+                  leagueName={TOP_LEAGUES.find(l => l.id === activeLeague)?.name || 'League'}
+                  standings={standings}
+                  season={season}
+                />
+              )}
+            </>
           )}
           {activeTab === 'Player' && (
             <PlayerStatsView leagueId={activeLeague} season={season} />
