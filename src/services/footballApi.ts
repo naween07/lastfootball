@@ -685,6 +685,107 @@ export async function fetchTeamFixtures(teamId: number, last?: number, next?: nu
   }
 }
 
+// ─── Player Comparison ──────────────────────────────────────────────────────
+
+export interface PlayerProfile {
+  id: number;
+  name: string;
+  firstname: string;
+  lastname: string;
+  photo: string;
+  age: number;
+  nationality: string;
+  height: string;
+  weight: string;
+  team: { id: number; name: string; logo: string };
+  position: string;
+  stats: {
+    appearances: number;
+    minutes: number;
+    goals: number;
+    assists: number;
+    rating: string;
+    shots: number;
+    shotsOn: number;
+    passes: number;
+    passAccuracy: number;
+    keyPasses: number;
+    dribbles: number;
+    dribblesSuccess: number;
+    tackles: number;
+    interceptions: number;
+    duelsWon: number;
+    foulsDrawn: number;
+    foulsCommitted: number;
+    yellowCards: number;
+    redCards: number;
+    penaltyScored: number;
+    penaltyMissed: number;
+  };
+}
+
+export async function searchPlayers(query: string): Promise<{ id: number; name: string; photo: string; team: string; teamLogo: string }[]> {
+  try {
+    const data = await callApi("players", { search: query, season: "2025" });
+    return data.slice(0, 10).map((p: any) => ({
+      id: p.player?.id || 0,
+      name: p.player?.name || '',
+      photo: p.player?.photo || '',
+      team: p.statistics?.[0]?.team?.name || '',
+      teamLogo: p.statistics?.[0]?.team?.logo || '',
+    })).filter((p: any) => p.id);
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchPlayerProfile(playerId: number, season: number = 2025): Promise<PlayerProfile | null> {
+  try {
+    const data = await callApi("players", { id: String(playerId), season: String(season) });
+    if (!data?.length) return null;
+    const p = data[0];
+    const s = p.statistics?.[0] || {};
+    return {
+      id: p.player?.id || playerId,
+      name: p.player?.name || '',
+      firstname: p.player?.firstname || '',
+      lastname: p.player?.lastname || '',
+      photo: p.player?.photo || '',
+      age: p.player?.age || 0,
+      nationality: p.player?.nationality || '',
+      height: p.player?.height || '',
+      weight: p.player?.weight || '',
+      team: { id: s.team?.id || 0, name: s.team?.name || '', logo: s.team?.logo || '' },
+      position: s.games?.position || '',
+      stats: {
+        appearances: s.games?.appearences || 0,
+        minutes: s.games?.minutes || 0,
+        goals: s.goals?.total || 0,
+        assists: s.goals?.assists || 0,
+        rating: s.games?.rating || '0',
+        shots: s.shots?.total || 0,
+        shotsOn: s.shots?.on || 0,
+        passes: s.passes?.total || 0,
+        passAccuracy: parseInt(s.passes?.accuracy || '0'),
+        keyPasses: s.passes?.key || 0,
+        dribbles: s.dribbles?.attempts || 0,
+        dribblesSuccess: s.dribbles?.success || 0,
+        tackles: s.tackles?.total || 0,
+        interceptions: s.tackles?.interceptions || 0,
+        duelsWon: s.duels?.won || 0,
+        foulsDrawn: s.fouls?.drawn || 0,
+        foulsCommitted: s.fouls?.committed || 0,
+        yellowCards: s.cards?.yellow || 0,
+        redCards: s.cards?.red || 0,
+        penaltyScored: s.penalty?.scored || 0,
+        penaltyMissed: s.penalty?.missed || 0,
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function getMatchesGroupedByLeague(matches: Match[]): LeagueMatches[] {
   const groups = new Map<number, LeagueMatches>();
   for (const match of matches) {
