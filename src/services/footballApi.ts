@@ -726,14 +726,26 @@ export interface PlayerProfile {
 
 export async function searchPlayers(query: string): Promise<{ id: number; name: string; photo: string; team: string; teamLogo: string }[]> {
   try {
-    const data = await callApi("players", { search: query, season: "2025" });
-    return data.slice(0, 10).map((p: any) => ({
-      id: p.player?.id || 0,
-      name: p.player?.name || '',
-      photo: p.player?.photo || '',
-      team: p.statistics?.[0]?.team?.name || '',
-      teamLogo: p.statistics?.[0]?.team?.logo || '',
-    })).filter((p: any) => p.id);
+    // API-Football players search needs league param
+    // Search top leagues sequentially — stop when we find results
+    const topLeagueIds = [39, 140, 135, 78, 61, 2, 3];
+
+    for (const leagueId of topLeagueIds) {
+      try {
+        const data = await callApi("players", { search: query, league: String(leagueId), season: "2025" });
+        if (data?.length) {
+          return data.slice(0, 10).map((p: any) => ({
+            id: p.player?.id || 0,
+            name: p.player?.name || '',
+            photo: p.player?.photo || '',
+            team: p.statistics?.[0]?.team?.name || '',
+            teamLogo: p.statistics?.[0]?.team?.logo || '',
+          })).filter((p: any) => p.id);
+        }
+      } catch {}
+    }
+
+    return [];
   } catch {
     return [];
   }
