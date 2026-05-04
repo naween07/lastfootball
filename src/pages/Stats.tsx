@@ -110,7 +110,7 @@ export default function Stats() {
         <div className="bg-card rounded-xl border border-border overflow-hidden">
           {activeTab === 'Tables' && (
             <>
-              <StandingsTable standings={standings} loading={standingsLoading} />
+              <StandingsTable standings={standings} loading={standingsLoading} leagueId={activeLeague} />
               {!standingsLoading && standings.length > 0 && !isCup && (
                 <LeagueSummary
                   leagueName={TOP_LEAGUES.find(l => l.id === activeLeague)?.name || 'League'}

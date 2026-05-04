@@ -1,26 +1,40 @@
 import { StandingTeam } from '@/services/footballApi';
+import { Link } from 'react-router-dom';
 
 interface StandingsTableProps {
   standings: StandingTeam[];
   loading: boolean;
+  leagueId?: number;
 }
 
-// UCL spots = top 4, Europa = 5-6, Relegation = bottom 3 (standard for most leagues)
-function getZoneColor(rank: number, total: number): string {
-  if (rank <= 4) return 'border-l-[3px] border-l-emerald-500'; // Champions League
-  if (rank <= 6) return 'border-l-[3px] border-l-blue-500';    // Europa League
-  if (rank > total - 3) return 'border-l-[3px] border-l-red-500'; // Relegation
+// Leagues that have European competition qualification
+const EUROPEAN_DOMESTIC = [39, 140, 135, 78, 61, 94, 88]; // PL, La Liga, Serie A, Bundesliga, Ligue 1, Primeira Liga, Eredivisie
+// Leagues with relegation
+const HAS_RELEGATION = [39, 140, 135, 78, 61, 94, 88, 307, 253]; // All domestic leagues
+
+function getZoneColor(rank: number, total: number, leagueId?: number): string {
+  const hasEuropean = leagueId && EUROPEAN_DOMESTIC.includes(leagueId);
+  const hasReleg = leagueId && HAS_RELEGATION.includes(leagueId);
+
+  if (hasEuropean && rank <= 4) return 'border-l-[3px] border-l-emerald-500';    // UCL
+  if (hasEuropean && rank <= 6) return 'border-l-[3px] border-l-blue-500';       // UEL
+  if (!hasEuropean && rank <= 1) return 'border-l-[3px] border-l-emerald-500';   // Champion for non-European
+  if (hasReleg && rank > total - 3) return 'border-l-[3px] border-l-red-500';    // Relegation
   return 'border-l-[3px] border-l-transparent';
 }
 
-function getRankColor(rank: number, total: number): string {
-  if (rank <= 4) return 'text-emerald-400 font-bold';
-  if (rank <= 6) return 'text-blue-400 font-bold';
-  if (rank > total - 3) return 'text-red-400 font-bold';
+function getRankColor(rank: number, total: number, leagueId?: number): string {
+  const hasEuropean = leagueId && EUROPEAN_DOMESTIC.includes(leagueId);
+  const hasReleg = leagueId && HAS_RELEGATION.includes(leagueId);
+
+  if (hasEuropean && rank <= 4) return 'text-emerald-400 font-bold';
+  if (hasEuropean && rank <= 6) return 'text-blue-400 font-bold';
+  if (!hasEuropean && rank <= 1) return 'text-emerald-400 font-bold';
+  if (hasReleg && rank > total - 3) return 'text-red-400 font-bold';
   return 'text-muted-foreground';
 }
 
-export default function StandingsTable({ standings, loading }: StandingsTableProps) {
+export default function StandingsTable({ standings, loading, leagueId }: StandingsTableProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -39,23 +53,36 @@ export default function StandingsTable({ standings, loading }: StandingsTablePro
   }
 
   const total = standings.length;
+  const hasEuropean = leagueId && EUROPEAN_DOMESTIC.includes(leagueId);
+  const hasReleg = leagueId && HAS_RELEGATION.includes(leagueId);
 
   return (
     <div>
-      {/* Zone legend */}
+      {/* Zone legend — only show relevant zones */}
       <div className="flex items-center gap-4 px-3 py-2 mb-1">
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-emerald-500" />
-          <span className="text-[10px] text-muted-foreground">UCL</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-blue-500" />
-          <span className="text-[10px] text-muted-foreground">UEL</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-red-500" />
-          <span className="text-[10px] text-muted-foreground">Relegation</span>
-        </div>
+        {hasEuropean ? (
+          <>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              <span className="text-[10px] text-muted-foreground">Champions League</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-blue-500" />
+              <span className="text-[10px] text-muted-foreground">Europa League</span>
+            </div>
+          </>
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span className="text-[10px] text-muted-foreground">Champion</span>
+          </div>
+        )}
+        {hasReleg && (
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-red-500" />
+            <span className="text-[10px] text-muted-foreground">Relegation</span>
+          </div>
+        )}
       </div>
 
       <div className="overflow-x-auto">
@@ -79,18 +106,18 @@ export default function StandingsTable({ standings, loading }: StandingsTablePro
             {standings.map((team) => (
               <tr
                 key={team.team.id}
-                className={`border-b border-border/30 hover:bg-secondary/40 transition-colors ${getZoneColor(team.rank, total)}`}
+                className={`border-b border-border/30 hover:bg-secondary/40 transition-colors ${getZoneColor(team.rank, total, leagueId)}`}
               >
                 {/* Rank */}
-                <td className={`py-2 pl-4 pr-1 text-xs tabular-nums ${getRankColor(team.rank, total)}`}>
+                <td className={`py-2 pl-4 pr-1 text-xs tabular-nums ${getRankColor(team.rank, total, leagueId)}`}>
                   {team.rank}
                 </td>
 
                 {/* Team name + logo */}
                 <td className="py-2 px-1">
-                  <div className="flex items-center gap-2">
+                  <Link to={`/team/${team.team.id}`} className="flex items-center gap-2 hover:text-primary transition-colors">
                     {team.team.logo ? (
-                      <img src={team.team.logo} alt="" className="w-[18px] h-[18px] object-contain flex-shrink-0" />
+                      <img src={team.team.logo} alt={team.team.name} className="w-[18px] h-[18px] object-contain flex-shrink-0" />
                     ) : (
                       <div className="w-[18px] h-[18px] rounded-full bg-secondary flex items-center justify-center flex-shrink-0">
                         <span className="text-[7px] font-bold text-muted-foreground">
@@ -101,7 +128,7 @@ export default function StandingsTable({ standings, loading }: StandingsTablePro
                     <span className="font-medium text-[13px] text-foreground truncate max-w-[120px] sm:max-w-none">
                       {team.team.name}
                     </span>
-                  </div>
+                  </Link>
                 </td>
 
                 {/* Stats */}
