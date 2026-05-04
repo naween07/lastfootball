@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import SEOHead, { buildWebsiteJsonLd } from '@/components/SEOHead';
 import OptimizedImage from '@/components/OptimizedImage';
-import { fetchMatchesByDate, fetchLiveMatches, fetchTopScorers, fetchStandings, getToday, PlayerStat } from '@/services/footballApi';
+import { fetchHomepageData, PlayerStat } from '@/services/footballApi';
 import { fetchFootballNews } from '@/services/newsApi';
 import { Match } from '@/types/football';
 import { ArrowRight, Zap, Calendar, Trophy, Newspaper, ChevronRight } from 'lucide-react';
@@ -27,32 +27,18 @@ export default function HomePage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const leagues = [
-          { id: 39, name: 'Premier League' },
-          { id: 140, name: 'La Liga' },
-          { id: 135, name: 'Serie A' },
-          { id: 78, name: 'Bundesliga' },
-          { id: 61, name: 'Ligue 1' },
-        ];
-
-        const [live, today, newsData, ...scorerResults] = await Promise.allSettled([
-          fetchLiveMatches(),
-          fetchMatchesByDate(getToday()),
+        const [homeData, newsData] = await Promise.allSettled([
+          fetchHomepageData(),
           fetchFootballNews(),
-          ...leagues.map(l => fetchTopScorers(l.id, 2025)),
         ]);
 
-        if (live.status === 'fulfilled') setLiveMatches(live.value);
-        if (today.status === 'fulfilled') setTodayMatches(today.value);
-        if (newsData.status === 'fulfilled') setNews(newsData.value.slice(0, 4));
+        if (homeData.status === 'fulfilled') {
+          setLiveMatches(homeData.value.liveMatches);
+          setTodayMatches(homeData.value.todayMatches);
+          setTopScorers(homeData.value.scorers);
+        }
 
-        const allScorers: { league: string; scorers: PlayerStat[] }[] = [];
-        scorerResults.forEach((result, i) => {
-          if (result.status === 'fulfilled' && result.value.length > 0) {
-            allScorers.push({ league: leagues[i].name, scorers: result.value.slice(0, 5) });
-          }
-        });
-        setTopScorers(allScorers);
+        if (newsData.status === 'fulfilled') setNews(newsData.value.slice(0, 4));
       } catch {}
       setLoading(false);
     };

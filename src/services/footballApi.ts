@@ -823,6 +823,68 @@ export function formatDate(date: Date): string {
   return date.toLocaleDateString("en-CA"); // YYYY-MM-DD in local timezone
 }
 
+// ─── Aggregated Homepage Data (single server call) ──────────────────────────
+
+export interface HomepageData {
+  liveMatches: Match[];
+  todayMatches: Match[];
+  scorers: { league: string; scorers: PlayerStat[] }[];
+  standings: { league: string; teams: { rank: number; name: string; logo: string; pts: number; played: number; gd: number }[] }[];
+}
+
+const LEAGUE_NAMES: Record<number, string> = { 39: 'Premier League', 140: 'La Liga', 135: 'Serie A', 78: 'Bundesliga', 61: 'Ligue 1' };
+
+export async function fetchHomepageData(): Promise<HomepageData> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/homepage`, { headers: { 'Content-Type': 'application/json' } });
+    const data = await res.json();
+
+    const liveMatches = (data.live?.response || []).map(mapFixtureToMatch);
+    const todayMatches = (data.today?.response || []).map(mapFixtureToMatch);
+
+    const scorers: HomepageData['scorers'] = [];
+    for (const [idStr, val] of Object.entries(data.scorers || {})) {
+      const id = parseInt(idStr);
+      const resp = (val as any)?.response || [];
+      if (resp.length > 0) {
+        scorers.push({
+          league: LEAGUE_NAMES[id] || `League ${id}`,
+          scorers: resp.slice(0, 5).map((p: any) => ({
+            player: { id: p.player?.id, name: p.player?.name, photo: p.player?.photo },
+            team: { id: p.statistics?.[0]?.team?.id, name: p.statistics?.[0]?.team?.name, logo: p.statistics?.[0]?.team?.logo },
+            goals: p.statistics?.[0]?.goals?.total || 0,
+            assists: p.statistics?.[0]?.goals?.assists || 0,
+          })),
+        });
+      }
+    }
+
+    const standings: HomepageData['standings'] = [];
+    for (const [idStr, val] of Object.entries(data.standings || {})) {
+      const id = parseInt(idStr);
+      const resp = (val as any)?.response?.[0]?.league?.standings?.[0] || [];
+      if (resp.length > 0) {
+        standings.push({
+          league: LEAGUE_NAMES[id] || `League ${id}`,
+          teams: resp.slice(0, 5).map((t: any) => ({
+            rank: t.rank,
+            name: t.team?.name || '',
+            logo: t.team?.logo || '',
+            pts: t.points || 0,
+            played: t.all?.played || 0,
+            gd: t.goalsDiff || 0,
+          })),
+        });
+      }
+    }
+
+    return { liveMatches, todayMatches, scorers, standings };
+  } catch (err) {
+    console.error('Failed to fetch homepage data:', err);
+    return { liveMatches: [], todayMatches: [], scorers: [], standings: [] };
+  }
+}
+
 export function getToday(): string {
   return formatDate(new Date());
 }

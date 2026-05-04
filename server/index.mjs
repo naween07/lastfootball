@@ -386,6 +386,88 @@ const server = http.createServer(async (req, res) => {
       return json(req, res, { ok: true, cache: cache.size, logos: logoCache.size, rateLimits: rateLimits.size });
     }
 
+    // ─── Aggregated homepage data (1 call instead of 13) ────────────────
+    if (path === '/api/homepage') {
+      const cacheKey = 'agg_homepage';
+      const hit = cacheGet(cacheKey);
+      if (hit) return json(req, res, hit);
+
+      const today = new Date().toLocaleDateString('en-CA');
+      const leagues = [
+        { id: 39, name: 'Premier League' },
+        { id: 140, name: 'La Liga' },
+        { id: 135, name: 'Serie A' },
+        { id: 78, name: 'Bundesliga' },
+        { id: 61, name: 'Ligue 1' },
+      ];
+
+      try {
+        const [live, todayMatches, ...rest] = await Promise.allSettled([
+          fetchUpstream('fixtures', { live: 'all' }),
+          fetchUpstream('fixtures', { date: today }),
+          ...leagues.map(l => fetchUpstream('players/topscorers', { league: String(l.id), season: '2025' })),
+          ...leagues.map(l => fetchUpstream('standings', { league: String(l.id), season: '2025' })),
+        ]);
+
+        const result = {
+          live: live.status === 'fulfilled' ? live.value : [],
+          today: todayMatches.status === 'fulfilled' ? todayMatches.value : [],
+          scorers: {},
+          standings: {},
+        };
+
+        leagues.forEach((l, i) => {
+          const scorerRes = rest[i];
+          const standRes = rest[i + leagues.length];
+          if (scorerRes?.status === 'fulfilled') result.scorers[l.id] = scorerRes.value;
+          if (standRes?.status === 'fulfilled') result.standings[l.id] = standRes.value;
+        });
+
+        cacheSet(cacheKey, result, { fresh: 60, stale: 120 });
+        return json(req, res, result);
+      } catch (err) {
+        console.error('Homepage aggregate error:', err);
+        return json(req, res, { live: [], today: [], scorers: {}, standings: {} });
+      }
+    }
+
+    // ─── Aggregated match detail (1 call instead of 4-7) ────────────────
+    if (path === '/api/match') {
+      const fixtureId = params.get('id');
+      if (!fixtureId) return json(req, res, { error: 'Missing id' }, 400);
+
+      const cacheKey = `agg_match_${fixtureId}`;
+      const hit = cacheGet(cacheKey);
+      if (hit) return json(req, res, hit);
+
+      try {
+        const [fixture, events, stats, lineups, players] = await Promise.allSettled([
+          fetchUpstream('fixtures', { id: fixtureId }),
+          fetchUpstream('fixtures/events', { fixture: fixtureId }),
+          fetchUpstream('fixtures/statistics', { fixture: fixtureId }),
+          fetchUpstream('fixtures/lineups', { fixture: fixtureId }),
+          fetchUpstream('fixtures/players', { fixture: fixtureId }),
+        ]);
+
+        const result = {
+          fixture: fixture.status === 'fulfilled' ? fixture.value : [],
+          events: events.status === 'fulfilled' ? events.value : [],
+          stats: stats.status === 'fulfilled' ? stats.value : [],
+          lineups: lineups.status === 'fulfilled' ? lineups.value : [],
+          players: players.status === 'fulfilled' ? players.value : [],
+        };
+
+        // Cache 30s for live, 5min for finished
+        const statusShort = result.fixture?.[0]?.fixture?.status?.short;
+        const isLive = ['1H', '2H', 'HT', 'ET', 'P', 'BT'].includes(statusShort);
+        cacheSet(cacheKey, result, { fresh: isLive ? 30 : 300, stale: isLive ? 60 : 600 });
+        return json(req, res, result);
+      } catch (err) {
+        console.error('Match aggregate error:', err);
+        return json(req, res, { fixture: [], events: [], stats: [], lineups: [], players: [] });
+      }
+    }
+
     // API quota status (no rate limit)
     if (path === '/api/quota') {
       // Count cache entries by type
