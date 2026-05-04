@@ -166,8 +166,9 @@ export default function WorldCup() {
   return (
     <>
       <SEOHead
-        title="FIFA World Cup 2026 — LastFootball"
-        description="Follow the FIFA World Cup 2026 on LastFootball. Live scores, groups, fixtures, and predictions."
+        title="FIFA World Cup 2026 — Groups, Fixtures, Countdown & Stadiums | LastFootball"
+        description="Everything about FIFA World Cup 2026: 48 teams, 12 groups, 104 matches across USA, Canada & Mexico. Live countdown, group draw, fixtures, stadiums, and key dates. June 11 - July 19, 2026."
+        path="/worldcup"
       />
       <Header />
       <main className="min-h-screen bg-background pb-20">
@@ -340,6 +341,87 @@ export default function WorldCup() {
             ))}
           </div>
         </section>
+
+        {/* Stadiums */}
+        <section className="container max-w-5xl mx-auto px-4 pb-8">
+          <h2 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
+            <MapPin className="w-5 h-5 text-amber-400" />
+            Host Stadiums
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            {[
+              { name: 'MetLife Stadium', city: 'New York/New Jersey', capacity: '82,500', country: '🇺🇸', final: true },
+              { name: 'AT&T Stadium', city: 'Dallas, Texas', capacity: '80,000', country: '🇺🇸' },
+              { name: 'SoFi Stadium', city: 'Los Angeles, California', capacity: '70,240', country: '🇺🇸' },
+              { name: 'Hard Rock Stadium', city: 'Miami, Florida', capacity: '64,767', country: '🇺🇸' },
+              { name: 'NRG Stadium', city: 'Houston, Texas', capacity: '72,220', country: '🇺🇸' },
+              { name: 'Mercedes-Benz Stadium', city: 'Atlanta, Georgia', capacity: '71,000', country: '🇺🇸' },
+              { name: 'Lincoln Financial Field', city: 'Philadelphia, PA', capacity: '69,176', country: '🇺🇸' },
+              { name: 'Lumen Field', city: 'Seattle, Washington', capacity: '68,740', country: '🇺🇸' },
+              { name: 'Gillette Stadium', city: 'Boston, Massachusetts', capacity: '65,878', country: '🇺🇸' },
+              { name: 'Arrowhead Stadium', city: 'Kansas City, Missouri', capacity: '76,416', country: '🇺🇸' },
+              { name: 'Levi\'s Stadium', city: 'San Francisco Bay Area', capacity: '68,500', country: '🇺🇸' },
+              { name: 'Estadio Azteca', city: 'Mexico City', capacity: '87,523', country: '🇲🇽' },
+              { name: 'Estadio BBVA', city: 'Monterrey', capacity: '53,500', country: '🇲🇽' },
+              { name: 'Estadio Akron', city: 'Guadalajara', capacity: '49,850', country: '🇲🇽' },
+              { name: 'BMO Field', city: 'Toronto', capacity: '45,736', country: '🇨🇦' },
+              { name: 'BC Place', city: 'Vancouver', capacity: '54,500', country: '🇨🇦' },
+            ].map(s => (
+              <div key={s.name} className={cn('bg-card border rounded-xl p-3', s.final ? 'border-amber-500/30' : 'border-border/50')}>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-foreground">{s.name}</span>
+                  {s.final && <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded font-bold">FINAL</span>}
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">{s.country} {s.city}</p>
+                <p className="text-[11px] text-muted-foreground/60">Capacity: {s.capacity}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Tournament Format */}
+        <section className="container max-w-5xl mx-auto px-4 pb-8">
+          <h2 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
+            <Trophy className="w-5 h-5 text-amber-400" />
+            Tournament Format
+          </h2>
+          <div className="bg-card border border-border/50 rounded-xl p-5 space-y-4">
+            <p className="text-sm text-foreground/80 leading-relaxed">
+              The 2026 FIFA World Cup marks a historic expansion to <strong>48 teams</strong>, up from 32 in previous editions. The tournament will be hosted across three nations — the <strong>United States, Canada, and Mexico</strong> — making it the first World Cup held in three countries simultaneously.
+            </p>
+            <p className="text-sm text-foreground/80 leading-relaxed">
+              The <strong>48 teams are drawn into 12 groups of four</strong>. The top two teams from each group, along with the <strong>8 best third-placed teams</strong>, advance to the knockout stage — a total of 32 teams qualifying for the Round of 32. From there, the tournament follows a single-elimination format through the Round of 16, Quarter-finals, Semi-finals, and the Final.
+            </p>
+            <p className="text-sm text-foreground/80 leading-relaxed">
+              A total of <strong>104 matches</strong> will be played across <strong>16 stadiums</strong> in 16 host cities. The opening match will take place at Estadio Azteca in Mexico City on June 11, 2026, while the final will be held at MetLife Stadium in New Jersey on July 19, 2026.
+            </p>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+              <div className="bg-secondary/30 rounded-lg p-3 text-center">
+                <p className="text-xl font-black text-amber-400">48</p>
+                <p className="text-[10px] text-muted-foreground uppercase font-semibold">Teams</p>
+              </div>
+              <div className="bg-secondary/30 rounded-lg p-3 text-center">
+                <p className="text-xl font-black text-amber-400">12</p>
+                <p className="text-[10px] text-muted-foreground uppercase font-semibold">Groups</p>
+              </div>
+              <div className="bg-secondary/30 rounded-lg p-3 text-center">
+                <p className="text-xl font-black text-amber-400">104</p>
+                <p className="text-[10px] text-muted-foreground uppercase font-semibold">Matches</p>
+              </div>
+              <div className="bg-secondary/30 rounded-lg p-3 text-center">
+                <p className="text-xl font-black text-amber-400">16</p>
+                <p className="text-[10px] text-muted-foreground uppercase font-semibold">Stadiums</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* SEO: People Also Ask */}
+        <section className="container max-w-5xl mx-auto px-4 pb-8">
+          <h2 className="text-lg font-bold text-foreground mb-4">Frequently Asked Questions — World Cup 2026</h2>
+          <WCFaq />
+        </section>
       </main>
     </>
   );
@@ -463,4 +545,60 @@ function getCountdown() {
     mins: Math.floor((diff % 3600000) / 60000),
     secs: Math.floor((diff % 60000) / 1000),
   };
+}
+
+// ─── World Cup FAQ ──────────────────────────────────────────────────────────
+function WCFaq() {
+  const [openIdx, setOpenIdx] = useState<number | null>(null);
+
+  const faqs = [
+    {
+      q: 'When does the FIFA World Cup 2026 start?',
+      a: 'The FIFA World Cup 2026 kicks off on June 11, 2026, with the opening match between Mexico and South Africa at Estadio Azteca in Mexico City. The tournament runs until July 19, 2026, when the final will be held at MetLife Stadium in New Jersey, USA.',
+    },
+    {
+      q: 'How many teams are in the World Cup 2026?',
+      a: 'The 2026 World Cup features 48 teams, an expansion from 32 in previous tournaments. The 48 teams are divided into 12 groups of four, with the top two from each group and the 8 best third-placed teams advancing to the Round of 32.',
+    },
+    {
+      q: 'Where is the World Cup 2026 being held?',
+      a: 'The 2026 FIFA World Cup is being co-hosted by three countries: the United States (11 venues), Mexico (3 venues), and Canada (2 venues). This makes it the first World Cup held across three nations. Host cities include New York, Los Angeles, Miami, Dallas, Houston, Atlanta, Seattle, Boston, Philadelphia, Kansas City, San Francisco, Mexico City, Monterrey, Guadalajara, Toronto, and Vancouver.',
+    },
+    {
+      q: 'Where is the World Cup 2026 final?',
+      a: 'The 2026 World Cup Final will be held at MetLife Stadium in East Rutherford, New Jersey (New York metropolitan area) on July 19, 2026. MetLife Stadium has a capacity of approximately 82,500 for the World Cup configuration.',
+    },
+    {
+      q: 'What is the format of the World Cup 2026?',
+      a: 'The 48 teams are drawn into 12 groups of four. Each team plays three group stage matches. The top two from each group plus the 8 best third-placed teams (32 total) advance to a knockout round starting with the Round of 32, followed by Round of 16, Quarter-finals, Semi-finals, Third-place playoff, and the Final. A total of 104 matches will be played.',
+    },
+    {
+      q: 'Which countries qualified for the World Cup 2026?',
+      a: 'The 48 qualified teams include: Argentina, Brazil, France, England, Germany, Spain, Portugal, Netherlands, Italy, Belgium, Croatia, USA, Canada, Mexico, Japan, South Korea, Australia, Morocco, Senegal, Nigeria, Ghana, Cameroon, and many more. The hosts USA, Canada, and Mexico qualified automatically.',
+    },
+    {
+      q: 'How many matches will be played in the World Cup 2026?',
+      a: 'A total of 104 matches will be played during the 2026 FIFA World Cup — 48 group stage matches per matchday across the group stage, plus 32 knockout matches from the Round of 32 to the Final. This is a significant increase from the 64 matches in the 32-team format.',
+    },
+  ];
+
+  return (
+    <div className="bg-card border border-border/50 rounded-xl overflow-hidden divide-y divide-border/10">
+      {faqs.map((faq, i) => (
+        <button
+          key={i}
+          onClick={() => setOpenIdx(openIdx === i ? null : i)}
+          className="w-full text-left px-4 py-3.5 hover:bg-secondary/20 transition-colors"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-semibold text-foreground">{faq.q}</span>
+            <ChevronRight className={cn('w-4 h-4 text-muted-foreground flex-shrink-0 transition-transform', openIdx === i && 'rotate-90')} />
+          </div>
+          {openIdx === i && (
+            <p className="text-sm text-foreground/75 leading-relaxed mt-2.5 pr-6">{faq.a}</p>
+          )}
+        </button>
+      ))}
+    </div>
+  );
 }
