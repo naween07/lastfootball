@@ -5,9 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#141414" />
 
-    <title>LastFootball — Live Scores &amp; Results</title>
-    <meta name="description" content="Real-time football live scores, fixtures, results, and match stats from top leagues worldwide. Track your favourite teams." />
+    <title>LastFootball — Live Football Scores, Fixtures, Results & Stats</title>
+    <meta name="description" content="Live football scores, fixtures, results, standings and match stats from Premier League, La Liga, Champions League and 100+ leagues worldwide. Free real-time updates." />
     <meta name="author" content="LastFootball" />
+    <meta name="keywords" content="live football scores, football results, football fixtures, Premier League scores, Champions League live, La Liga results, Serie A standings, football stats, match predictions, head to head football" />
+    <link rel="canonical" href="https://lastfootball.com/" />
 
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -20,13 +22,16 @@
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://lastfootball.com" />
-    <meta property="og:title" content="LastFootball — Live Scores &amp; Results" />
-    <meta property="og:description" content="Real-time football live scores, fixtures, results, and match stats from top leagues worldwide." />
+    <meta property="og:site_name" content="LastFootball" />
+    <meta property="og:title" content="LastFootball — Live Football Scores, Fixtures & Stats" />
+    <meta property="og:description" content="Live football scores, fixtures, results and stats from Premier League, La Liga, Champions League and 100+ leagues. Free real-time updates." />
+    <meta property="og:locale" content="en_US" />
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="LastFootball — Live Scores &amp; Results" />
-    <meta name="twitter:description" content="Real-time football live scores, fixtures, results, and match stats from top leagues worldwide." />
+    <meta name="twitter:site" content="@lastfootball" />
+    <meta name="twitter:title" content="LastFootball — Live Football Scores & Stats" />
+    <meta name="twitter:description" content="Live football scores, fixtures, results and stats from 100+ leagues worldwide." />
 
     <!-- Preconnect for faster loads -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -42,6 +47,32 @@
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
       gtag('config', 'G-C6ZXWQKDNR');
+    </script>
+
+    <!-- Structured Data — Google reads this immediately -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "LastFootball",
+      "url": "https://lastfootball.com",
+      "description": "Live football scores, fixtures, results, standings and match stats from Premier League, La Liga, Champions League and 100+ leagues worldwide.",
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "https://lastfootball.com/search?q={search_term_string}",
+        "query-input": "required name=search_term_string"
+      }
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "LastFootball",
+      "url": "https://lastfootball.com",
+      "logo": "https://lastfootball.com/favicon.svg",
+      "sameAs": []
+    }
     </script>
   </head>
 
@@ -84,5 +115,26 @@
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>
+    <noscript>
+      <div style="padding:20px;max-width:800px;margin:0 auto;font-family:system-ui,sans-serif;">
+        <h1>LastFootball — Live Football Scores, Fixtures & Results</h1>
+        <p>LastFootball provides real-time live football scores, fixtures, results, and match stats from over 100 leagues worldwide including the Premier League, La Liga, Serie A, Bundesliga, Ligue 1, and UEFA Champions League.</p>
+        <h2>Features</h2>
+        <ul>
+          <li>Live Scores — Real-time match updates every 15 seconds</li>
+          <li>Fixtures — Upcoming matches with kick-off times</li>
+          <li>Match Stats — Lineups, events, player ratings, head-to-head</li>
+          <li>News — Auto-generated match reports and league round-ups</li>
+          <li>Standings — Full league tables for all major competitions</li>
+          <li>Team Profiles — Season stats, squad, form, and fixtures</li>
+          <li>Player Profiles — Detailed player statistics and comparisons</li>
+          <li>Smart Insights — AI-powered contextual match analysis</li>
+          <li>FIFA World Cup 2026 — Countdown, groups, and team enrollment</li>
+        </ul>
+        <h2>Leagues Covered</h2>
+        <p>Premier League, La Liga, Serie A, Bundesliga, Ligue 1, UEFA Champions League, UEFA Europa League, FA Cup, Copa del Rey, Coppa Italia, DFB Pokal, Coupe de France, and many more.</p>
+        <p>Visit <a href="https://lastfootball.com">lastfootball.com</a> for live football scores.</p>
+      </div>
+    </noscript>
   </body>
 </html>
