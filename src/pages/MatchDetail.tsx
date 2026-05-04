@@ -227,12 +227,14 @@ function MatchHero({ match }: { match: Match }) {
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 md:gap-6">
           <div className="flex flex-col items-center text-center">
             {match.homeTeam.logo && (
-              <OptimizedImage
-                src={match.homeTeam.logo}
-                alt={match.homeTeam.name}
-                className="w-14 h-14 md:w-20 md:h-20 object-contain mb-2"
-                priority
-              />
+              <Link to={`/team/${match.homeTeam.id}`}>
+                <OptimizedImage
+                  src={match.homeTeam.logo}
+                  alt={match.homeTeam.name}
+                  className="w-14 h-14 md:w-20 md:h-20 object-contain mb-2 hover:scale-105 transition-transform"
+                  priority
+                />
+              </Link>
             )}
             <Link to={`/team/${match.homeTeam.id}`} className="text-sm md:text-base font-semibold text-foreground leading-tight max-w-[120px] md:max-w-[180px] hover:text-primary transition-colors">
               {match.homeTeam.name}
@@ -293,12 +295,14 @@ function MatchHero({ match }: { match: Match }) {
 
           <div className="flex flex-col items-center text-center">
             {match.awayTeam.logo && (
-              <OptimizedImage
-                src={match.awayTeam.logo}
-                alt={match.awayTeam.name}
-                className="w-14 h-14 md:w-20 md:h-20 object-contain mb-2"
-                priority
-              />
+              <Link to={`/team/${match.awayTeam.id}`}>
+                <OptimizedImage
+                  src={match.awayTeam.logo}
+                  alt={match.awayTeam.name}
+                  className="w-14 h-14 md:w-20 md:h-20 object-contain mb-2 hover:scale-105 transition-transform"
+                  priority
+                />
+              </Link>
             )}
             <Link to={`/team/${match.awayTeam.id}`} className="text-sm md:text-base font-semibold text-foreground leading-tight max-w-[120px] md:max-w-[180px] hover:text-primary transition-colors">
               {match.awayTeam.name}
