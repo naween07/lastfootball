@@ -288,16 +288,17 @@ export default function TeamProfile() {
                   </div>
                   <div className="divide-y divide-border/10">
                     {players.map(p => (
-                      <div key={p.id} className="flex items-center gap-3 px-4 py-2.5">
+                      <Link key={p.id} to={`/player/${p.id}`} className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/30 transition-colors">
                         <span className="text-xs font-bold text-muted-foreground w-6 text-center tabular-nums">
                           {p.number || '-'}
                         </span>
                         <img src={p.photo} alt="" className="w-9 h-9 rounded-full object-cover bg-secondary" loading="lazy" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-foreground truncate">{p.name}</p>
+                          <p className="text-sm font-semibold text-foreground truncate hover:text-primary transition-colors">{p.name}</p>
                           <p className="text-[11px] text-muted-foreground">{p.nationality}{p.age ? ` · ${p.age} yrs` : ''}</p>
                         </div>
-                      </div>
+                        <ChevronRight className="w-4 h-4 text-muted-foreground/30" />
+                      </Link>
                     ))}
                   </div>
                 </div>

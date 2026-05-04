@@ -21,6 +21,7 @@ const News = lazy(() => import("./pages/News"));
 const ArticleDetail = lazy(() => import("./pages/ArticleDetail"));
 const TeamProfile = lazy(() => import("./pages/TeamProfile"));
 const PlayerCompare = lazy(() => import("./pages/PlayerCompare"));
+const PlayerProfile = lazy(() => import("./pages/PlayerProfile"));
 const WorldCup = lazy(() => import("./pages/WorldCup"));
 const Auth = lazy(() => import("./pages/Auth"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
@@ -76,6 +77,7 @@ function AppRoutes() {
             <Route path="/match/:id" element={<MatchDetail />} />
             <Route path="/team/:teamId" element={<TeamProfile />} />
             <Route path="/compare" element={<PlayerCompare />} />
+            <Route path="/player/:playerId" element={<PlayerProfile />} />
             <Route path="/favorites" element={<Favorites />} />
             <Route path="/news" element={<News />} />
             <Route path="/news/:slug" element={<ArticleDetail />} />
