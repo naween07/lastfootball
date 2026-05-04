@@ -73,8 +73,8 @@ export default function HomePage() {
   return (
     <>
       <SEOHead
-        title="LastFootball — All Football, One Place"
-        description="Live football scores, fixtures, results, stats and news from top leagues worldwide."
+        title="Live Football Scores Today — Fixtures, Results & Stats | LastFootball"
+        description="Free live football scores, fixtures, results and standings from Premier League, Champions League, La Liga, Serie A, Bundesliga and 100+ leagues. Real-time updates, match stats, lineups, and news."
         jsonLd={buildWebsiteJsonLd()}
       />
       <Header />
@@ -115,10 +115,11 @@ export default function HomePage() {
                     <span className="text-xs font-semibold text-primary uppercase tracking-wider">Live Scores</span>
                   </div>
                 )}
-                <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-white leading-[1.1] mb-4 drop-shadow-lg">
+                <h1 className="sr-only">Live Football Scores, Fixtures, Results and Stats — LastFootball</h1>
+                <p className="text-4xl sm:text-5xl lg:text-6xl font-black text-white leading-[1.1] mb-4 drop-shadow-lg" aria-hidden="true">
                   EVERY KICK. EVERY STAT.<br />
                   <span className="text-primary">EVERY STORY.</span>
-                </h1>
+                </p>
                 <p className="text-base sm:text-lg text-gray-300 max-w-md mx-auto lg:mx-0 mb-8">
                   Live Scores, Stats, News and Much More. Track every match from top leagues worldwide.
                 </p>
@@ -161,7 +162,7 @@ export default function HomePage() {
               title="Live Scores"
               icon={<Zap className="w-4 h-4" />}
               linkTo="/live"
-              linkLabel="View All Matches"
+              linkLabel="View Live Football Scores"
               accent
             >
               {liveMatches.length > 0 ? (
@@ -182,7 +183,7 @@ export default function HomePage() {
               title="Fixtures"
               icon={<Calendar className="w-4 h-4" />}
               linkTo="/fixtures"
-              linkLabel="View All Matches"
+              linkLabel="View Football Fixtures Today"
             >
               {upcomingMatches.length > 0 ? (
                 <AutoPaginate items={upcomingMatches} pageSize={4} interval={5000} render={(m) => <MiniFixture key={m.id} match={m} />} />
@@ -196,7 +197,7 @@ export default function HomePage() {
               title="Top Scorers"
               icon={<Trophy className="w-4 h-4" />}
               linkTo="/stats"
-              linkLabel="View All Players"
+              linkLabel="View Top Scorers & Stats"
             >
               {topScorers.length > 0 ? (
                 <AutoSlider
@@ -228,7 +229,7 @@ export default function HomePage() {
               title="Latest News"
               icon={<Newspaper className="w-4 h-4" />}
               linkTo="/news"
-              linkLabel="View All News"
+              linkLabel="Read Football News & Reports"
             >
               {news.length > 0 ? (
                 <div className="space-y-3">
@@ -263,7 +264,7 @@ export default function HomePage() {
               title="Standings"
               icon={<Trophy className="w-4 h-4" />}
               linkTo="/stats"
-              linkLabel="View Full Stats"
+              linkLabel="View League Standings"
             >
               <StandingsWidget />
             </DashboardCard>
@@ -309,7 +310,7 @@ function FeaturedMatchCard({ match }: { match: Match }) {
         {/* League */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            {match.league.logo && <OptimizedImage src={match.league.logo} alt="" className="w-4 h-4 object-contain" />}
+            {match.league.logo && <OptimizedImage src={match.league.logo} alt={match.league.name} className="w-4 h-4 object-contain" />}
             <span className="text-[11px] text-muted-foreground font-medium">{match.league.name}</span>
           </div>
           {isLive && (
@@ -323,7 +324,7 @@ function FeaturedMatchCard({ match }: { match: Match }) {
         {/* Teams + Score */}
         <div className="flex items-center justify-between">
           <div className="flex flex-col items-center gap-2 flex-1">
-            {match.homeTeam.logo && <OptimizedImage src={match.homeTeam.logo} alt="" className="w-12 h-12 object-contain" />}
+            {match.homeTeam.logo && <OptimizedImage src={match.homeTeam.logo} alt={`${match.homeTeam.name} logo`} className="w-12 h-12 object-contain" />}
             <span className="text-xs font-bold text-foreground text-center leading-tight">{match.homeTeam.shortName}</span>
           </div>
 
@@ -341,7 +342,7 @@ function FeaturedMatchCard({ match }: { match: Match }) {
           </div>
 
           <div className="flex flex-col items-center gap-2 flex-1">
-            {match.awayTeam.logo && <OptimizedImage src={match.awayTeam.logo} alt="" className="w-12 h-12 object-contain" />}
+            {match.awayTeam.logo && <OptimizedImage src={match.awayTeam.logo} alt={`${match.awayTeam.name} logo`} className="w-12 h-12 object-contain" />}
             <span className="text-xs font-bold text-foreground text-center leading-tight">{match.awayTeam.shortName}</span>
           </div>
         </div>
@@ -399,7 +400,7 @@ function MiniMatch({ match }: { match: Match }) {
   return (
     <Link to={`/match/${match.id}`} className="flex items-center gap-2 py-2 hover:bg-secondary/30 rounded px-1.5 transition-colors">
       <div className="flex items-center gap-2 flex-1 min-w-0">
-        <OptimizedImage src={match.homeTeam.logo} alt="" className="w-5 h-5 object-contain flex-shrink-0" />
+        <OptimizedImage src={match.homeTeam.logo} alt={match.homeTeam.name} className="w-5 h-5 object-contain flex-shrink-0" />
         <span className="text-sm font-medium text-foreground truncate">{match.homeTeam.shortName}</span>
       </div>
       <div className="text-center px-2">
@@ -415,7 +416,7 @@ function MiniMatch({ match }: { match: Match }) {
       </div>
       <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
         <span className="text-sm font-medium text-foreground truncate">{match.awayTeam.shortName}</span>
-        <OptimizedImage src={match.awayTeam.logo} alt="" className="w-5 h-5 object-contain flex-shrink-0" />
+        <OptimizedImage src={match.awayTeam.logo} alt={match.awayTeam.name} className="w-5 h-5 object-contain flex-shrink-0" />
       </div>
     </Link>
   );
@@ -426,13 +427,13 @@ function MiniFixture({ match }: { match: Match }) {
   return (
     <Link to={`/match/${match.id}`} className="flex items-center gap-2 py-2 hover:bg-secondary/30 rounded px-1.5 transition-colors">
       <div className="flex items-center gap-2 flex-1 min-w-0">
-        <OptimizedImage src={match.homeTeam.logo} alt="" className="w-5 h-5 object-contain flex-shrink-0" />
+        <OptimizedImage src={match.homeTeam.logo} alt={match.homeTeam.name} className="w-5 h-5 object-contain flex-shrink-0" />
         <span className="text-sm font-medium text-foreground truncate">{match.homeTeam.shortName}</span>
       </div>
       <span className="text-xs font-semibold text-muted-foreground tabular-nums px-2">{match.time}</span>
       <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
         <span className="text-sm font-medium text-foreground truncate">{match.awayTeam.shortName}</span>
-        <OptimizedImage src={match.awayTeam.logo} alt="" className="w-5 h-5 object-contain flex-shrink-0" />
+        <OptimizedImage src={match.awayTeam.logo} alt={match.awayTeam.name} className="w-5 h-5 object-contain flex-shrink-0" />
       </div>
     </Link>
   );
@@ -443,11 +444,11 @@ function ScorerRow({ scorer, rank }: { scorer: PlayerStat; rank: number }) {
   return (
     <div className="flex items-center gap-2.5 py-2">
       <span className="text-xs font-bold text-muted-foreground w-5 text-center tabular-nums">{rank}</span>
-      <img src={scorer.player.photo} alt="" className="w-8 h-8 rounded-full object-cover bg-secondary" loading="lazy" />
+      <img src={scorer.player.photo} alt={scorer.player.name} className="w-8 h-8 rounded-full object-cover bg-secondary" loading="lazy" />
       <div className="flex-1 min-w-0">
         <span className="text-sm font-semibold text-foreground truncate block">{scorer.player.name}</span>
         <div className="flex items-center gap-1">
-          {scorer.team.logo && <img src={scorer.team.logo} alt="" className="w-3.5 h-3.5 object-contain" />}
+          {scorer.team.logo && <img src={scorer.team.logo} alt={scorer.team.name} className="w-3.5 h-3.5 object-contain" />}
           <span className="text-xs text-muted-foreground truncate">{scorer.team.name}</span>
         </div>
       </div>
@@ -557,7 +558,7 @@ function StandingsWidget() {
       {current.teams.map(t => (
         <div key={t.rank} className="flex items-center gap-2 py-2 border-t border-border/10">
           <span className="text-xs font-bold text-muted-foreground w-5 text-center tabular-nums">{t.rank}</span>
-          <img src={t.logo} alt="" className="w-5 h-5 object-contain flex-shrink-0" loading="lazy" />
+          <img src={t.logo} alt={t.name} className="w-5 h-5 object-contain flex-shrink-0" loading="lazy" />
           <span className="text-sm font-medium text-foreground flex-1 truncate">{t.name}</span>
           <span className="text-xs text-muted-foreground w-7 text-center tabular-nums">{t.played}</span>
           <span className={cn('text-xs w-7 text-center tabular-nums font-semibold', t.gd > 0 ? 'text-emerald-400' : t.gd < 0 ? 'text-red-400' : 'text-muted-foreground')}>
