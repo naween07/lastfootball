@@ -165,12 +165,14 @@ export async function fetchMatchesByDate(date: string): Promise<Match[]> {
 
 export async function fetchMatchDetails(fixtureId: number): Promise<Match | null> {
   try {
-    const [fixtures, events, stats, lineups] = await Promise.all([
-      callApi("fixtures", { id: String(fixtureId) }),
-      callApi("fixtures/events", { fixture: String(fixtureId) }),
-      callApi("fixtures/statistics", { fixture: String(fixtureId) }),
-      callApi("fixtures/lineups", { fixture: String(fixtureId) }),
-    ]);
+    // Use aggregated endpoint — 1 server call instead of 4
+    const res = await fetch(`${API_BASE_URL}/match?id=${fixtureId}`, { headers: { 'Content-Type': 'application/json' } });
+    const data = await res.json();
+
+    const fixtures = data.fixture?.response || [];
+    const events = data.events?.response || [];
+    const stats = data.stats?.response || [];
+    const lineups = data.lineups?.response || [];
 
     if (!fixtures.length) return null;
 
@@ -181,9 +183,7 @@ export async function fetchMatchDetails(fixtureId: number): Promise<Match | null
       match.events = events
         .map((e: any, i: number) => {
           let type: MatchEvent["type"] | null = null;
-
           if (e.type === "Goal") {
-            // "Missed Penalty" comes as type "Goal" but is NOT a goal
             if (e.detail === "Missed Penalty") return null;
             type = "goal";
           } else if (e.type === "Card") {
@@ -192,13 +192,9 @@ export async function fetchMatchDetails(fixtureId: number): Promise<Match | null
           } else if (e.type === "subst") {
             type = "substitution";
           }
-          // Skip: "Var", unknown types, null types
-
           if (!type) return null;
-
           return {
-            id: i,
-            type,
+            id: i, type,
             minute: e.time?.elapsed || 0,
             extraMinute: e.time?.extra || undefined,
             team: (e.team?.id === homeTeamId ? "home" : "away") as "home" | "away",
@@ -229,37 +225,28 @@ export async function fetchMatchDetails(fixtureId: number): Promise<Match | null
 
 export async function fetchMatchPlayers(fixtureId: number): Promise<MatchPlayerData[]> {
   try {
-    const data = await callApi("fixtures/players", { fixture: String(fixtureId) });
-    if (!data || !data.length) return [];
+    // Use aggregated endpoint — players included in same call
+    const res = await fetch(`${API_BASE_URL}/match?id=${fixtureId}`, { headers: { 'Content-Type': 'application/json' } });
+    const aggData = await res.json();
+    const data = aggData.players?.response || [];
+    if (!data.length) return [];
     return data.map((team: any) => ({
       teamId: team.team.id,
       teamName: team.team.name,
       players: team.players.map((p: any) => {
         const s = p.statistics?.[0] || {};
         return {
-          id: p.player.id,
-          name: p.player.name,
-          photo: p.player.photo,
-          number: s.games?.number || 0,
-          position: s.games?.position || '',
-          rating: s.games?.rating || null,
-          minutes: s.games?.minutes || null,
-          captain: s.games?.captain || false,
-          substitute: s.games?.substitute || false,
-          goals: s.goals?.total || 0,
-          assists: s.goals?.assists || 0,
-          yellowCards: s.cards?.yellow || 0,
-          redCards: s.cards?.red || 0,
-          saves: s.goals?.saves || null,
-          shots: s.shots?.total || null,
-          shotsOn: s.shots?.on || null,
-          passes: s.passes?.total || null,
-          passAccuracy: s.passes?.accuracy || null,
-          tackles: s.tackles?.total || null,
-          duels: s.duels?.total || null,
-          duelsWon: s.duels?.won || null,
-          dribbles: s.dribbles?.attempts || null,
-          dribblesSuccess: s.dribbles?.success || null,
+          id: p.player.id, name: p.player.name, photo: p.player.photo,
+          number: s.games?.number || 0, position: s.games?.position || '',
+          rating: s.games?.rating || null, minutes: s.games?.minutes || null,
+          captain: s.games?.captain || false, substitute: s.games?.substitute || false,
+          goals: s.goals?.total || 0, assists: s.goals?.assists || 0,
+          yellowCards: s.cards?.yellow || 0, redCards: s.cards?.red || 0,
+          saves: s.goals?.saves || null, shots: s.shots?.total || null,
+          shotsOn: s.shots?.on || null, passes: s.passes?.total || null,
+          passAccuracy: s.passes?.accuracy || null, tackles: s.tackles?.total || null,
+          duels: s.duels?.total || null, duelsWon: s.duels?.won || null,
+          dribbles: s.dribbles?.attempts || null, dribblesSuccess: s.dribbles?.success || null,
         };
       }),
     }));
