@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { X, Star, Shield, Crosshair, Footprints, HandMetal } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { X, Star, Shield, Crosshair, Footprints, HandMetal, ExternalLink } from 'lucide-react';
 import { MatchPlayerStats } from '@/types/football';
 import { cn } from '@/lib/utils';
 
@@ -207,6 +208,17 @@ export default function PlayerCard({ player, teamName, teamLogo, onClose }: Play
           </div>
         )}
       </div>
+
+      {/* View Full Profile link */}
+      {player.id && (
+        <Link
+          to={`/player/${player.id}`}
+          className="flex items-center justify-center gap-2 px-4 py-2.5 border-t border-border text-xs font-semibold text-primary hover:bg-primary/5 transition-colors"
+        >
+          View Full Profile
+          <ExternalLink className="w-3 h-3" />
+        </Link>
+      )}
     </div>
   );
 }
