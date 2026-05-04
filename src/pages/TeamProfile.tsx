@@ -38,13 +38,30 @@ export default function TeamProfile() {
     });
   }, [teamId]);
 
-  // Fetch stats after we know the team's league
+  // Fetch stats using the team's actual league from their matches
   useEffect(() => {
-    if (!team || !teamId) return;
-    // Try top 5 leagues
-    const leagues = [39, 140, 135, 78, 61, 2, 3, 45, 143, 137];
+    if (!team || !teamId || matches.length === 0) return;
     const tryFetch = async () => {
-      for (const leagueId of leagues) {
+      // First, get the domestic league from the team's recent matches (most common league)
+      const leagueCounts = new Map<number, number>();
+      matches.forEach(m => {
+        // Skip cup competitions - we want the domestic league
+        const cupIds = [2, 3, 848, 45, 48, 143, 137, 81, 66];
+        if (!cupIds.includes(m.league.id)) {
+          leagueCounts.set(m.league.id, (leagueCounts.get(m.league.id) || 0) + 1);
+        }
+      });
+
+      // Sort by frequency — most played league first
+      const sortedLeagues = Array.from(leagueCounts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([id]) => id);
+
+      // Try the team's actual leagues first, then fallback to top 5
+      const fallback = [39, 140, 135, 78, 61];
+      const leaguesToTry = [...sortedLeagues, ...fallback.filter(id => !sortedLeagues.includes(id))];
+
+      for (const leagueId of leaguesToTry) {
         const s = await fetchTeamStatistics(parseInt(teamId), leagueId, 2025);
         if (s && s.fixtures.played > 0) {
           setStats(s);
@@ -53,7 +70,7 @@ export default function TeamProfile() {
       }
     };
     tryFetch();
-  }, [team, teamId]);
+  }, [team, teamId, matches]);
 
   const recentResults = useMemo(() =>
     matches.filter(m => m.status === 'FT' || m.status === 'AET' || m.status === 'PEN'),

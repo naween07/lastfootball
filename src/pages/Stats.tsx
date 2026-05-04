@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import Header from '@/components/Header';
 import SEOHead from '@/components/SEOHead';
 import StandingsTable from '@/components/stats/StandingsTable';
@@ -13,7 +14,12 @@ const BASE_TABS = ['Tables', 'Player', 'Team', 'Fixtures'] as const;
 type Tab = 'Tables' | 'Player' | 'Team' | 'Fixtures' | 'Bracket';
 
 export default function Stats() {
-  const [activeLeague, setActiveLeague] = useState(TOP_LEAGUES[0].id);
+  const [searchParams] = useSearchParams();
+  const leagueParam = searchParams.get('league');
+  const initialLeague = leagueParam ? parseInt(leagueParam) : TOP_LEAGUES[0].id;
+  const [activeLeague, setActiveLeague] = useState(
+    TOP_LEAGUES.find(l => l.id === initialLeague) ? initialLeague : TOP_LEAGUES[0].id
+  );
   const [season, setSeason] = useState(getCurrentSeason());
   const [activeTab, setActiveTab] = useState<Tab>('Tables');
   const [standings, setStandings] = useState<StandingTeam[]>([]);

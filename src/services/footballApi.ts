@@ -86,7 +86,7 @@ function mapFixtureToMatch(fixture: any): Match {
     awayScore: g.away,
     status: mapStatus(statusShort),
     minute: mapMinute(statusShort, f.status?.elapsed, f.status?.extra),
-    date: f.date?.split("T")[0] || "",
+    date: f.date ? new Date(f.date).toLocaleDateString("en-CA") : "", // YYYY-MM-DD in local TZ
     time: f.date ? new Date(f.date).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "",
     league: {
       id: l.id,
