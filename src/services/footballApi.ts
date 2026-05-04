@@ -820,7 +820,7 @@ export function getMatchesGroupedByLeague(matches: Match[]): LeagueMatches[] {
 }
 
 export function formatDate(date: Date): string {
-  return date.toISOString().split("T")[0];
+  return date.toLocaleDateString("en-CA"); // YYYY-MM-DD in local timezone
 }
 
 export function getToday(): string {
