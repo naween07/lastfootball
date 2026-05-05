@@ -390,7 +390,7 @@ const server = http.createServer(async (req, res) => {
     if (path === '/api/homepage') {
       const cacheKey = 'agg_homepage';
       const hit = cacheGet(cacheKey);
-      if (hit) return json(req, res, hit);
+      if (hit) return json(req, res, hit.data);
 
       const today = new Date().toLocaleDateString('en-CA');
       const leagues = [
@@ -438,7 +438,7 @@ const server = http.createServer(async (req, res) => {
 
       const cacheKey = `agg_match_${fixtureId}`;
       const hit = cacheGet(cacheKey);
-      if (hit) return json(req, res, hit);
+      if (hit) return json(req, res, hit.data);
 
       try {
         const [fixture, events, stats, lineups, players] = await Promise.allSettled([
@@ -458,7 +458,7 @@ const server = http.createServer(async (req, res) => {
         };
 
         // Cache 30s for live, 5min for finished
-        const statusShort = result.fixture?.[0]?.fixture?.status?.short;
+        const statusShort = result.fixture?.response?.[0]?.fixture?.status?.short;
         const isLive = ['1H', '2H', 'HT', 'ET', 'P', 'BT'].includes(statusShort);
         cacheSet(cacheKey, result, { fresh: isLive ? 30 : 300, stale: isLive ? 60 : 600 });
         return json(req, res, result);
