@@ -23,6 +23,7 @@ const TeamProfile = lazy(() => import("./pages/TeamProfile"));
 const PlayerCompare = lazy(() => import("./pages/PlayerCompare"));
 const PlayerProfile = lazy(() => import("./pages/PlayerProfile"));
 const WorldCup = lazy(() => import("./pages/WorldCup"));
+const WCTeamPage = lazy(() => import("./pages/WCTeamPage"));
 const Auth = lazy(() => import("./pages/Auth"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -83,6 +84,7 @@ function AppRoutes() {
             <Route path="/news/:slug" element={<ArticleDetail />} />
             <Route path="/stats" element={<Stats />} />
             <Route path="/worldcup" element={<WorldCup />} />
+            <Route path="/worldcup/team/:code" element={<WCTeamPage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/onboarding" element={<Onboarding />} />

@@ -297,19 +297,20 @@ export default function WorldCup() {
                 </div>
                 <div className="p-2">
                   {group.teams.map((team, i) => (
-                    <div
+                    <Link
                       key={team.code}
+                      to={`/worldcup/team/${team.code.toLowerCase()}`}
                       className={cn(
-                        'flex items-center gap-2.5 px-2 py-2 rounded-lg',
+                        'flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-secondary/30 transition-colors',
                         selectedTeam === team.code && 'bg-primary/5',
                       )}
                     >
                       <span className="text-lg">{team.flag}</span>
-                      <span className="text-[13px] font-medium text-foreground flex-1">{team.name}</span>
+                      <span className="text-[13px] font-medium text-foreground flex-1 hover:text-primary transition-colors">{team.name}</span>
                       {selectedTeam === team.code && (
                         <span className="text-[9px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded">YOUR TEAM</span>
                       )}
-                    </div>
+                    </Link>
                   ))}
                 </div>
               </div>
