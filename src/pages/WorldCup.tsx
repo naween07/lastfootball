@@ -352,31 +352,31 @@ export default function WorldCup() {
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             {[
-              { name: 'MetLife Stadium', city: 'New York/New Jersey', capacity: '82,500', country: '🇺🇸', final: true },
-              { name: 'AT&T Stadium', city: 'Dallas, Texas', capacity: '80,000', country: '🇺🇸' },
-              { name: 'SoFi Stadium', city: 'Los Angeles, California', capacity: '70,240', country: '🇺🇸' },
-              { name: 'Hard Rock Stadium', city: 'Miami, Florida', capacity: '64,767', country: '🇺🇸' },
-              { name: 'NRG Stadium', city: 'Houston, Texas', capacity: '72,220', country: '🇺🇸' },
-              { name: 'Mercedes-Benz Stadium', city: 'Atlanta, Georgia', capacity: '71,000', country: '🇺🇸' },
-              { name: 'Lincoln Financial Field', city: 'Philadelphia, PA', capacity: '69,176', country: '🇺🇸' },
-              { name: 'Lumen Field', city: 'Seattle, Washington', capacity: '68,740', country: '🇺🇸' },
-              { name: 'Gillette Stadium', city: 'Boston, Massachusetts', capacity: '65,878', country: '🇺🇸' },
-              { name: 'Arrowhead Stadium', city: 'Kansas City, Missouri', capacity: '76,416', country: '🇺🇸' },
-              { name: 'Levi\'s Stadium', city: 'San Francisco Bay Area', capacity: '68,500', country: '🇺🇸' },
-              { name: 'Estadio Azteca', city: 'Mexico City', capacity: '87,523', country: '🇲🇽' },
-              { name: 'Estadio BBVA', city: 'Monterrey', capacity: '53,500', country: '🇲🇽' },
-              { name: 'Estadio Akron', city: 'Guadalajara', capacity: '49,850', country: '🇲🇽' },
-              { name: 'BMO Field', city: 'Toronto', capacity: '45,736', country: '🇨🇦' },
-              { name: 'BC Place', city: 'Vancouver', capacity: '54,500', country: '🇨🇦' },
+              { name: 'MetLife Stadium', city: 'New York/New Jersey', capacity: '82,500', country: '🇺🇸', final: true, slug: 'metlife-stadium' },
+              { name: 'AT&T Stadium', city: 'Dallas, Texas', capacity: '80,000', country: '🇺🇸', slug: 'at-t-stadium' },
+              { name: 'SoFi Stadium', city: 'Los Angeles, California', capacity: '70,240', country: '🇺🇸', slug: 'sofi-stadium' },
+              { name: 'Hard Rock Stadium', city: 'Miami, Florida', capacity: '64,767', country: '🇺🇸', slug: 'hard-rock-stadium' },
+              { name: 'NRG Stadium', city: 'Houston, Texas', capacity: '72,220', country: '🇺🇸', slug: 'nrg-stadium' },
+              { name: 'Mercedes-Benz Stadium', city: 'Atlanta, Georgia', capacity: '71,000', country: '🇺🇸', slug: 'mercedes-benz-stadium' },
+              { name: 'Lincoln Financial Field', city: 'Philadelphia, PA', capacity: '69,176', country: '🇺🇸', slug: 'lincoln-financial-field' },
+              { name: 'Lumen Field', city: 'Seattle, Washington', capacity: '68,740', country: '🇺🇸', slug: 'lumen-field' },
+              { name: 'Gillette Stadium', city: 'Boston, Massachusetts', capacity: '65,878', country: '🇺🇸', slug: 'gillette-stadium' },
+              { name: 'Arrowhead Stadium', city: 'Kansas City, Missouri', capacity: '76,416', country: '🇺🇸', slug: 'arrowhead-stadium' },
+              { name: 'Levi\'s Stadium', city: 'San Francisco Bay Area', capacity: '68,500', country: '🇺🇸', slug: 'levis-stadium' },
+              { name: 'Estadio Azteca', city: 'Mexico City', capacity: '87,523', country: '🇲🇽', slug: 'estadio-azteca' },
+              { name: 'Estadio BBVA', city: 'Monterrey', capacity: '53,500', country: '🇲🇽', slug: 'estadio-bbva' },
+              { name: 'Estadio Akron', city: 'Guadalajara', capacity: '49,850', country: '🇲🇽', slug: 'estadio-akron' },
+              { name: 'BMO Field', city: 'Toronto', capacity: '45,736', country: '🇨🇦', slug: 'bmo-field' },
+              { name: 'BC Place', city: 'Vancouver', capacity: '54,500', country: '🇨🇦', slug: 'bc-place' },
             ].map(s => (
-              <div key={s.name} className={cn('bg-card border rounded-xl p-3', s.final ? 'border-amber-500/30' : 'border-border/50')}>
+              <Link key={s.name} to={`/worldcup/stadium/${s.slug}`} className={cn('bg-card border rounded-xl p-3 hover:border-amber-500/30 transition-colors', s.final ? 'border-amber-500/30' : 'border-border/50')}>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold text-foreground">{s.name}</span>
+                  <span className="text-sm font-bold text-foreground hover:text-amber-400 transition-colors">{s.name}</span>
                   {s.final && <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded font-bold">FINAL</span>}
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">{s.country} {s.city}</p>
                 <p className="text-[11px] text-muted-foreground/60">Capacity: {s.capacity}</p>
-              </div>
+              </Link>
             ))}
           </div>
         </section>
