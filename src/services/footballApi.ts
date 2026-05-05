@@ -165,14 +165,12 @@ export async function fetchMatchesByDate(date: string): Promise<Match[]> {
 
 export async function fetchMatchDetails(fixtureId: number): Promise<Match | null> {
   try {
-    // Use aggregated endpoint — 1 server call instead of 4
-    const res = await fetch(`${API_BASE_URL}/match?id=${fixtureId}`, { headers: { 'Content-Type': 'application/json' } });
-    const data = await res.json();
-
-    const fixtures = data.fixture?.response || [];
-    const events = data.events?.response || [];
-    const stats = data.stats?.response || [];
-    const lineups = data.lineups?.response || [];
+    const [fixtures, events, stats, lineups] = await Promise.all([
+      callApi("fixtures", { id: String(fixtureId) }),
+      callApi("fixtures/events", { fixture: String(fixtureId) }),
+      callApi("fixtures/statistics", { fixture: String(fixtureId) }),
+      callApi("fixtures/lineups", { fixture: String(fixtureId) }),
+    ]);
 
     if (!fixtures.length) return null;
 
@@ -225,11 +223,8 @@ export async function fetchMatchDetails(fixtureId: number): Promise<Match | null
 
 export async function fetchMatchPlayers(fixtureId: number): Promise<MatchPlayerData[]> {
   try {
-    // Use aggregated endpoint — players included in same call
-    const res = await fetch(`${API_BASE_URL}/match?id=${fixtureId}`, { headers: { 'Content-Type': 'application/json' } });
-    const aggData = await res.json();
-    const data = aggData.players?.response || [];
-    if (!data.length) return [];
+    const data = await callApi("fixtures/players", { fixture: String(fixtureId) });
+    if (!data || !data.length) return [];
     return data.map((team: any) => ({
       teamId: team.team.id,
       teamName: team.team.name,
