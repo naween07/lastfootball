@@ -4,6 +4,7 @@ import Header from '@/components/Header';
 import SEOHead from '@/components/SEOHead';
 import { Trophy, ArrowLeft, MapPin, Users, Calendar, ChevronRight, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import Flag from '@/components/Flag';
 
 // ─── Team Data ──────────────────────────────────────────────────────────────
 
@@ -112,7 +113,7 @@ export default function WCTeamPage() {
           </Link>
 
           <div className="flex items-center gap-5">
-            <span className="text-6xl sm:text-7xl">{teamInfo.flag}</span>
+            <Flag code={teamInfo.code} size={72} className="rounded" />
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-[10px] font-bold bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full uppercase">Group {groupName}</span>
@@ -171,7 +172,7 @@ export default function WCTeamPage() {
                   t.code === upperCode ? 'bg-amber-500/10 border border-amber-500/20' : 'hover:bg-secondary/30',
                 )}
               >
-                <span className="text-xl">{t.flag}</span>
+                <Flag code={t.code} size={24} />
                 <span className={cn('text-sm font-medium', t.code === upperCode ? 'text-amber-400 font-bold' : 'text-foreground')}>{t.name}</span>
                 {t.code === upperCode && <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded font-bold ml-auto">YOU ARE HERE</span>}
               </Link>

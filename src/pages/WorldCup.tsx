@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Trophy, Calendar, MapPin, Users, Clock, ChevronRight, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import Flag from '@/components/Flag';
 
 const WC_START = new Date('2026-06-11T19:00:00Z').getTime();
 const WC_END = new Date('2026-07-19T19:00:00Z').getTime();
@@ -225,7 +226,7 @@ export default function WorldCup() {
                 </div>
                 <h2 className="text-lg font-bold text-foreground mb-1">You're In!</h2>
                 <p className="text-sm text-muted-foreground mb-3">
-                  Supporting <span className="font-bold text-foreground">{ALL_TEAMS.find(t => t.code === selectedTeam)?.flag} {ALL_TEAMS.find(t => t.code === selectedTeam)?.name}</span>
+                  Supporting <span className="font-bold text-foreground inline-flex items-center gap-1.5">{selectedTeam && <Flag code={selectedTeam} size={20} />} {ALL_TEAMS.find(t => t.code === selectedTeam)?.name}</span>
                 </p>
                 <button
                   onClick={() => { setEnrolled(false); }}
@@ -305,7 +306,7 @@ export default function WorldCup() {
                         selectedTeam === team.code && 'bg-primary/5',
                       )}
                     >
-                      <span className="text-lg">{team.flag}</span>
+                      <Flag code={team.code} size={24} />
                       <span className="text-[13px] font-medium text-foreground flex-1 hover:text-primary transition-colors">{team.name}</span>
                       {selectedTeam === team.code && (
                         <span className="text-[9px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded">YOUR TEAM</span>
@@ -467,7 +468,7 @@ function TeamPicker({
       >
         {selectedTeam ? (
           <>
-            <span className="text-2xl">{selectedTeam.flag}</span>
+            <Flag code={selectedTeam.code} size={28} />
             <span className="text-sm font-bold text-foreground flex-1">{selectedTeam.name}</span>
             <span className="text-[10px] text-muted-foreground bg-secondary px-2 py-0.5 rounded">Change</span>
           </>
@@ -509,7 +510,7 @@ function TeamPicker({
                       : 'hover:bg-secondary/50 text-foreground/80',
                   )}
                 >
-                  <span className="text-xl">{team.flag}</span>
+                  <Flag code={team.code} size={24} />
                   <span className="text-sm font-medium flex-1">{team.name}</span>
                   {selected === team.code && (
                     <Check className="w-4 h-4 text-amber-400" />
