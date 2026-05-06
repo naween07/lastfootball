@@ -301,44 +301,76 @@ function TeamSearchBar({ onSelect, isFavorite }: {
 
 // ─── Empty State ────────────────────────────────────────────────────────────
 function EmptyState({ onAddTeam }: { onAddTeam: () => void }) {
+  const { toggleFavorite, isFavorite } = useFavorites();
+
+  const POPULAR = [
+    { name: 'Arsenal', id: 42, logo: 'https://media.api-sports.io/football/teams/42.png' },
+    { name: 'Liverpool', id: 40, logo: 'https://media.api-sports.io/football/teams/40.png' },
+    { name: 'Man City', id: 50, logo: 'https://media.api-sports.io/football/teams/50.png' },
+    { name: 'Man United', id: 33, logo: 'https://media.api-sports.io/football/teams/33.png' },
+    { name: 'Chelsea', id: 49, logo: 'https://media.api-sports.io/football/teams/49.png' },
+    { name: 'Tottenham', id: 47, logo: 'https://media.api-sports.io/football/teams/47.png' },
+    { name: 'Newcastle', id: 34, logo: 'https://media.api-sports.io/football/teams/34.png' },
+    { name: 'Aston Villa', id: 66, logo: 'https://media.api-sports.io/football/teams/66.png' },
+    { name: 'Real Madrid', id: 541, logo: 'https://media.api-sports.io/football/teams/541.png' },
+    { name: 'Barcelona', id: 529, logo: 'https://media.api-sports.io/football/teams/529.png' },
+    { name: 'Atletico Madrid', id: 530, logo: 'https://media.api-sports.io/football/teams/530.png' },
+    { name: 'Bayern Munich', id: 157, logo: 'https://media.api-sports.io/football/teams/157.png' },
+    { name: 'Dortmund', id: 165, logo: 'https://media.api-sports.io/football/teams/165.png' },
+    { name: 'Juventus', id: 496, logo: 'https://media.api-sports.io/football/teams/496.png' },
+    { name: 'AC Milan', id: 489, logo: 'https://media.api-sports.io/football/teams/489.png' },
+    { name: 'Inter Milan', id: 505, logo: 'https://media.api-sports.io/football/teams/505.png' },
+    { name: 'Napoli', id: 492, logo: 'https://media.api-sports.io/football/teams/492.png' },
+    { name: 'PSG', id: 85, logo: 'https://media.api-sports.io/football/teams/85.png' },
+    { name: 'Marseille', id: 81, logo: 'https://media.api-sports.io/football/teams/81.png' },
+    { name: 'Benfica', id: 211, logo: 'https://media.api-sports.io/football/teams/211.png' },
+    { name: 'Porto', id: 212, logo: 'https://media.api-sports.io/football/teams/212.png' },
+    { name: 'Sporting CP', id: 228, logo: 'https://media.api-sports.io/football/teams/228.png' },
+    { name: 'Ajax', id: 194, logo: 'https://media.api-sports.io/football/teams/194.png' },
+    { name: 'Celtic', id: 247, logo: 'https://media.api-sports.io/football/teams/247.png' },
+    { name: 'Galatasaray', id: 645, logo: 'https://media.api-sports.io/football/teams/645.png' },
+    { name: 'Al Hilal', id: 2932, logo: 'https://media.api-sports.io/football/teams/2932.png' },
+    { name: 'Flamengo', id: 127, logo: 'https://media.api-sports.io/football/teams/127.png' },
+    { name: 'River Plate', id: 435, logo: 'https://media.api-sports.io/football/teams/435.png' },
+    { name: 'Boca Juniors', id: 451, logo: 'https://media.api-sports.io/football/teams/451.png' },
+    { name: 'Al Ahly', id: 1020, logo: 'https://media.api-sports.io/football/teams/1020.png' },
+  ];
+
   return (
-    <div className="text-center py-16">
-      <Star className="w-16 h-16 mx-auto mb-4 text-amber-400/20" />
+    <div className="text-center py-10">
+      <Star className="w-14 h-14 mx-auto mb-4 text-amber-400/20" />
       <h2 className="text-xl font-bold text-foreground mb-2">Follow Your Teams</h2>
       <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-6">
-        Add your favourite clubs and national teams to see their results, fixtures, and news all in one place.
+        Tap any team below to follow, or search for any club or national team.
       </p>
       <button
         onClick={onAddTeam}
-        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity"
+        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity mb-8"
       >
         <Search className="w-4 h-4" />
-        Search Teams to Follow
+        Search Teams
       </button>
 
-      {/* Popular teams to quick-follow */}
-      <div className="mt-8">
-        <p className="text-xs text-muted-foreground mb-3">Popular teams</p>
-        <div className="flex flex-wrap justify-center gap-2">
-          {[
-            { name: 'Arsenal', id: 42 },
-            { name: 'Real Madrid', id: 541 },
-            { name: 'Barcelona', id: 529 },
-            { name: 'Liverpool', id: 40 },
-            { name: 'Man City', id: 50 },
-            { name: 'Bayern', id: 157 },
-            { name: 'PSG', id: 85 },
-            { name: 'Juventus', id: 496 },
-          ].map(t => (
-            <button
-              key={t.id}
-              onClick={onAddTeam}
-              className="px-3 py-1.5 rounded-full bg-secondary/50 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-            >
+      <p className="text-xs text-muted-foreground mb-3 uppercase tracking-wider font-semibold">Tap to follow</p>
+      <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 gap-2">
+        {POPULAR.map(t => (
+          <button
+            key={t.id}
+            onClick={() => toggleFavorite(t.id, t.name, t.logo)}
+            className={cn(
+              'flex flex-col items-center gap-1.5 p-3 rounded-xl transition-all',
+              isFavorite(t.id)
+                ? 'bg-primary/10 ring-1 ring-primary/30 scale-95'
+                : 'bg-card border border-border/50 hover:border-primary/30 hover:scale-105 active:scale-95',
+            )}
+          >
+            <img src={t.logo} alt={t.name} className="w-8 h-8 object-contain" loading="lazy" />
+            <span className={cn('text-[10px] font-semibold truncate w-full text-center', isFavorite(t.id) ? 'text-primary' : 'text-muted-foreground')}>
               {t.name}
-            </button>
-          ))}
-        </div>
+            </span>
+            {isFavorite(t.id) && <span className="text-[8px] text-primary font-bold">✓ Following</span>}
+          </button>
+        ))}
       </div>
     </div>
   );

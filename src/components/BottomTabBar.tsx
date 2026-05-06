@@ -60,7 +60,14 @@ export default function BottomTabBar() {
                 isActive ? 'text-primary' : 'text-muted-foreground'
               }`}>
                 {isFavTab && favLogo ? (
-                  <img src={favLogo} alt="" className="w-5 h-5 rounded-full object-cover ring-1 ring-border" />
+                  <img
+                    src={favLogo}
+                    alt="My Club"
+                    className={`w-6 h-6 rounded-full object-contain ring-2 transition-all ${
+                      isActive ? 'ring-primary scale-110' : 'ring-border/50'
+                    }`}
+                    style={isActive ? { animation: 'pulse 2s ease-in-out infinite' } : undefined}
+                  />
                 ) : (
                   <Icon className={`w-5 h-5 transition-transform ${isActive ? 'scale-110' : ''}`} />
                 )}
