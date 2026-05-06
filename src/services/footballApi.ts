@@ -155,8 +155,30 @@ export async function fetchLiveMatches(): Promise<Match[]> {
 
 export async function fetchMatchesByDate(date: string): Promise<Match[]> {
   try {
+    // Fetch the requested date from API (UTC-based)
     const data = await callApi("fixtures", { date });
-    return data.map(mapFixtureToMatch);
+    let matches = data.map(mapFixtureToMatch);
+
+    // Also fetch the previous day to catch late-night matches that cross midnight in local timezone
+    const prevDate = new Date(date + 'T00:00:00');
+    prevDate.setDate(prevDate.getDate() - 1);
+    const prevDateStr = prevDate.toLocaleDateString('en-CA');
+
+    try {
+      const prevData = await callApi("fixtures", { date: prevDateStr });
+      const prevMatches = prevData.map(mapFixtureToMatch);
+      // Only include previous day matches that fall on the requested date in local timezone
+      const crossoverMatches = prevMatches.filter((m: Match) => m.date === date);
+      if (crossoverMatches.length > 0) {
+        const existingIds = new Set(matches.map((m: Match) => m.id));
+        matches = [...matches, ...crossoverMatches.filter((m: Match) => !existingIds.has(m.id))];
+      }
+    } catch {}
+
+    // Filter: only show matches whose local date matches the requested date
+    matches = matches.filter((m: Match) => m.date === date);
+
+    return matches;
   } catch (err) {
     console.error("Failed to fetch matches by date:", err);
     return [];

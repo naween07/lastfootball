@@ -86,9 +86,21 @@ export default function Index() {
     matches.filter(m => m.status === 'NS' || m.status === 'TBD'),
   [matches]);
 
-  const finishedMatches = useMemo(() =>
-    matches.filter(m => m.status === 'FT' || m.status === 'AET' || m.status === 'PEN'),
-  [matches]);
+  const finishedMatches = useMemo(() => {
+    const finished = matches.filter(m => m.status === 'FT' || m.status === 'AET' || m.status === 'PEN');
+    // Sort: top leagues first, then by time (most recent first)
+    const topIds = [2, 3, 39, 140, 135, 78, 61]; // UCL, UEL, PL, La Liga, Serie A, Bundesliga, Ligue 1
+    return finished.sort((a, b) => {
+      const aTop = topIds.indexOf(a.league.id);
+      const bTop = topIds.indexOf(b.league.id);
+      const aIsTop = aTop !== -1;
+      const bIsTop = bTop !== -1;
+      if (aIsTop && !bIsTop) return -1;
+      if (!aIsTop && bIsTop) return 1;
+      if (aIsTop && bIsTop) return aTop - bTop;
+      return 0;
+    });
+  }, [matches]);
 
   // Filtered by tab
   const displayMatches = useMemo(() => {
