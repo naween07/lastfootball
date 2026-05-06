@@ -21,6 +21,7 @@ export default function HomePage() {
   const [liveMatches, setLiveMatches] = useState<Match[]>([]);
   const [todayMatches, setTodayMatches] = useState<Match[]>([]);
   const [topScorers, setTopScorers] = useState<{ league: string; scorers: PlayerStat[] }[]>([]);
+  const [standingsData, setStandingsData] = useState<{ league: string; teams: { rank: number; name: string; logo: string; pts: number; played: number; gd: number }[] }[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -36,6 +37,7 @@ export default function HomePage() {
           setLiveMatches(homeData.value.liveMatches);
           setTodayMatches(homeData.value.todayMatches);
           setTopScorers(homeData.value.scorers);
+          setStandingsData(homeData.value.standings);
         }
 
         if (newsData.status === 'fulfilled') setNews(newsData.value.slice(0, 4));
@@ -252,7 +254,7 @@ export default function HomePage() {
               linkTo="/stats"
               linkLabel="View League Standings"
             >
-              <StandingsWidget />
+              <StandingsWidget data={standingsData} />
             </DashboardCard>
           </div>
         </section>
@@ -483,53 +485,18 @@ function timeAgo(dateStr: string): string {
 
 // ─── Hero Background with rotating images ───────────────────────────────────
 // ─── Standings Widget — rotating league tables ──────────────────────────────
-const STANDING_LEAGUES = [
-  { id: 39, name: 'Premier League' },
-  { id: 140, name: 'La Liga' },
-  { id: 135, name: 'Serie A' },
-  { id: 78, name: 'Bundesliga' },
-  { id: 61, name: 'Ligue 1' },
-];
-
-function StandingsWidget() {
-  const [tables, setTables] = useState<{ league: string; teams: { rank: number; name: string; logo: string; pts: number; played: number; gd: number }[] }[]>([]);
+function StandingsWidget({ data }: { data: { league: string; teams: { rank: number; name: string; logo: string; pts: number; played: number; gd: number }[] }[] }) {
   const [idx, setIdx] = useState(0);
 
   useEffect(() => {
-    const load = async () => {
-      const results = await Promise.allSettled(
-        STANDING_LEAGUES.map(l => fetchStandings(l.id, 2025))
-      );
-      const loaded: typeof tables = [];
-      results.forEach((r, i) => {
-        if (r.status === 'fulfilled' && r.value.length > 0) {
-          loaded.push({
-            league: STANDING_LEAGUES[i].name,
-            teams: r.value.slice(0, 5).map(t => ({
-              rank: t.rank,
-              name: t.team.name,
-              logo: t.team.logo,
-              pts: t.points,
-              played: t.played,
-              gd: t.goalsDiff,
-            })),
-          });
-        }
-      });
-      setTables(loaded);
-    };
-    load();
-  }, []);
-
-  useEffect(() => {
-    if (tables.length <= 1) return;
-    const timer = setInterval(() => setIdx(prev => (prev + 1) % tables.length), 7000);
+    if (data.length <= 1) return;
+    const timer = setInterval(() => setIdx(prev => (prev + 1) % data.length), 7000);
     return () => clearInterval(timer);
-  }, [tables.length]);
+  }, [data.length]);
 
-  if (!tables.length) return <p className="text-sm text-muted-foreground py-4 text-center">Loading...</p>;
+  if (!data.length) return <p className="text-sm text-muted-foreground py-4 text-center">Loading standings...</p>;
 
-  const current = tables[idx];
+  const current = data[idx];
   return (
     <div>
       <div className="text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-2">{current.league}</div>
@@ -554,9 +521,9 @@ function StandingsWidget() {
         </div>
       ))}
       {/* Dots */}
-      {tables.length > 1 && (
+      {data.length > 1 && (
         <div className="flex items-center justify-center gap-1.5 mt-2 pt-1">
-          {tables.map((_, i) => (
+          {data.map((_, i) => (
             <button
               key={i}
               onClick={() => setIdx(i)}
