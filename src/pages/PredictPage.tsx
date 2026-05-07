@@ -296,7 +296,8 @@ export default function PredictPage() {
           <div className="mt-6 bg-card border border-border rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
               <Star className="w-4 h-4 text-amber-400" />
-              <h3 className="text-sm font-bold text-foreground">Top Predictors</h3>
+              <h3 className="text-sm font-bold text-foreground flex-1">Top Predictors</h3>
+              <Link to="/leaderboard" className="text-xs text-primary font-semibold hover:underline">View All →</Link>
             </div>
             {leaderboard.map((entry, i) => (
               <div key={i} className="flex items-center gap-3 px-4 py-2.5 border-b border-border/10 last:border-0">
