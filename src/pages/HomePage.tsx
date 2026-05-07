@@ -274,10 +274,10 @@ export default function HomePage() {
                 Sign Up Free
               </Link>
               <Link
-                to="/fixtures"
+                to="/live"
                 className="px-6 py-2.5 rounded-lg border border-border text-foreground font-bold text-sm hover:bg-secondary transition-colors"
               >
-                Browse Matches
+                View Live Scores
               </Link>
             </div>
           </div>
