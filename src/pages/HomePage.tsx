@@ -5,8 +5,9 @@ import SEOHead, { buildWebsiteJsonLd } from '@/components/SEOHead';
 import OptimizedImage from '@/components/OptimizedImage';
 import { fetchHomepageData, PlayerStat } from '@/services/footballApi';
 import { fetchFootballNews } from '@/services/newsApi';
+import { useAuth } from '@/hooks/useAuth';
 import { Match } from '@/types/football';
-import { ArrowRight, Zap, Calendar, Trophy, Newspaper, ChevronRight } from 'lucide-react';
+import { ArrowRight, Zap, Calendar, Trophy, Newspaper, ChevronRight, Target } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface NewsItem {
@@ -18,6 +19,7 @@ interface NewsItem {
 }
 
 export default function HomePage() {
+  const { user } = useAuth();
   const [liveMatches, setLiveMatches] = useState<Match[]>([]);
   const [todayMatches, setTodayMatches] = useState<Match[]>([]);
   const [topScorers, setTopScorers] = useState<{ league: string; scorers: PlayerStat[] }[]>([]);
@@ -259,29 +261,62 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* ─── PREDICT & WIN BANNER ────────────────────────────────────── */}
+        <section className="container max-w-6xl mx-auto px-4 pb-4">
+          <Link to="/predict" className="block bg-gradient-to-r from-amber-500/10 via-yellow-500/10 to-emerald-500/10 border border-amber-500/20 rounded-xl p-5 sm:p-6 hover:border-amber-500/40 transition-colors">
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-xl bg-gradient-to-br from-amber-400 to-yellow-500 shadow-lg shadow-amber-500/25 flex-shrink-0">
+                <Target className="w-6 h-6 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h2 className="text-lg sm:text-xl font-black text-foreground">Predict & Win NPR 30,000</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Predict match scores before kickoff. +3 for exact scores, +1 for correct winners.</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-amber-400 flex-shrink-0" />
+            </div>
+          </Link>
+        </section>
+
         {/* ─── CTA FOOTER ────────────────────────────────────────────── */}
-        <section className="container max-w-6xl mx-auto px-4 pb-8">
-          <div className="bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 rounded-xl p-6 sm:p-8 text-center">
-            <h2 className="text-xl sm:text-2xl font-black text-foreground mb-2">Never Miss a Goal</h2>
-            <p className="text-sm text-muted-foreground mb-4 max-w-md mx-auto">
-              Track live scores, follow your favorite teams, and get instant updates from all major leagues.
-            </p>
-            <div className="flex items-center gap-3 justify-center">
+        {!user ? (
+          <section className="container max-w-6xl mx-auto px-4 pb-8">
+            <div className="bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 rounded-xl p-6 sm:p-8 text-center">
+              <h2 className="text-xl sm:text-2xl font-black text-foreground mb-2">Never Miss a Goal</h2>
+              <p className="text-sm text-muted-foreground mb-4 max-w-md mx-auto">
+                Track live scores, follow your favorite teams, and get instant updates from all major leagues.
+              </p>
+              <div className="flex items-center gap-3 justify-center">
+                <Link
+                  to="/auth"
+                  className="px-6 py-2.5 rounded-lg bg-primary text-primary-foreground font-bold text-sm hover:opacity-90 transition-opacity"
+                >
+                  Sign Up Free
+                </Link>
+                <Link
+                  to="/live"
+                  className="px-6 py-2.5 rounded-lg border border-border text-foreground font-bold text-sm hover:bg-secondary transition-colors"
+                >
+                  View Live Scores
+                </Link>
+              </div>
+            </div>
+          </section>
+        ) : (
+          <section className="container max-w-6xl mx-auto px-4 pb-8">
+            <div className="bg-gradient-to-r from-amber-500/10 to-amber-600/5 border border-amber-500/20 rounded-xl p-6 sm:p-8 text-center">
+              <h2 className="text-xl sm:text-2xl font-black text-foreground mb-2">Follow Your Teams</h2>
+              <p className="text-sm text-muted-foreground mb-4 max-w-md mx-auto">
+                Add your favourite clubs to get personalised results, fixtures, and match reports.
+              </p>
               <Link
-                to="/auth"
-                className="px-6 py-2.5 rounded-lg bg-primary text-primary-foreground font-bold text-sm hover:opacity-90 transition-opacity"
+                to="/favorites"
+                className="px-6 py-2.5 rounded-lg bg-amber-500 text-white font-bold text-sm hover:opacity-90 transition-opacity"
               >
-                Sign Up Free
-              </Link>
-              <Link
-                to="/fixtures"
-                className="px-6 py-2.5 rounded-lg border border-border text-foreground font-bold text-sm hover:bg-secondary transition-colors"
-              >
-                Browse Matches
+                My Favourites
               </Link>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
       </main>
     </>
   );

@@ -2,6 +2,8 @@ import { Link, useLocation } from 'react-router-dom';
 import { Search, Star, BarChart3, Flame, Trophy, Menu, X as XIcon, ChevronRight } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { useFavorites } from '@/hooks/useFavorites';
+import { supabase } from '@/integrations/supabase/client';
 import NotificationBell from './NotificationBell';
 import UserMenu from './UserMenu';
 import ThemeToggle from './ThemeToggle';
@@ -10,7 +12,9 @@ import { cn } from '@/lib/utils';
 export default function Header() {
   const { user } = useAuth();
   const { pathname } = useLocation();
+  const { favoriteTeamIds } = useFavorites();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [favLogo, setFavLogo] = useState<string | null>(null);
 
   // Close menu on route change
   useEffect(() => { setMenuOpen(false); }, [pathname]);
@@ -21,6 +25,20 @@ export default function Header() {
     else document.body.style.overflow = '';
     return () => { document.body.style.overflow = ''; };
   }, [menuOpen]);
+
+  // Load primary team logo
+  useEffect(() => {
+    if (favoriteTeamIds.length === 0) { setFavLogo(null); return; }
+    const loadLogo = async () => {
+      try {
+        const { data: { user: u } } = await supabase.auth.getUser();
+        if (!u) return;
+        const { data } = await supabase.from('user_favorites').select('team_logo').eq('user_id', u.id).limit(1);
+        if (data?.[0]?.team_logo) setFavLogo(data[0].team_logo);
+      } catch {}
+    };
+    loadLogo();
+  }, [favoriteTeamIds]);
 
   return (
     <>
@@ -40,7 +58,9 @@ export default function Header() {
             <NavItem to="/live" label="Live" pathname={pathname} />
             <NavItem to="/fixtures" label="Fixtures" pathname={pathname} />
             <NavItem to="/news" label="News" icon={<Flame className="w-3.5 h-3.5" />} pathname={pathname} />
-            <NavItem to="/favorites" label="Favorites" icon={<Star className="w-3.5 h-3.5" />} pathname={pathname} />
+            <NavItem to="/favorites" label="Favorites" icon={
+              favLogo ? <img src={favLogo} alt="My Club" className="w-5 h-5 rounded-full object-contain ring-1 ring-primary/30" /> : <Star className="w-3.5 h-3.5" />
+            } pathname={pathname} />
             <NavItem to="/stats" label="Stats" icon={<BarChart3 className="w-3.5 h-3.5" />} pathname={pathname} />
             <NavItem to="/search" label="Search" icon={<Search className="w-3.5 h-3.5" />} pathname={pathname} />
             <WorldCupNav pathname={pathname} />
@@ -89,10 +109,12 @@ export default function Header() {
             <MobileNavItem to="/live" label="Live Scores" icon="⚡" pathname={pathname} onClick={() => setMenuOpen(false)} />
             <MobileNavItem to="/fixtures" label="Fixtures" icon="📅" pathname={pathname} onClick={() => setMenuOpen(false)} />
             <MobileNavItem to="/news" label="News & Reports" icon="📰" pathname={pathname} onClick={() => setMenuOpen(false)} />
-            <MobileNavItem to="/favorites" label="My Favourites" icon="⭐" pathname={pathname} onClick={() => setMenuOpen(false)} />
+            <MobileNavItem to="/favorites" label="My Favourites" icon={favLogo || "⭐"} pathname={pathname} onClick={() => setMenuOpen(false)} isLogo={!!favLogo} />
             <MobileNavItem to="/stats" label="Standings & Stats" icon="📊" pathname={pathname} onClick={() => setMenuOpen(false)} />
             <MobileNavItem to="/search" label="Search Teams" icon="🔍" pathname={pathname} onClick={() => setMenuOpen(false)} />
             <MobileNavItem to="/compare" label="Player Comparison" icon="⚔️" pathname={pathname} onClick={() => setMenuOpen(false)} />
+            <MobileNavItem to="/predict" label="Predict & Win" icon="🎯" pathname={pathname} onClick={() => setMenuOpen(false)} highlight />
+            <MobileNavItem to="/leaderboard" label="Leaderboard" icon="🏅" pathname={pathname} onClick={() => setMenuOpen(false)} />
             <MobileNavItem to="/worldcup" label="World Cup 2026" icon="🏆" pathname={pathname} onClick={() => setMenuOpen(false)} highlight />
 
             <div className="pt-4 border-t border-border/30 mt-4 flex items-center gap-3 px-3">
@@ -107,8 +129,8 @@ export default function Header() {
 }
 
 // ─── Mobile Nav Item ────────────────────────────────────────────────────────
-function MobileNavItem({ to, label, icon, pathname, onClick, highlight }: {
-  to: string; label: string; icon: string; pathname: string; onClick: () => void; highlight?: boolean;
+function MobileNavItem({ to, label, icon, pathname, onClick, highlight, isLogo }: {
+  to: string; label: string; icon: string; pathname: string; onClick: () => void; highlight?: boolean; isLogo?: boolean;
 }) {
   const isActive = to === '/' ? pathname === '/' : pathname.startsWith(to);
   return (
@@ -120,7 +142,11 @@ function MobileNavItem({ to, label, icon, pathname, onClick, highlight }: {
         isActive ? (highlight ? 'bg-amber-500/10 text-amber-400' : 'bg-primary/10 text-primary') : 'hover:bg-secondary/50',
       )}
     >
-      <span className="text-lg w-7 text-center">{icon}</span>
+      {isLogo ? (
+        <img src={icon} alt="My Club" className="w-7 h-7 rounded-full object-contain ring-2 ring-primary/30" />
+      ) : (
+        <span className="text-lg w-7 text-center">{icon}</span>
+      )}
       <span className={cn(
         'text-sm font-semibold flex-1',
         isActive ? (highlight ? 'text-amber-400' : 'text-primary') : 'text-foreground',

@@ -119,131 +119,225 @@ export function generateMatchReport(match: Match): Article | null {
   const home = match.homeTeam.name;
   const away = match.awayTeam.name;
   const hs = match.homeScore;
-  const as = match.awayScore;
-  const total = hs + as;
-  const margin = Math.abs(hs - as);
-  const isDraw = hs === as;
-  const homeWon = hs > as;
+  const as_ = match.awayScore;
+  const total = hs + as_;
+  const margin = Math.abs(hs - as_);
+  const isDraw = hs === as_;
+  const homeWon = hs > as_;
   const winner = homeWon ? home : away;
   const loser = homeWon ? away : home;
-  const winScore = homeWon ? hs : as;
-  const loseScore = homeWon ? as : hs;
+  const winScore = homeWon ? hs : as_;
+  const loseScore = homeWon ? as_ : hs;
+  const isAET = match.status === 'AET';
+  const isPEN = match.status === 'PEN';
 
   const homeScorers = getScorers(match.events, 'home');
   const awayScorers = getScorers(match.events, 'away');
   const winnerScorers = homeWon ? homeScorers : awayScorers;
   const loserScorers = homeWon ? awayScorers : homeScorers;
+  const allScorers = [...homeScorers, ...awayScorers].sort((a, b) => a.minute - b.minute);
+  const firstGoal = allScorers[0];
+  const lastGoal = allScorers[allScorers.length - 1];
 
-  // Build title
+  const isUCL = match.league.id === 2;
+  const isUEL = match.league.id === 3;
+  const isPL = match.league.id === 39;
+  const isBig = isBigMatch(match);
+
+  // Red/Yellow card events
+  const reds = match.events?.filter(e => e.type === 'red_card') || [];
+  const subs = match.events?.filter(e => e.type === 'substitution') || [];
+
+  // Stats
+  const possession = match.stats?.possession;
+  const shots = match.stats?.shots;
+  const shotsOnTarget = match.stats?.shotsOnTarget;
+
+  // ─── HEADLINE — Drama first, scoreline second ────────────────────────
   let title: string;
-  if (isDraw) {
-    if (total === 0) {
-      title = `${home} and ${away} play out goalless draw`;
-    } else {
-      title = `${home} ${hs} - ${as} ${away}: ${pick(DRAW_PHRASES)} ${hs}-${as} draw`;
-    }
-  } else if (margin >= 3) {
-    title = `${winner} ${pick(BIG_WIN_VERBS)} ${loser} ${homeWon ? hs : as}-${homeWon ? as : hs}`;
-  } else {
-    title = `${winner} ${pick(VICTORY_VERBS)} ${loser} ${homeWon ? hs : as}-${homeWon ? as : hs}`;
-  }
 
-  // Build summary (1-2 sentences)
-  let summary: string;
-  if (isDraw && total === 0) {
-    summary = `${home} and ${away} ${pick(GOALLESS_PHRASES)} in their ${match.league.name} clash.`;
+  if (isPEN) {
+    title = `${winner} edge ${loser} on penalties after ${hs}-${as_} draw`;
+  } else if (isAET) {
+    title = `${winner} prevail ${winScore}-${loseScore} after extra-time drama against ${loser}`;
+  } else if (isDraw && total === 0) {
+    title = `${home} and ${away} locked in goalless stalemate`;
   } else if (isDraw) {
-    summary = `${home} and ${away} ${pick(DRAW_PHRASES)} ${hs}-${as} draw in the ${match.league.name}.`;
-    if (homeScorers.length > 0) {
-      summary += ` ${formatScorerList(homeScorers)} scored for ${home}, while ${formatScorerList(awayScorers)} responded for ${away}.`;
+    const latestScorer = lastGoal ? shortName(lastGoal.name) : '';
+    if (lastGoal && lastGoal.minute >= 85) {
+      title = `${latestScorer}'s late ${lastGoal.minute}th-minute strike earns ${lastGoal.team === 'home' ? home : away} a point in ${hs}-${as_} thriller`;
+    } else {
+      title = `${home} and ${away} share the spoils in ${total}-goal ${isUCL ? 'Champions League' : ''} draw`;
+    }
+  } else if (firstGoal && winnerScorers.length > 0) {
+    const heroScorer = winnerScorers.length >= 2
+      ? winnerScorers.find(s => winnerScorers.filter(x => x.name === s.name).length >= 2) || winnerScorers[0]
+      : winnerScorers[0];
+
+    const hatTrick = winnerScorers.filter(s => s.name === heroScorer.name).length >= 3;
+    const brace = winnerScorers.filter(s => s.name === heroScorer.name).length === 2;
+
+    if (hatTrick) {
+      title = `${shortName(heroScorer.name)} hat-trick fires ${winner} past ${loser}`;
+    } else if (brace) {
+      title = `${shortName(heroScorer.name)} brace leads ${winner} to ${winScore}-${loseScore} victory over ${loser}`;
+    } else if (margin >= 3) {
+      title = `${winner} ${pick(BIG_WIN_VERBS)} ${loser} in ${total}-goal ${isUCL ? 'Champions League ' : ''}rout`;
+    } else if (lastGoal && lastGoal.minute >= 85 && ((lastGoal.team === 'home' && homeWon) || (lastGoal.team === 'away' && !homeWon))) {
+      title = `${shortName(lastGoal.name)}'s ${lastGoal.minute}th-minute winner seals ${winner} victory`;
+    } else if (reds.length > 0) {
+      title = `${winner} capitalize on red card to overcome ${loser} ${winScore}-${loseScore}`;
+    } else {
+      title = `${shortName(heroScorer.name)}'s ${heroScorer.detail === 'Penalty' ? 'penalty' : 'strike'} ${winnerScorers.length === 1 ? 'proves decisive as' : 'inspires'} ${winner} ${pick(['triumph', 'beat', 'edge past', 'overcome'])} ${loser}`;
     }
   } else {
-    const verb = margin >= 3 ? pick(BIG_WIN_VERBS) : pick(VICTORY_VERBS);
-    summary = `${winner} ${verb} ${loser} ${winScore}-${loseScore} in the ${match.league.name}.`;
+    title = `${winner} ${pick(VICTORY_VERBS)} ${loser} ${winScore}-${loseScore}`;
+  }
+
+  // ─── SUMMARY — Key narrative in 1-2 sentences ────────────────────────
+  let summary: string;
+  const compName = isUCL ? 'UEFA Champions League' : isUEL ? 'UEFA Europa League' : match.league.name;
+
+  if (isDraw && total === 0) {
+    summary = `${home} and ${away} were unable to find a breakthrough in a ${compName} encounter that ended goalless.`;
+  } else if (isDraw) {
+    summary = `${home} and ${away} played out an entertaining ${hs}-${as_} draw in the ${compName}.`;
+  } else if (margin >= 3) {
+    summary = `${winner} produced a devastating display to dismantle ${loser} ${winScore}-${loseScore} in the ${compName}. ${formatScorerList(winnerScorers)} were on target for the dominant side.`;
+  } else {
+    summary = `${winner} claimed a ${winScore}-${loseScore} ${isAET ? 'extra-time ' : ''}victory over ${loser} in the ${compName}.`;
     if (winnerScorers.length > 0) {
-      summary += ` ${formatScorerList(winnerScorers)} found the net for the winners.`;
+      summary += ` ${formatScorerList(winnerScorers)} made the difference.`;
     }
   }
 
-  // Build body (3-5 paragraphs)
+  // ─── BODY — Journalism-quality narrative ─────────────────────────────
   const paragraphs: string[] = [];
 
-  // Paragraph 1: Opening
+  // LEAD: Open with the moment, not the scoreline
   if (isDraw && total === 0) {
     paragraphs.push(
-      `${home} and ${away} played out a goalless draw in the ${match.league.name}. Despite chances on both sides, neither team could find the breakthrough in what proved to be a tightly contested encounter.`
+      `Neither ${home} nor ${away} could break the deadlock in a cagey ${compName} affair that will leave both managers frustrated. ${possession ? `${home} saw more of the ball at ${possession[0]}%, but` : 'Despite periods of pressure,'} clear-cut chances were at a premium throughout.`
     );
   } else if (isDraw) {
-    paragraphs.push(
-      `${pick(OPENERS)} ${home} and ${away} shared the points in an entertaining ${hs}-${as} draw in the ${match.league.name}. Both teams showed attacking intent throughout the match, producing a total of ${total} goals.`
-    );
+    if (lastGoal && lastGoal.minute >= 80) {
+      paragraphs.push(
+        `${shortName(lastGoal.name)}'s intervention in the ${lastGoal.minute}th minute ensured the points were shared in a dramatic ${hs}-${as_} draw between ${home} and ${away}. What had appeared a comfortable position for ${lastGoal.team === 'home' ? away : home} was snatched away in the closing stages of this ${compName} contest.`
+      );
+    } else {
+      paragraphs.push(
+        `${home} and ${away} played out a ${total >= 4 ? 'breathless' : 'competitive'} ${hs}-${as_} draw in the ${compName}. Both sides had their moments in a match that demonstrated why neither was willing to settle for anything less than a point.`
+      );
+    }
+  } else if (firstGoal) {
+    if (firstGoal.minute <= 15) {
+      paragraphs.push(
+        `An early breakthrough from ${shortName(firstGoal.name)} in the ${firstGoal.minute}th minute set the tone as ${winner} ${margin >= 3 ? 'ran riot' : 'secured'} a ${winScore}-${loseScore} victory over ${loser} in the ${compName}. The ${firstGoal.team === 'home' ? 'home side' : 'visitors'} never looked back after seizing the initiative.`
+      );
+    } else if (firstGoal.minute >= 75) {
+      paragraphs.push(
+        `After a tense battle of attrition, ${shortName(firstGoal.name)} finally broke the resistance in the ${firstGoal.minute}th minute to hand ${winner} a ${winScore}-${loseScore} victory over ${loser}. The ${compName} encounter had looked destined for a stalemate before the decisive moment arrived.`
+      );
+    } else {
+      paragraphs.push(
+        `${shortName(firstGoal.name)}'s ${firstGoal.minute}th-minute ${firstGoal.detail === 'Penalty' ? 'penalty' : 'goal'} proved the catalyst as ${winner} ${margin >= 3 ? 'dismantled' : 'overcame'} ${loser} ${winScore}-${loseScore} in the ${compName}. ${homeWon ? `The home faithful were given plenty to celebrate` : `It was a statement performance from the visitors`} on a night that underlined their credentials.`
+      );
+    }
   } else {
     paragraphs.push(
-      `${winner} secured a ${margin >= 3 ? 'comprehensive' : 'hard-fought'} ${winScore}-${loseScore} victory over ${loser} in the ${match.league.name}. ${pick(OPENERS)} the ${winner} ${margin >= 3 ? 'were dominant from start to finish' : 'showed great determination to claim all three points'}.`
+      `${winner} recorded a ${winScore}-${loseScore} victory over ${loser} in the ${compName}, extending their positive run of form. It was a professional display that kept their ${isPL ? 'Premier League' : 'campaign'} ambitions firmly on track.`
     );
   }
 
-  // Paragraph 2: Goal details
-  if (total > 0) {
-    const goalDetails: string[] = [];
+  // GOAL DETAILS: Build the narrative chronologically
+  if (total > 0 && allScorers.length > 0) {
+    const goalNarrative: string[] = [];
 
-    if (homeScorers.length > 0) {
-      const first = homeScorers[0];
-      goalDetails.push(`${shortName(first.name)} ${pick(SCORER_VERBS)} for ${home} in the ${first.minute}th minute${first.detail === 'Penalty' ? ' from the penalty spot' : ''}.`);
+    allScorers.forEach((scorer, idx) => {
+      const team = scorer.team === 'home' ? home : away;
+      const name = shortName(scorer.name);
+      const min = scorer.minute;
 
-      homeScorers.slice(1).forEach((s, i) => {
-        if (i === 0 && homeWon) {
-          goalDetails.push(`${shortName(s.name)} ${pick(SECOND_GOAL)} in the ${s.minute}th minute.`);
-        } else {
-          goalDetails.push(`${shortName(s.name)} also got on the scoresheet (${s.minute}').`);
-        }
-      });
-    }
-
-    if (awayScorers.length > 0) {
-      const first = awayScorers[0];
-      if (homeScorers.length > 0 && !homeWon) {
-        goalDetails.push(`${shortName(first.name)} ${pick(SCORER_VERBS)} for ${away} to ${awayScorers.length > 1 ? 'begin the comeback' : 'level the scores'} in the ${first.minute}th minute.`);
-      } else if (homeScorers.length > 0) {
-        goalDetails.push(`${shortName(first.name)} ${pick(CONSOLATION)} for ${away} in the ${first.minute}th minute.`);
+      if (idx === 0) {
+        const assist = match.events?.find(e => e.type === 'goal' && e.minute === min && e.assistName);
+        goalNarrative.push(
+          `${name} ${pick(SCORER_VERBS)} for ${team} on ${min} minutes${assist?.assistName ? `, with ${shortName(assist.assistName)} providing the assist` : ''}${scorer.detail === 'Penalty' ? ' from the penalty spot' : ''}.`
+        );
       } else {
-        goalDetails.push(`${shortName(first.name)} ${pick(SCORER_VERBS)} for ${away} in the ${first.minute}th minute.`);
+        const currentHS = homeScorers.filter(s => s.minute <= min).length;
+        const currentAS = awayScorers.filter(s => s.minute <= min).length;
+
+        if (scorer.team === (homeWon ? 'home' : 'away') && idx === 1 && !isDraw) {
+          goalNarrative.push(`${name} ${pick(SECOND_GOAL)} for ${team} in the ${min}th minute, giving the ${homeWon ? 'hosts' : 'visitors'} breathing room.`);
+        } else if (min >= 85) {
+          goalNarrative.push(`Deep into the match, ${name} struck in the ${min}th minute to ${currentHS === currentAS ? 'level proceedings' : 'seal the result'} for ${team}.`);
+        } else {
+          goalNarrative.push(`${name} found the net for ${team} (${min}')${scorer.detail === 'Penalty' ? ' from the spot' : ''}, making it ${currentHS}-${currentAS}.`);
+        }
       }
+    });
 
-      awayScorers.slice(1).forEach(s => {
-        goalDetails.push(`${shortName(s.name)} added another for ${away} (${s.minute}').`);
-      });
-    }
-
-    paragraphs.push(goalDetails.join(' '));
+    paragraphs.push(goalNarrative.join(' '));
   }
 
-  // Paragraph 3: Match stats (if available)
+  // STATS PARAGRAPH: Use specific numbers to tell the tactical story
   if (match.stats) {
-    const statsLines: string[] = [];
-    if (match.stats.possession) {
-      statsLines.push(`${home} had ${match.stats.possession[0]}% possession compared to ${away}'s ${match.stats.possession[1]}%`);
+    const statsNarrative: string[] = [];
+
+    if (possession) {
+      const domTeam = Number(possession[0]) > Number(possession[1]) ? home : away;
+      const domPct = Math.max(Number(possession[0]), Number(possession[1]));
+      if (domPct >= 60) {
+        statsNarrative.push(`${domTeam} dominated possession with ${domPct}% of the ball${domTeam === loser ? ', though it counted for little on the scoresheet' : ', controlling the tempo throughout'}`);
+      } else {
+        statsNarrative.push(`Possession was closely contested at ${possession[0]}%-${possession[1]}%`);
+      }
     }
-    if (match.stats.shots) {
-      statsLines.push(`The shot count read ${match.stats.shots[0]}-${match.stats.shots[1]} in favour of ${Number(match.stats.shots[0]) > Number(match.stats.shots[1]) ? home : away}`);
+
+    if (shots && shotsOnTarget) {
+      const homeShots = Number(shots[0]);
+      const awayShots = Number(shots[1]);
+      const homeSOT = Number(shotsOnTarget[0]);
+      const awaySOT = Number(shotsOnTarget[1]);
+      const shotLeader = homeShots > awayShots ? home : away;
+      statsNarrative.push(`${shotLeader} created more shooting opportunities with a ${homeShots}-${awayShots} advantage in total shots (${homeSOT}-${awaySOT} on target)`);
     }
-    if (statsLines.length > 0) {
-      paragraphs.push(statsLines.join('. ') + '.');
+
+    if (statsNarrative.length > 0) {
+      paragraphs.push(`The numbers told their own story. ${statsNarrative.join(', while ')}.`);
     }
   }
 
-  // Paragraph 4: Conclusion
-  if (!isDraw) {
+  // RED CARDS: Major narrative event
+  if (reds.length > 0) {
+    const red = reds[0];
     paragraphs.push(
-      `The result ${margin >= 3 ? 'sends a strong statement' : 'is a valuable one'} for ${winner} as they look to build momentum in the ${match.league.name}. ${loser} will be looking to bounce back in their next fixture.`
+      `The complexion of the match changed in the ${red.minute}th minute when ${red.playerName} received a red card for ${red.team === 'home' ? home : away}, leaving them to battle on with ten men for the remainder of the contest.`
     );
+  }
+
+  // CLOSING: Forward-looking, never a summary
+  if (!isDraw) {
+    if (isBig && isUCL) {
+      paragraphs.push(
+        `${winner} march on in the Champions League with their sights set firmly on further progress. For ${loser}, the focus now shifts to regrouping ahead of their next assignment. The margin between the sides was ${margin === 1 ? 'wafer-thin' : 'clear for all to see'}, but on this occasion it was ${winner} who found the decisive quality.`
+      );
+    } else if (isBig) {
+      paragraphs.push(
+        `It is a result that will resonate far beyond this single fixture for ${winner}, who continue to demonstrate the quality required to challenge at the highest level. ${loser} will need to respond quickly with a demanding schedule ahead.`
+      );
+    } else {
+      paragraphs.push(
+        `${winner} will look to carry this momentum into their next ${compName} fixture, while ${loser} must regroup quickly. Both sides remain in contention as the ${isPL ? 'Premier League season' : 'campaign'} enters a crucial phase.`
+      );
+    }
   } else {
     paragraphs.push(
-      `Both ${home} and ${away} will feel they could have taken all three points, but a draw was perhaps a fair reflection of the match. Both sides will now turn their attention to their upcoming fixtures in the ${match.league.name}.`
+      `A point apiece means the ${compName} picture remains tight. Both ${home} and ${away} will feel there was more to gain here, and their attention now turns to the challenges that lie ahead.`
     );
   }
 
-  const slug = slugify(`${home}-${hs}-${as}-${away}-${match.date}`);
+  const slug = slugify(`${home}-${hs}-${as_}-${away}-${match.date}`);
   const body = paragraphs.join('\n\n');
 
   return {

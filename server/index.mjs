@@ -8,6 +8,8 @@ import https from 'node:https';
 const PORT = 3001;
 const API_BASE = 'https://v3.football.api-sports.io';
 const API_KEY = process.env.API_FOOTBALL_KEY;
+const SUPABASE_URL = 'https://ehfyctoaudhyrjxbftty.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVoZnljdG9hdWRoeXJqeGJmdHR5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMjU4NjAsImV4cCI6MjA5MjYwMTg2MH0.0AoYP0nhrYWuLhSVGwRdHKSfNVQa-jJw0E4EZKWtTGU';
 
 if (!API_KEY) {
   console.error('Missing API_FOOTBALL_KEY env var');
@@ -588,4 +590,162 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`LastFootball API running on http://127.0.0.1:${PORT}`);
   console.log(`Cache: ${MAX_ENTRIES} entries | Logos: ${MAX_LOGOS} entries`);
+  // Start prediction scoring job
+  scorePredictions();
+  setInterval(scorePredictions, 5 * 60 * 1000); // Every 5 minutes
 });
+
+// ─── Supabase HTTP helpers ──────────────────────────────────────────────────
+
+function supabaseQuery(table, params = '', method = 'GET', body = null) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(`${SUPABASE_URL}/rest/v1/${table}${params ? '?' + params : ''}`);
+    const options = {
+      method,
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': method === 'POST' ? 'resolution=merge-duplicates' : 'return=minimal',
+      },
+    };
+
+    const req = https.request(url, options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          resolve(data ? JSON.parse(data) : []);
+        } catch {
+          resolve([]);
+        }
+      });
+    });
+    req.on('error', reject);
+    if (body) req.write(JSON.stringify(body));
+    req.end();
+  });
+}
+
+// ─── Prediction Scoring ─────────────────────────────────────────────────────
+
+async function scorePredictions() {
+  try {
+    // Get unscored predictions
+    const predictions = await supabaseQuery('predictions', 'points=is.null&select=*');
+    if (!predictions?.length) return;
+
+    // Group by match_id
+    const matchIds = [...new Set(predictions.map(p => p.match_id))];
+
+    for (const matchId of matchIds) {
+      try {
+        // Fetch match result from API
+        const result = await fetchUpstream('fixtures', { id: String(matchId) });
+        const fixture = result?.response?.[0];
+        if (!fixture) continue;
+
+        const status = fixture.fixture?.status?.short;
+        if (!['FT', 'AET', 'PEN'].includes(status)) continue; // Not finished yet
+
+        const actualHome = fixture.goals?.home;
+        const actualAway = fixture.goals?.away;
+        if (actualHome === null || actualAway === null) continue;
+
+        // Score each prediction for this match
+        const matchPreds = predictions.filter(p => p.match_id === matchId);
+
+        for (const pred of matchPreds) {
+          let points = 0;
+          const predHome = pred.home_score;
+          const predAway = pred.away_score;
+
+          // Exact score
+          if (predHome === actualHome && predAway === actualAway) {
+            points = 4; // +3 exact + +1 winner
+          }
+          // Correct winner
+          else if (
+            (predHome > predAway && actualHome > actualAway) ||
+            (predHome < predAway && actualHome < actualAway) ||
+            (predHome === predAway && actualHome === actualAway)
+          ) {
+            points = 1; // correct winner but wrong score: +1 -1 = 0? No: +1 winner
+          }
+          // Wrong winner
+          else {
+            points = -2; // -1 wrong winner + -1 wrong score
+          }
+
+          // Update prediction with points
+          await supabaseQuery(
+            'predictions',
+            `id=eq.${pred.id}`,
+            'PATCH',
+            { points, scored_at: new Date().toISOString() }
+          );
+
+          // Update leaderboard
+          await updateLeaderboard(pred.user_id, points, predHome === actualHome && predAway === actualAway);
+        }
+
+        console.log(`Scored ${matchPreds.length} predictions for match ${matchId}: ${actualHome}-${actualAway}`);
+      } catch (err) {
+        console.error(`Error scoring match ${matchId}:`, err.message);
+      }
+    }
+  } catch (err) {
+    console.error('Prediction scoring error:', err.message);
+  }
+}
+
+async function updateLeaderboard(userId, points, exactScore) {
+  try {
+    // Get current leaderboard entry
+    const entries = await supabaseQuery('prediction_leaderboard', `user_id=eq.${userId}&select=*`);
+    const entry = entries?.[0];
+
+    // Get user email as username
+    let username = 'Anonymous';
+    try {
+      const preds = await supabaseQuery('predictions', `user_id=eq.${userId}&select=home_team&limit=1`);
+      username = `User_${userId.slice(0, 6)}`;
+    } catch {}
+
+    if (entry) {
+      const newStreak = points > 0 ? (entry.current_streak + 1) : 0;
+      await supabaseQuery(
+        'prediction_leaderboard',
+        `user_id=eq.${userId}`,
+        'PATCH',
+        {
+          total_points: entry.total_points + points,
+          total_predictions: entry.total_predictions + 1,
+          correct_scores: entry.correct_scores + (exactScore ? 1 : 0),
+          correct_winners: entry.correct_winners + (points > 0 ? 1 : 0),
+          current_streak: newStreak,
+          best_streak: Math.max(entry.best_streak, newStreak),
+          updated_at: new Date().toISOString(),
+        }
+      );
+    } else {
+      await supabaseQuery(
+        'prediction_leaderboard',
+        '',
+        'POST',
+        {
+          user_id: userId,
+          username,
+          total_points: points,
+          total_predictions: 1,
+          correct_scores: exactScore ? 1 : 0,
+          correct_winners: points > 0 ? 1 : 0,
+          current_streak: points > 0 ? 1 : 0,
+          best_streak: points > 0 ? 1 : 0,
+        }
+      );
+    }
+  } catch (err) {
+    console.error(`Leaderboard update error for ${userId}:`, err.message);
+  }
+}
