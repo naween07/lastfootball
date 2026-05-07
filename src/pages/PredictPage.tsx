@@ -27,7 +27,6 @@ export default function PredictPage() {
   const [existingPredictions, setExistingPredictions] = useState<Set<number>>(new Set());
   const [submitting, setSubmitting] = useState<number | null>(null);
   const [activeDay, setActiveDay] = useState<'today' | 'tomorrow'>('today');
-  const [leaderboard, setLeaderboard] = useState<{ username: string; total_points: number; total_predictions: number }[]>([]);
 
   // Fetch matches
   useEffect(() => {
@@ -61,18 +60,6 @@ export default function PredictPage() {
     };
     loadPredictions();
   }, [user, matches]);
-
-  // Load leaderboard
-  useEffect(() => {
-    supabase
-      .from('prediction_leaderboard')
-      .select('username, total_points, total_predictions')
-      .order('total_points', { ascending: false })
-      .limit(5)
-      .then(({ data }) => {
-        if (data) setLeaderboard(data);
-      });
-  }, []);
 
   const updatePrediction = (matchId: number, field: 'home_score' | 'away_score', value: number) => {
     const current = predictions.get(matchId) || { match_id: matchId, home_score: 0, away_score: 0 };
@@ -291,30 +278,137 @@ export default function PredictPage() {
           </div>
         )}
 
-        {/* Mini leaderboard */}
-        {leaderboard.length > 0 && (
-          <div className="mt-6 bg-card border border-border rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
-              <Star className="w-4 h-4 text-amber-400" />
-              <h3 className="text-sm font-bold text-foreground flex-1">Top Predictors</h3>
-              <Link to="/leaderboard" className="text-xs text-primary font-semibold hover:underline">View All →</Link>
-            </div>
-            {leaderboard.map((entry, i) => (
-              <div key={i} className="flex items-center gap-3 px-4 py-2.5 border-b border-border/10 last:border-0">
-                <span className={cn(
-                  'w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black',
-                  i === 0 ? 'bg-amber-500/20 text-amber-400' : i === 1 ? 'bg-gray-400/20 text-gray-400' : 'bg-orange-500/20 text-orange-400',
-                )}>
-                  {i + 1}
-                </span>
-                <span className="text-sm font-medium text-foreground flex-1">{entry.username}</span>
-                <span className="text-sm font-black text-primary tabular-nums">{entry.total_points} pts</span>
-                <span className="text-[10px] text-muted-foreground">{entry.total_predictions} predictions</span>
-              </div>
-            ))}
+        {/* Full Leaderboard */}
+        <FullLeaderboard userId={user?.id} />
+
+        {/* Rules */}
+        <div className="mt-4 bg-card border border-border rounded-xl p-5">
+          <h3 className="text-sm font-bold text-foreground mb-3">Monthly Winner Rules</h3>
+          <div className="space-y-2 text-xs text-muted-foreground">
+            <p>• Predict at least <strong className="text-foreground">10 matches</strong> in a month to qualify</p>
+            <p>• Reach <strong className="text-amber-400">30 points</strong> to win the grand prize of NPR 30,000</p>
+            <p>• If no one reaches 30 points, the highest scorer wins</p>
+            <p>• Ties are decided by lucky draw on our Facebook page</p>
+            <p>• Must follow our official social media pages to be eligible</p>
           </div>
-        )}
+        </div>
       </main>
+    </div>
+  );
+}
+
+// ─── Full Leaderboard Component ─────────────────────────────────────────────
+function FullLeaderboard({ userId }: { userId?: string }) {
+  const [entries, setEntries] = useState<{ user_id: string; username: string; total_points: number; total_predictions: number; correct_scores: number; correct_winners: number; current_streak: number; best_streak: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase
+      .from('prediction_leaderboard')
+      .select('*')
+      .order('total_points', { ascending: false })
+      .limit(50)
+      .then(({ data }) => {
+        if (data) setEntries(data);
+        setLoading(false);
+      });
+  }, []);
+
+  const accuracy = (e: typeof entries[0]) =>
+    e.total_predictions > 0 ? Math.round((e.correct_winners / e.total_predictions) * 100) : 0;
+
+  const myEntry = userId ? entries.find(e => e.user_id === userId) : null;
+  const myRank = userId ? entries.findIndex(e => e.user_id === userId) + 1 : 0;
+
+  return (
+    <div className="mt-6 space-y-4">
+      {/* My stats */}
+      {myEntry && (
+        <div className="bg-gradient-to-r from-primary/5 to-primary/10 border border-primary/20 rounded-xl p-4">
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Your Stats — Rank #{myRank}</p>
+          <div className="grid grid-cols-4 gap-2">
+            <div className="text-center">
+              <p className="text-lg font-black text-primary tabular-nums">{myEntry.total_points}</p>
+              <p className="text-[9px] text-muted-foreground uppercase">Points</p>
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-black text-foreground tabular-nums">{myEntry.total_predictions}</p>
+              <p className="text-[9px] text-muted-foreground uppercase">Predictions</p>
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-black text-emerald-400 tabular-nums">{myEntry.correct_scores}</p>
+              <p className="text-[9px] text-muted-foreground uppercase">Exact</p>
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-black text-amber-400 tabular-nums">{accuracy(myEntry)}%</p>
+              <p className="text-[9px] text-muted-foreground uppercase">Accuracy</p>
+            </div>
+          </div>
+          {myEntry.total_points >= 30 && (
+            <div className="mt-3 bg-amber-500/20 border border-amber-500/30 rounded-lg p-2 text-center">
+              <p className="text-xs font-bold text-amber-400">🎉 30 points reached! Contact us to claim NPR 30,000!</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Leaderboard table */}
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
+          <Trophy className="w-4 h-4 text-amber-400" />
+          <h3 className="text-sm font-bold text-foreground">Leaderboard</h3>
+        </div>
+
+        {/* Header */}
+        <div className="flex items-center gap-2 px-4 py-2 bg-secondary/30 text-[10px] text-muted-foreground uppercase font-bold">
+          <span className="w-7 text-center">#</span>
+          <span className="flex-1">Predictor</span>
+          <span className="w-12 text-center">Pts</span>
+          <span className="w-10 text-center">Exact</span>
+          <span className="w-10 text-center">Acc</span>
+          <span className="w-14 text-center text-[9px]">Status</span>
+        </div>
+
+        {loading ? (
+          <p className="text-sm text-muted-foreground text-center py-8">Loading...</p>
+        ) : entries.length === 0 ? (
+          <div className="text-center py-12">
+            <Target className="w-10 h-10 text-muted-foreground/20 mx-auto mb-3" />
+            <p className="text-sm text-muted-foreground">No predictions yet. Be the first!</p>
+          </div>
+        ) : (
+          entries.map((entry, i) => {
+            const rank = i + 1;
+            const isMe = userId === entry.user_id;
+            const eligible = entry.total_predictions >= 10;
+
+            return (
+              <div key={entry.user_id} className={cn('flex items-center gap-2 px-4 py-2.5 border-b border-border/10 last:border-0', isMe && 'bg-primary/5')}>
+                <span className={cn('w-7 text-center font-black text-xs tabular-nums',
+                  rank === 1 ? 'text-amber-400' : rank === 2 ? 'text-gray-400' : rank === 3 ? 'text-orange-400' : 'text-muted-foreground',
+                )}>
+                  {rank <= 3 ? ['🥇', '🥈', '🥉'][rank - 1] : rank}
+                </span>
+                <span className={cn('flex-1 text-sm font-semibold truncate', isMe ? 'text-primary' : 'text-foreground')}>
+                  {entry.username} {isMe && '(You)'}
+                </span>
+                <span className={cn('w-12 text-center text-sm font-black tabular-nums',
+                  entry.total_points >= 30 ? 'text-amber-400' : entry.total_points > 0 ? 'text-primary' : 'text-muted-foreground',
+                )}>
+                  {entry.total_points}
+                </span>
+                <span className="w-10 text-center text-xs text-emerald-400 font-semibold tabular-nums">{entry.correct_scores}</span>
+                <span className="w-10 text-center text-xs text-foreground font-semibold tabular-nums">{accuracy(entry)}%</span>
+                <span className={cn('w-14 text-center text-[9px] font-bold rounded-full px-1 py-0.5',
+                  eligible ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400',
+                )}>
+                  {eligible ? '✓ Qual' : `${entry.total_predictions}/10`}
+                </span>
+              </div>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }
