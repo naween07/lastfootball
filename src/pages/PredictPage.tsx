@@ -278,6 +278,9 @@ export default function PredictPage() {
           </div>
         )}
 
+        {/* My Predictions History */}
+        {user && <MyPredictions userId={user.id} />}
+
         {/* Full Leaderboard */}
         <FullLeaderboard userId={user?.id} />
 
@@ -407,6 +410,117 @@ function FullLeaderboard({ userId }: { userId?: string }) {
               </div>
             );
           })
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── My Predictions History ─────────────────────────────────────────────────
+function MyPredictions({ userId }: { userId: string }) {
+  const [preds, setPreds] = useState<{
+    id: string; match_id: number; home_score: number; away_score: number;
+    home_team: string; away_team: string; league_name: string; match_date: string;
+    points: number | null; predicted_at: string;
+  }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAll, setShowAll] = useState(false);
+
+  useEffect(() => {
+    supabase
+      .from('predictions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('predicted_at', { ascending: false })
+      .limit(50)
+      .then(({ data }) => {
+        if (data) setPreds(data);
+        setLoading(false);
+      });
+  }, [userId]);
+
+  if (loading || preds.length === 0) return null;
+
+  const scored = preds.filter(p => p.points !== null);
+  const pending = preds.filter(p => p.points === null);
+  const totalPoints = scored.reduce((sum, p) => sum + (p.points || 0), 0);
+  const exactScores = scored.filter(p => p.points === 4).length;
+  const correctWinners = scored.filter(p => p.points === 1).length;
+  const eligible = preds.length >= 10;
+  const display = showAll ? preds : preds.slice(0, 5);
+
+  return (
+    <div className="mt-6">
+      <div className="bg-gradient-to-r from-primary/5 to-emerald-500/5 border border-primary/20 rounded-xl p-4 mb-4">
+        <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
+          <Target className="w-3.5 h-3.5 text-primary" /> My Prediction Summary
+        </h3>
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+          <div className="text-center">
+            <p className="text-lg font-black text-primary tabular-nums">{totalPoints}</p>
+            <p className="text-[9px] text-muted-foreground uppercase">Points</p>
+          </div>
+          <div className="text-center">
+            <p className="text-lg font-black text-foreground tabular-nums">{preds.length}</p>
+            <p className="text-[9px] text-muted-foreground uppercase">Total</p>
+          </div>
+          <div className="text-center">
+            <p className="text-lg font-black text-emerald-400 tabular-nums">{exactScores}</p>
+            <p className="text-[9px] text-muted-foreground uppercase">Exact</p>
+          </div>
+          <div className="text-center">
+            <p className="text-lg font-black text-blue-400 tabular-nums">{correctWinners}</p>
+            <p className="text-[9px] text-muted-foreground uppercase">Winners</p>
+          </div>
+          <div className="text-center">
+            <p className="text-lg font-black text-amber-400 tabular-nums">{pending.length}</p>
+            <p className="text-[9px] text-muted-foreground uppercase">Pending</p>
+          </div>
+          <div className="text-center">
+            <p className={cn('text-lg font-black tabular-nums', eligible ? 'text-emerald-400' : 'text-red-400')}>{eligible ? '✓' : `${preds.length}/10`}</p>
+            <p className="text-[9px] text-muted-foreground uppercase">Eligible</p>
+          </div>
+        </div>
+        {totalPoints >= 30 && (
+          <div className="mt-3 bg-amber-500/20 border border-amber-500/30 rounded-lg p-2 text-center">
+            <p className="text-xs font-bold text-amber-400">🎉 You reached 30 points! Claim your NPR 30,000 reward!</p>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-border/30">
+          <h3 className="text-sm font-bold text-foreground">My Predictions</h3>
+        </div>
+        <div className="divide-y divide-border/10">
+          {display.map(pred => (
+            <Link key={pred.id} to={`/match/${pred.match_id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-secondary/20 transition-colors">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-foreground truncate">{pred.home_team} vs {pred.away_team}</p>
+                <p className="text-[11px] text-muted-foreground">{pred.league_name} · {pred.match_date}</p>
+              </div>
+              <div className="text-center min-w-[60px]">
+                <p className="text-sm font-black text-foreground tabular-nums">{pred.home_score} - {pred.away_score}</p>
+                <p className="text-[9px] text-muted-foreground">Your pick</p>
+              </div>
+              <div className="min-w-[50px] text-center">
+                {pred.points === null ? (
+                  <span className="text-[10px] font-bold bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full">Pending</span>
+                ) : pred.points >= 4 ? (
+                  <span className="text-[10px] font-bold bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full">+{pred.points} 🎯</span>
+                ) : pred.points > 0 ? (
+                  <span className="text-[10px] font-bold bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-full">+{pred.points}</span>
+                ) : (
+                  <span className="text-[10px] font-bold bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full">{pred.points}</span>
+                )}
+              </div>
+            </Link>
+          ))}
+        </div>
+        {preds.length > 5 && (
+          <button onClick={() => setShowAll(!showAll)} className="w-full py-2.5 text-xs text-primary font-semibold hover:bg-secondary/20 transition-colors border-t border-border/30">
+            {showAll ? 'Show Less' : `View All ${preds.length} Predictions`}
+          </button>
         )}
       </div>
     </div>
