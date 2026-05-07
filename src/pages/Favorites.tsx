@@ -19,15 +19,27 @@ export default function Favorites() {
 
   // Load data for all favorite teams
   useEffect(() => {
-    if (favoriteTeamIds.length === 0) { setLoading(false); return; }
-    setLoading(true);
+    if (favoriteTeamIds.length === 0) { setLoading(false); setTeamData(new Map()); setTeamInfo(new Map()); return; }
 
     const loadAll = async () => {
-      const dataMap = new Map<number, { results: Match[]; upcoming: Match[] }>();
-      const infoMap = new Map<number, { name: string; logo: string }>();
+      // Only show full loading spinner on first load, not when adding teams
+      if (teamData.size === 0) setLoading(true);
+
+      const dataMap = new Map(teamData);
+      const infoMap = new Map(teamInfo);
       const allMatches: Match[] = [];
 
-      await Promise.allSettled(favoriteTeamIds.map(async (teamId) => {
+      // Only fetch data for teams we don't already have
+      const newTeamIds = favoriteTeamIds.filter(id => !dataMap.has(id));
+      const existingTeamIds = favoriteTeamIds.filter(id => dataMap.has(id));
+
+      // Collect existing matches for articles
+      existingTeamIds.forEach(id => {
+        const d = dataMap.get(id);
+        if (d) allMatches.push(...d.results);
+      });
+
+      await Promise.allSettled(newTeamIds.map(async (teamId) => {
         try {
           const matches = await fetchTeamFixtures(teamId, 3, 3);
           const results = matches.filter(m => m.status === 'FT' || m.status === 'AET' || m.status === 'PEN');
@@ -35,7 +47,6 @@ export default function Favorites() {
           dataMap.set(teamId, { results, upcoming });
           allMatches.push(...results);
 
-          // Extract team info from matches
           for (const m of matches) {
             if (m.homeTeam.id === teamId) infoMap.set(teamId, { name: m.homeTeam.name, logo: m.homeTeam.logo || '' });
             else if (m.awayTeam.id === teamId) infoMap.set(teamId, { name: m.awayTeam.name, logo: m.awayTeam.logo || '' });
@@ -43,10 +54,14 @@ export default function Favorites() {
         } catch {}
       }));
 
-      setTeamData(dataMap);
-      setTeamInfo(infoMap);
+      // Remove unfollowed teams
+      for (const id of dataMap.keys()) {
+        if (!favoriteTeamIds.includes(id)) { dataMap.delete(id); infoMap.delete(id); }
+      }
 
-      // Generate articles from results
+      setTeamData(new Map(dataMap));
+      setTeamInfo(new Map(infoMap));
+
       const reports = generateDailyReports(allMatches).filter(a => a.category === 'match-report');
       setArticles(reports.slice(0, 10));
       setLoading(false);
