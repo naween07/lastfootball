@@ -317,42 +317,45 @@ function TeamSearchBar({ onSelect, isFavorite }: {
   );
 }
 
+// ─── Top 30 Most Followed Teams ─────────────────────────────────────────────
+const POPULAR_LIST = [
+  { name: 'Real Madrid', id: 541, logo: 'https://media.api-sports.io/football/teams/541.png' },
+  { name: 'Barcelona', id: 529, logo: 'https://media.api-sports.io/football/teams/529.png' },
+  { name: 'Man United', id: 33, logo: 'https://media.api-sports.io/football/teams/33.png' },
+  { name: 'PSG', id: 85, logo: 'https://media.api-sports.io/football/teams/85.png' },
+  { name: 'Man City', id: 50, logo: 'https://media.api-sports.io/football/teams/50.png' },
+  { name: 'Juventus', id: 496, logo: 'https://media.api-sports.io/football/teams/496.png' },
+  { name: 'Liverpool', id: 40, logo: 'https://media.api-sports.io/football/teams/40.png' },
+  { name: 'Chelsea', id: 49, logo: 'https://media.api-sports.io/football/teams/49.png' },
+  { name: 'Bayern Munich', id: 157, logo: 'https://media.api-sports.io/football/teams/157.png' },
+  { name: 'Arsenal', id: 42, logo: 'https://media.api-sports.io/football/teams/42.png' },
+  { name: 'Tottenham', id: 47, logo: 'https://media.api-sports.io/football/teams/47.png' },
+  { name: 'AC Milan', id: 489, logo: 'https://media.api-sports.io/football/teams/489.png' },
+  { name: 'Inter Milan', id: 505, logo: 'https://media.api-sports.io/football/teams/505.png' },
+  { name: 'Atletico Madrid', id: 530, logo: 'https://media.api-sports.io/football/teams/530.png' },
+  { name: 'Al Nassr', id: 2939, logo: 'https://media.api-sports.io/football/teams/2939.png' },
+  { name: 'Flamengo', id: 127, logo: 'https://media.api-sports.io/football/teams/127.png' },
+  { name: 'Dortmund', id: 165, logo: 'https://media.api-sports.io/football/teams/165.png' },
+  { name: 'Al Ahly', id: 1020, logo: 'https://media.api-sports.io/football/teams/1020.png' },
+  { name: 'Galatasaray', id: 645, logo: 'https://media.api-sports.io/football/teams/645.png' },
+  { name: 'AS Roma', id: 497, logo: 'https://media.api-sports.io/football/teams/497.png' },
+  { name: 'Corinthians', id: 131, logo: 'https://media.api-sports.io/football/teams/131.png' },
+  { name: 'Fenerbahce', id: 611, logo: 'https://media.api-sports.io/football/teams/611.png' },
+  { name: 'Inter Miami', id: 18857, logo: 'https://media.api-sports.io/football/teams/18857.png' },
+  { name: 'Al Hilal', id: 2932, logo: 'https://media.api-sports.io/football/teams/2932.png' },
+  { name: 'Boca Juniors', id: 451, logo: 'https://media.api-sports.io/football/teams/451.png' },
+  { name: 'River Plate', id: 435, logo: 'https://media.api-sports.io/football/teams/435.png' },
+  { name: 'Club America', id: 2283, logo: 'https://media.api-sports.io/football/teams/2283.png' },
+  { name: 'Ajax', id: 194, logo: 'https://media.api-sports.io/football/teams/194.png' },
+  { name: 'Napoli', id: 492, logo: 'https://media.api-sports.io/football/teams/492.png' },
+  { name: 'Newcastle', id: 34, logo: 'https://media.api-sports.io/football/teams/34.png' },
+];
+
 // ─── Empty State ────────────────────────────────────────────────────────────
 function EmptyState({ onAddTeam }: { onAddTeam: () => void }) {
   const { toggleFavorite, isFavorite } = useFavorites();
 
-  const POPULAR = [
-    { name: 'Arsenal', id: 42, logo: 'https://media.api-sports.io/football/teams/42.png' },
-    { name: 'Liverpool', id: 40, logo: 'https://media.api-sports.io/football/teams/40.png' },
-    { name: 'Man City', id: 50, logo: 'https://media.api-sports.io/football/teams/50.png' },
-    { name: 'Man United', id: 33, logo: 'https://media.api-sports.io/football/teams/33.png' },
-    { name: 'Chelsea', id: 49, logo: 'https://media.api-sports.io/football/teams/49.png' },
-    { name: 'Tottenham', id: 47, logo: 'https://media.api-sports.io/football/teams/47.png' },
-    { name: 'Newcastle', id: 34, logo: 'https://media.api-sports.io/football/teams/34.png' },
-    { name: 'Aston Villa', id: 66, logo: 'https://media.api-sports.io/football/teams/66.png' },
-    { name: 'Real Madrid', id: 541, logo: 'https://media.api-sports.io/football/teams/541.png' },
-    { name: 'Barcelona', id: 529, logo: 'https://media.api-sports.io/football/teams/529.png' },
-    { name: 'Atletico Madrid', id: 530, logo: 'https://media.api-sports.io/football/teams/530.png' },
-    { name: 'Bayern Munich', id: 157, logo: 'https://media.api-sports.io/football/teams/157.png' },
-    { name: 'Dortmund', id: 165, logo: 'https://media.api-sports.io/football/teams/165.png' },
-    { name: 'Juventus', id: 496, logo: 'https://media.api-sports.io/football/teams/496.png' },
-    { name: 'AC Milan', id: 489, logo: 'https://media.api-sports.io/football/teams/489.png' },
-    { name: 'Inter Milan', id: 505, logo: 'https://media.api-sports.io/football/teams/505.png' },
-    { name: 'Napoli', id: 492, logo: 'https://media.api-sports.io/football/teams/492.png' },
-    { name: 'PSG', id: 85, logo: 'https://media.api-sports.io/football/teams/85.png' },
-    { name: 'Marseille', id: 81, logo: 'https://media.api-sports.io/football/teams/81.png' },
-    { name: 'Benfica', id: 211, logo: 'https://media.api-sports.io/football/teams/211.png' },
-    { name: 'Porto', id: 212, logo: 'https://media.api-sports.io/football/teams/212.png' },
-    { name: 'Sporting CP', id: 228, logo: 'https://media.api-sports.io/football/teams/228.png' },
-    { name: 'Ajax', id: 194, logo: 'https://media.api-sports.io/football/teams/194.png' },
-    { name: 'Celtic', id: 247, logo: 'https://media.api-sports.io/football/teams/247.png' },
-    { name: 'Galatasaray', id: 645, logo: 'https://media.api-sports.io/football/teams/645.png' },
-    { name: 'Al Hilal', id: 2932, logo: 'https://media.api-sports.io/football/teams/2932.png' },
-    { name: 'Flamengo', id: 127, logo: 'https://media.api-sports.io/football/teams/127.png' },
-    { name: 'River Plate', id: 435, logo: 'https://media.api-sports.io/football/teams/435.png' },
-    { name: 'Boca Juniors', id: 451, logo: 'https://media.api-sports.io/football/teams/451.png' },
-    { name: 'Al Ahly', id: 1020, logo: 'https://media.api-sports.io/football/teams/1020.png' },
-  ];
+  const POPULAR = POPULAR_LIST;
 
   return (
     <div className="text-center py-10">
@@ -395,25 +398,6 @@ function EmptyState({ onAddTeam }: { onAddTeam: () => void }) {
 }
 
 // ─── Popular Teams Grid (shown below team cards) ────────────────────────────
-const POPULAR_LIST = [
-  { name: 'Arsenal', id: 42, logo: 'https://media.api-sports.io/football/teams/42.png' },
-  { name: 'Liverpool', id: 40, logo: 'https://media.api-sports.io/football/teams/40.png' },
-  { name: 'Man City', id: 50, logo: 'https://media.api-sports.io/football/teams/50.png' },
-  { name: 'Man United', id: 33, logo: 'https://media.api-sports.io/football/teams/33.png' },
-  { name: 'Chelsea', id: 49, logo: 'https://media.api-sports.io/football/teams/49.png' },
-  { name: 'Tottenham', id: 47, logo: 'https://media.api-sports.io/football/teams/47.png' },
-  { name: 'Real Madrid', id: 541, logo: 'https://media.api-sports.io/football/teams/541.png' },
-  { name: 'Barcelona', id: 529, logo: 'https://media.api-sports.io/football/teams/529.png' },
-  { name: 'Bayern Munich', id: 157, logo: 'https://media.api-sports.io/football/teams/157.png' },
-  { name: 'Juventus', id: 496, logo: 'https://media.api-sports.io/football/teams/496.png' },
-  { name: 'Inter Milan', id: 505, logo: 'https://media.api-sports.io/football/teams/505.png' },
-  { name: 'PSG', id: 85, logo: 'https://media.api-sports.io/football/teams/85.png' },
-  { name: 'Benfica', id: 211, logo: 'https://media.api-sports.io/football/teams/211.png' },
-  { name: 'Galatasaray', id: 645, logo: 'https://media.api-sports.io/football/teams/645.png' },
-  { name: 'Flamengo', id: 127, logo: 'https://media.api-sports.io/football/teams/127.png' },
-  { name: 'Boca Juniors', id: 451, logo: 'https://media.api-sports.io/football/teams/451.png' },
-];
-
 function PopularTeamsGrid() {
   const { toggleFavorite, isFavorite } = useFavorites();
   const unfollowed = POPULAR_LIST.filter(t => !isFavorite(t.id));
