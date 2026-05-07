@@ -145,6 +145,9 @@ export default function Favorites() {
                 </div>
               </div>
             )}
+
+            {/* Popular teams — always visible for easy adding */}
+            <PopularTeamsGrid />
           </div>
         )}
       </main>
@@ -356,11 +359,11 @@ function EmptyState({ onAddTeam }: { onAddTeam: () => void }) {
         {POPULAR.map(t => (
           <button
             key={t.id}
-            onClick={() => toggleFavorite(t.id, t.name, t.logo)}
+            onClick={() => { if (!isFavorite(t.id)) toggleFavorite(t.id, t.name, t.logo); }}
             className={cn(
               'flex flex-col items-center gap-1.5 p-3 rounded-xl transition-all',
               isFavorite(t.id)
-                ? 'bg-primary/10 ring-1 ring-primary/30 scale-95'
+                ? 'bg-primary/10 ring-1 ring-primary/30'
                 : 'bg-card border border-border/50 hover:border-primary/30 hover:scale-105 active:scale-95',
             )}
           >
@@ -369,6 +372,50 @@ function EmptyState({ onAddTeam }: { onAddTeam: () => void }) {
               {t.name}
             </span>
             {isFavorite(t.id) && <span className="text-[8px] text-primary font-bold">✓ Following</span>}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Popular Teams Grid (shown below team cards) ────────────────────────────
+const POPULAR_LIST = [
+  { name: 'Arsenal', id: 42, logo: 'https://media.api-sports.io/football/teams/42.png' },
+  { name: 'Liverpool', id: 40, logo: 'https://media.api-sports.io/football/teams/40.png' },
+  { name: 'Man City', id: 50, logo: 'https://media.api-sports.io/football/teams/50.png' },
+  { name: 'Man United', id: 33, logo: 'https://media.api-sports.io/football/teams/33.png' },
+  { name: 'Chelsea', id: 49, logo: 'https://media.api-sports.io/football/teams/49.png' },
+  { name: 'Tottenham', id: 47, logo: 'https://media.api-sports.io/football/teams/47.png' },
+  { name: 'Real Madrid', id: 541, logo: 'https://media.api-sports.io/football/teams/541.png' },
+  { name: 'Barcelona', id: 529, logo: 'https://media.api-sports.io/football/teams/529.png' },
+  { name: 'Bayern Munich', id: 157, logo: 'https://media.api-sports.io/football/teams/157.png' },
+  { name: 'Juventus', id: 496, logo: 'https://media.api-sports.io/football/teams/496.png' },
+  { name: 'Inter Milan', id: 505, logo: 'https://media.api-sports.io/football/teams/505.png' },
+  { name: 'PSG', id: 85, logo: 'https://media.api-sports.io/football/teams/85.png' },
+  { name: 'Benfica', id: 211, logo: 'https://media.api-sports.io/football/teams/211.png' },
+  { name: 'Galatasaray', id: 645, logo: 'https://media.api-sports.io/football/teams/645.png' },
+  { name: 'Flamengo', id: 127, logo: 'https://media.api-sports.io/football/teams/127.png' },
+  { name: 'Boca Juniors', id: 451, logo: 'https://media.api-sports.io/football/teams/451.png' },
+];
+
+function PopularTeamsGrid() {
+  const { toggleFavorite, isFavorite } = useFavorites();
+  const unfollowed = POPULAR_LIST.filter(t => !isFavorite(t.id));
+  if (unfollowed.length === 0) return null;
+
+  return (
+    <div className="pt-4 border-t border-border/30">
+      <p className="text-xs text-muted-foreground mb-3 uppercase tracking-wider font-semibold">Add more teams</p>
+      <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 gap-2">
+        {unfollowed.map(t => (
+          <button
+            key={t.id}
+            onClick={() => toggleFavorite(t.id, t.name, t.logo)}
+            className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-card border border-border/50 hover:border-primary/30 hover:scale-105 active:scale-95 transition-all"
+          >
+            <img src={t.logo} alt={t.name} className="w-8 h-8 object-contain" loading="lazy" />
+            <span className="text-[10px] font-semibold truncate w-full text-center text-muted-foreground">{t.name}</span>
           </button>
         ))}
       </div>
