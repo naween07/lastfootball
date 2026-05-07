@@ -5,6 +5,7 @@ import SEOHead, { buildWebsiteJsonLd } from '@/components/SEOHead';
 import OptimizedImage from '@/components/OptimizedImage';
 import { fetchHomepageData, PlayerStat } from '@/services/footballApi';
 import { fetchFootballNews } from '@/services/newsApi';
+import { useAuth } from '@/hooks/useAuth';
 import { Match } from '@/types/football';
 import { ArrowRight, Zap, Calendar, Trophy, Newspaper, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -18,6 +19,7 @@ interface NewsItem {
 }
 
 export default function HomePage() {
+  const { user } = useAuth();
   const [liveMatches, setLiveMatches] = useState<Match[]>([]);
   const [todayMatches, setTodayMatches] = useState<Match[]>([]);
   const [topScorers, setTopScorers] = useState<{ league: string; scorers: PlayerStat[] }[]>([]);
@@ -260,28 +262,45 @@ export default function HomePage() {
         </section>
 
         {/* ─── CTA FOOTER ────────────────────────────────────────────── */}
-        <section className="container max-w-6xl mx-auto px-4 pb-8">
-          <div className="bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 rounded-xl p-6 sm:p-8 text-center">
-            <h2 className="text-xl sm:text-2xl font-black text-foreground mb-2">Never Miss a Goal</h2>
-            <p className="text-sm text-muted-foreground mb-4 max-w-md mx-auto">
-              Track live scores, follow your favorite teams, and get instant updates from all major leagues.
-            </p>
-            <div className="flex items-center gap-3 justify-center">
+        {!user ? (
+          <section className="container max-w-6xl mx-auto px-4 pb-8">
+            <div className="bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 rounded-xl p-6 sm:p-8 text-center">
+              <h2 className="text-xl sm:text-2xl font-black text-foreground mb-2">Never Miss a Goal</h2>
+              <p className="text-sm text-muted-foreground mb-4 max-w-md mx-auto">
+                Track live scores, follow your favorite teams, and get instant updates from all major leagues.
+              </p>
+              <div className="flex items-center gap-3 justify-center">
+                <Link
+                  to="/auth"
+                  className="px-6 py-2.5 rounded-lg bg-primary text-primary-foreground font-bold text-sm hover:opacity-90 transition-opacity"
+                >
+                  Sign Up Free
+                </Link>
+                <Link
+                  to="/live"
+                  className="px-6 py-2.5 rounded-lg border border-border text-foreground font-bold text-sm hover:bg-secondary transition-colors"
+                >
+                  View Live Scores
+                </Link>
+              </div>
+            </div>
+          </section>
+        ) : (
+          <section className="container max-w-6xl mx-auto px-4 pb-8">
+            <div className="bg-gradient-to-r from-amber-500/10 to-amber-600/5 border border-amber-500/20 rounded-xl p-6 sm:p-8 text-center">
+              <h2 className="text-xl sm:text-2xl font-black text-foreground mb-2">Follow Your Teams</h2>
+              <p className="text-sm text-muted-foreground mb-4 max-w-md mx-auto">
+                Add your favourite clubs to get personalised results, fixtures, and match reports.
+              </p>
               <Link
-                to="/auth"
-                className="px-6 py-2.5 rounded-lg bg-primary text-primary-foreground font-bold text-sm hover:opacity-90 transition-opacity"
+                to="/favorites"
+                className="px-6 py-2.5 rounded-lg bg-amber-500 text-white font-bold text-sm hover:opacity-90 transition-opacity"
               >
-                Sign Up Free
-              </Link>
-              <Link
-                to="/live"
-                className="px-6 py-2.5 rounded-lg border border-border text-foreground font-bold text-sm hover:bg-secondary transition-colors"
-              >
-                View Live Scores
+                My Favourites
               </Link>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
       </main>
     </>
   );
