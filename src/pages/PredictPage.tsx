@@ -302,23 +302,58 @@ export default function PredictPage() {
 
 // ─── Full Leaderboard Component ─────────────────────────────────────────────
 function FullLeaderboard({ userId }: { userId?: string }) {
-  const [entries, setEntries] = useState<{ user_id: string; username: string; total_points: number; total_predictions: number; correct_scores: number; correct_winners: number; current_streak: number; best_streak: number }[]>([]);
+  const [entries, setEntries] = useState<{ user_id: string; email: string; total_points: number; total_predictions: number; correct_scores: number; pending: number }[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase
-      .from('prediction_leaderboard')
-      .select('*')
-      .order('total_points', { ascending: false })
-      .limit(50)
-      .then(({ data }) => {
-        if (data) setEntries(data);
-        setLoading(false);
-      });
-  }, []);
+    // Read all scored predictions to build leaderboard client-side
+    // Since RLS limits to own predictions, we use the leaderboard table for others
+    const load = async () => {
+      // Try leaderboard table first
+      const { data: lb } = await supabase.from('prediction_leaderboard').select('*').order('total_points', { ascending: false }).limit(50);
+      if (lb && lb.length > 0) {
+        setEntries(lb.map(e => ({
+          user_id: e.user_id,
+          email: e.username,
+          total_points: e.total_points,
+          total_predictions: e.total_predictions,
+          correct_scores: e.correct_scores,
+          pending: 0,
+        })));
+      }
+
+      // Also load own stats from predictions directly (more accurate)
+      if (userId) {
+        const { data: myPreds } = await supabase.from('predictions').select('*').eq('user_id', userId);
+        if (myPreds && myPreds.length > 0) {
+          const scored = myPreds.filter(p => p.points !== null);
+          const points = scored.reduce((sum, p) => sum + (p.points || 0), 0);
+          const exact = scored.filter(p => p.points === 4).length;
+          const pending = myPreds.filter(p => p.points === null).length;
+
+          // Check if user already in leaderboard
+          setEntries(prev => {
+            const existing = prev.filter(e => e.user_id !== userId);
+            const myEntry = {
+              user_id: userId,
+              email: 'You',
+              total_points: points,
+              total_predictions: myPreds.length,
+              correct_scores: exact,
+              pending,
+            };
+            const merged = [...existing, myEntry].sort((a, b) => b.total_points - a.total_points);
+            return merged;
+          });
+        }
+      }
+      setLoading(false);
+    };
+    load();
+  }, [userId]);
 
   const accuracy = (e: typeof entries[0]) =>
-    e.total_predictions > 0 ? Math.round((e.correct_winners / e.total_predictions) * 100) : 0;
+    e.total_predictions > 0 ? Math.round(((e.correct_scores + (e.total_points > 0 ? 1 : 0)) / e.total_predictions) * 100) : 0;
 
   const myEntry = userId ? entries.find(e => e.user_id === userId) : null;
   const myRank = userId ? entries.findIndex(e => e.user_id === userId) + 1 : 0;
@@ -329,7 +364,7 @@ function FullLeaderboard({ userId }: { userId?: string }) {
       {myEntry && (
         <div className="bg-gradient-to-r from-primary/5 to-primary/10 border border-primary/20 rounded-xl p-4">
           <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Your Stats — Rank #{myRank}</p>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
             <div className="text-center">
               <p className="text-lg font-black text-primary tabular-nums">{myEntry.total_points}</p>
               <p className="text-[9px] text-muted-foreground uppercase">Points</p>
@@ -343,8 +378,12 @@ function FullLeaderboard({ userId }: { userId?: string }) {
               <p className="text-[9px] text-muted-foreground uppercase">Exact</p>
             </div>
             <div className="text-center">
-              <p className="text-lg font-black text-amber-400 tabular-nums">{accuracy(myEntry)}%</p>
-              <p className="text-[9px] text-muted-foreground uppercase">Accuracy</p>
+              <p className="text-lg font-black text-amber-400 tabular-nums">{myEntry.pending}</p>
+              <p className="text-[9px] text-muted-foreground uppercase">Pending</p>
+            </div>
+            <div className="text-center">
+              <p className={cn('text-lg font-black tabular-nums', myEntry.total_predictions >= 10 ? 'text-emerald-400' : 'text-amber-400')}>{myEntry.total_predictions >= 10 ? '✓' : `${myEntry.total_predictions}/10`}</p>
+              <p className="text-[9px] text-muted-foreground uppercase">Eligible</p>
             </div>
           </div>
           {myEntry.total_points >= 30 && (
@@ -362,13 +401,12 @@ function FullLeaderboard({ userId }: { userId?: string }) {
           <h3 className="text-sm font-bold text-foreground">Leaderboard</h3>
         </div>
 
-        {/* Header */}
         <div className="flex items-center gap-2 px-4 py-2 bg-secondary/30 text-[10px] text-muted-foreground uppercase font-bold">
           <span className="w-7 text-center">#</span>
           <span className="flex-1">Predictor</span>
           <span className="w-12 text-center">Pts</span>
+          <span className="w-10 text-center">Preds</span>
           <span className="w-10 text-center">Exact</span>
-          <span className="w-10 text-center">Acc</span>
           <span className="w-14 text-center text-[9px]">Status</span>
         </div>
 
@@ -393,17 +431,17 @@ function FullLeaderboard({ userId }: { userId?: string }) {
                   {rank <= 3 ? ['🥇', '🥈', '🥉'][rank - 1] : rank}
                 </span>
                 <span className={cn('flex-1 text-sm font-semibold truncate', isMe ? 'text-primary' : 'text-foreground')}>
-                  {entry.username} {isMe && '(You)'}
+                  {isMe ? 'You' : entry.email}
                 </span>
                 <span className={cn('w-12 text-center text-sm font-black tabular-nums',
                   entry.total_points >= 30 ? 'text-amber-400' : entry.total_points > 0 ? 'text-primary' : 'text-muted-foreground',
                 )}>
                   {entry.total_points}
                 </span>
+                <span className="w-10 text-center text-xs text-foreground font-semibold tabular-nums">{entry.total_predictions}</span>
                 <span className="w-10 text-center text-xs text-emerald-400 font-semibold tabular-nums">{entry.correct_scores}</span>
-                <span className="w-10 text-center text-xs text-foreground font-semibold tabular-nums">{accuracy(entry)}%</span>
                 <span className={cn('w-14 text-center text-[9px] font-bold rounded-full px-1 py-0.5',
-                  eligible ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400',
+                  eligible ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400',
                 )}>
                   {eligible ? '✓ Qual' : `${entry.total_predictions}/10`}
                 </span>
@@ -427,16 +465,50 @@ function MyPredictions({ userId }: { userId: string }) {
   const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
-    supabase
-      .from('predictions')
-      .select('*')
-      .eq('user_id', userId)
-      .order('predicted_at', { ascending: false })
-      .limit(50)
-      .then(({ data }) => {
-        if (data) setPreds(data);
-        setLoading(false);
-      });
+    const loadAndScore = async () => {
+      const { data } = await supabase.from('predictions').select('*').eq('user_id', userId).order('predicted_at', { ascending: false }).limit(50);
+      if (!data) { setLoading(false); return; }
+
+      // Client-side scoring: check unscored predictions against API
+      const unscored = data.filter(p => p.points === null);
+      if (unscored.length > 0) {
+        const { callApi } = await import('@/services/footballApi');
+        for (const pred of unscored) {
+          try {
+            const fixtures = await callApi('fixtures', { id: String(pred.match_id) });
+            if (!fixtures?.length) continue;
+            const f = fixtures[0];
+            const status = f.fixture?.status?.short;
+            if (!['FT', 'AET', 'PEN'].includes(status)) continue;
+
+            const actualHome = f.goals?.home;
+            const actualAway = f.goals?.away;
+            if (actualHome === null || actualAway === null) continue;
+
+            let points = 0;
+            if (pred.home_score === actualHome && pred.away_score === actualAway) {
+              points = 4; // exact score (+3) + correct winner (+1)
+            } else if (
+              (pred.home_score > pred.away_score && actualHome > actualAway) ||
+              (pred.home_score < pred.away_score && actualHome < actualAway) ||
+              (pred.home_score === pred.away_score && actualHome === actualAway)
+            ) {
+              points = 1; // correct winner only
+            } else {
+              points = -2; // wrong winner + wrong score
+            }
+
+            // Update in Supabase
+            await supabase.from('predictions').update({ points, scored_at: new Date().toISOString() }).eq('id', pred.id);
+            pred.points = points;
+          } catch {}
+        }
+      }
+
+      setPreds(data);
+      setLoading(false);
+    };
+    loadAndScore();
   }, [userId]);
 
   if (loading || preds.length === 0) return null;

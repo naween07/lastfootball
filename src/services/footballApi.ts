@@ -23,7 +23,7 @@ function setCache(key: string, data: any, ttlMs: number) {
   }
 }
 
-async function callApi(endpoint: string, params: Record<string, string> = {}) {
+export async function callApi(endpoint: string, params: Record<string, string> = {}) {
   const query = new URLSearchParams({ endpoint, ...params }).toString();
   const cacheKey = query;
   const isLive = params.live === "all";
