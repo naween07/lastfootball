@@ -45,8 +45,11 @@ export default function Header() {
       <header className="sticky top-0 z-50 bg-card/95 backdrop-blur-md border-b border-border">
         <div className="container flex items-center justify-between h-14 gap-2">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-1.5 shrink-0">
-            <img src="/logo.png" alt="LastFootball" className="h-8 object-contain" />
+          <Link to="/" className="flex items-center gap-2 shrink-0">
+            <img src="/logo.png" alt="LastFootball" className="h-7 w-7 object-contain rounded" />
+            <span className="text-lg font-bold tracking-tight">
+              Last<span className="text-primary">Football</span>
+            </span>
           </Link>
 
           {/* Desktop nav */}
