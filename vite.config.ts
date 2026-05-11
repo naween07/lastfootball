@@ -2,10 +2,9 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 
-// ─── MIGRATION NOTE ─────────────────────────────────────────────────────────
-// Removed: lovable-tagger (Loveable platform telemetry — useless outside Loveable cloud)
-// Added:   manualChunks  (splits bundle so browsers cache vendor code separately)
-// Added:   proxy         (in dev, /api → localhost:3001 if you ever add Express later)
+// ─── BUILD CONFIGURATION ────────────────────────────────────────────────────
+// manualChunks: splits bundle so browsers cache vendor code separately
+// proxy: in dev, /api → localhost:3001
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default defineConfig(() => ({
