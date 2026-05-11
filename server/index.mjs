@@ -471,6 +471,53 @@ const server = http.createServer(async (req, res) => {
     }
 
     // API quota status (no rate limit)
+    if (path === '/api/leaderboard') {
+      try {
+        // Use service key to bypass RLS and read all predictions
+        const key = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+        const allPreds = await supabaseQueryWithKey('predictions', 'select=*&points=not.is.null', 'GET', null, key);
+        
+        if (!allPreds?.length) return json(req, res, { leaderboard: [] });
+
+        // Group by user_id and compute stats
+        const userMap = new Map();
+        for (const pred of allPreds) {
+          if (!userMap.has(pred.user_id)) {
+            userMap.set(pred.user_id, { user_id: pred.user_id, total_points: 0, total_predictions: 0, correct_scores: 0, correct_winners: 0, pending: 0 });
+          }
+          const u = userMap.get(pred.user_id);
+          u.total_predictions++;
+          u.total_points += pred.points || 0;
+          if (pred.points === 4) u.correct_scores++;
+          if (pred.points > 0) u.correct_winners++;
+        }
+
+        // Also count pending predictions
+        const pendingPreds = await supabaseQueryWithKey('predictions', 'select=user_id&points=is.null', 'GET', null, key);
+        if (pendingPreds?.length) {
+          for (const pred of pendingPreds) {
+            if (userMap.has(pred.user_id)) {
+              userMap.get(pred.user_id).pending = (userMap.get(pred.user_id).pending || 0) + 1;
+              userMap.get(pred.user_id).total_predictions++;
+            } else {
+              userMap.set(pred.user_id, { user_id: pred.user_id, total_points: 0, total_predictions: 1, correct_scores: 0, correct_winners: 0, pending: 1 });
+            }
+          }
+        }
+
+        // Get user emails from profiles or predictions
+        const leaderboard = Array.from(userMap.values())
+          .sort((a, b) => b.total_points - a.total_points)
+          .slice(0, 50)
+          .map((u, i) => ({ ...u, rank: i + 1, username: `Player_${u.user_id.slice(0, 6)}` }));
+
+        return json(req, res, { leaderboard });
+      } catch (err) {
+        console.error('Leaderboard error:', err.message);
+        return json(req, res, { leaderboard: [] });
+      }
+    }
+
     if (path === '/api/quota') {
       // Count cache entries by type
       const cacheBreakdown = {};
@@ -598,17 +645,23 @@ server.listen(PORT, '127.0.0.1', () => {
 // ─── Supabase HTTP helpers ──────────────────────────────────────────────────
 
 function supabaseQuery(table, params = '', method = 'GET', body = null) {
+  return supabaseQueryWithKey(table, params, method, body, SUPABASE_KEY);
+}
+
+function supabaseQueryWithKey(table, params = '', method = 'GET', body = null, key = SUPABASE_KEY) {
   return new Promise((resolve, reject) => {
     const url = new URL(`${SUPABASE_URL}/rest/v1/${table}${params ? '?' + params : ''}`);
     const options = {
       method,
       headers: {
-        'apikey': SUPABASE_KEY,
-        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'apikey': key,
+        'Authorization': `Bearer ${key}`,
         'Content-Type': 'application/json',
-        'Prefer': method === 'POST' ? 'resolution=merge-duplicates' : 'return=minimal',
+        'Prefer': method === 'POST' ? 'resolution=merge-duplicates' : (method === 'GET' ? '' : 'return=minimal'),
       },
     };
+    // Remove empty headers
+    Object.keys(options.headers).forEach(k => { if (!options.headers[k]) delete options.headers[k]; });
 
     const req = https.request(url, options, (res) => {
       let data = '';

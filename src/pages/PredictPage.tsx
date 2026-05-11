@@ -302,47 +302,37 @@ export default function PredictPage() {
 
 // ─── Full Leaderboard Component ─────────────────────────────────────────────
 function FullLeaderboard({ userId }: { userId?: string }) {
-  const [entries, setEntries] = useState<{ user_id: string; email: string; total_points: number; total_predictions: number; correct_scores: number; pending: number }[]>([]);
+  const [entries, setEntries] = useState<{ user_id: string; username: string; total_points: number; total_predictions: number; correct_scores: number; correct_winners: number; pending: number; rank: number }[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Read all scored predictions to build leaderboard client-side
-    // Since RLS limits to own predictions, we use the leaderboard table for others
     const load = async () => {
-      // Try leaderboard table first
-      const { data: lb } = await supabase.from('prediction_leaderboard').select('*').order('total_points', { ascending: false }).limit(50);
-      if (lb && lb.length > 0) {
-        setEntries(lb.map(e => ({
-          user_id: e.user_id,
-          email: e.username,
-          total_points: e.total_points,
-          total_predictions: e.total_predictions,
-          correct_scores: e.correct_scores,
-          pending: 0,
-        })));
+      try {
+        // Fetch from server API — bypasses RLS, shows ALL users
+        const API = import.meta.env.VITE_API_URL || 'https://lastfootball.com/api';
+        const res = await fetch(`${API}/leaderboard`);
+        const data = await res.json();
+        if (data?.leaderboard) {
+          setEntries(data.leaderboard);
+        }
+      } catch (err) {
+        console.error('Leaderboard fetch error:', err);
       }
 
-      // Also load own stats from predictions directly (more accurate)
+      // Also load own detailed stats
       if (userId) {
         const { data: myPreds } = await supabase.from('predictions').select('*').eq('user_id', userId);
         if (myPreds && myPreds.length > 0) {
           const scored = myPreds.filter(p => p.points !== null);
           const points = scored.reduce((sum, p) => sum + (p.points || 0), 0);
           const exact = scored.filter(p => p.points === 4).length;
+          const winners = scored.filter(p => (p.points || 0) > 0).length;
           const pending = myPreds.filter(p => p.points === null).length;
 
-          // Check if user already in leaderboard
           setEntries(prev => {
-            const existing = prev.filter(e => e.user_id !== userId);
-            const myEntry = {
-              user_id: userId,
-              email: 'You',
-              total_points: points,
-              total_predictions: myPreds.length,
-              correct_scores: exact,
-              pending,
-            };
-            const merged = [...existing, myEntry].sort((a, b) => b.total_points - a.total_points);
+            const others = prev.filter(e => e.user_id !== userId);
+            const myEntry = { user_id: userId, username: 'You', total_points: points, total_predictions: myPreds.length, correct_scores: exact, correct_winners: winners, pending, rank: 0 };
+            const merged = [...others, myEntry].sort((a, b) => b.total_points - a.total_points).map((e, i) => ({ ...e, rank: i + 1 }));
             return merged;
           });
         }
@@ -431,7 +421,7 @@ function FullLeaderboard({ userId }: { userId?: string }) {
                   {rank <= 3 ? ['🥇', '🥈', '🥉'][rank - 1] : rank}
                 </span>
                 <span className={cn('flex-1 text-sm font-semibold truncate', isMe ? 'text-primary' : 'text-foreground')}>
-                  {isMe ? 'You' : entry.email}
+                  {isMe ? 'You' : entry.username}
                 </span>
                 <span className={cn('w-12 text-center text-sm font-black tabular-nums',
                   entry.total_points >= 30 ? 'text-amber-400' : entry.total_points > 0 ? 'text-primary' : 'text-muted-foreground',
