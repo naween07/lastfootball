@@ -302,14 +302,13 @@ export default function PredictPage() {
 
 // ─── Full Leaderboard Component ─────────────────────────────────────────────
 function FullLeaderboard({ userId }: { userId?: string }) {
-  const [entries, setEntries] = useState<{ user_id: string; username: string; total_points: number; total_predictions: number; correct_scores: number; correct_winners: number; pending: number; rank: number }[]>([]);
+  const [entries, setEntries] = useState<{ user_id: string; username: string; total_points: number; total_predictions: number; scored_predictions: number; pending_predictions: number; correct_scores: number; correct_winners: number; wrong_predictions: number }[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const load = async () => {
       try {
-        // Fetch from server API — bypasses RLS, shows ALL users
-        const API = import.meta.env.VITE_API_URL || 'https://lastfootball.com/api';
+        const API = import.meta.env.VITE_API_URL || '/api';
         const res = await fetch(`${API}/leaderboard`);
         const data = await res.json();
         if (data?.leaderboard) {
@@ -317,25 +316,6 @@ function FullLeaderboard({ userId }: { userId?: string }) {
         }
       } catch (err) {
         console.error('Leaderboard fetch error:', err);
-      }
-
-      // Also load own detailed stats
-      if (userId) {
-        const { data: myPreds } = await supabase.from('predictions').select('*').eq('user_id', userId);
-        if (myPreds && myPreds.length > 0) {
-          const scored = myPreds.filter(p => p.points !== null);
-          const points = scored.reduce((sum, p) => sum + (p.points || 0), 0);
-          const exact = scored.filter(p => p.points === 4).length;
-          const winners = scored.filter(p => (p.points || 0) > 0).length;
-          const pending = myPreds.filter(p => p.points === null).length;
-
-          setEntries(prev => {
-            const others = prev.filter(e => e.user_id !== userId);
-            const myEntry = { user_id: userId, username: 'You', total_points: points, total_predictions: myPreds.length, correct_scores: exact, correct_winners: winners, pending, rank: 0 };
-            const merged = [...others, myEntry].sort((a, b) => b.total_points - a.total_points).map((e, i) => ({ ...e, rank: i + 1 }));
-            return merged;
-          });
-        }
       }
       setLoading(false);
     };
@@ -368,7 +348,7 @@ function FullLeaderboard({ userId }: { userId?: string }) {
               <p className="text-[9px] text-muted-foreground uppercase">Exact</p>
             </div>
             <div className="text-center">
-              <p className="text-lg font-black text-amber-400 tabular-nums">{myEntry.pending}</p>
+              <p className="text-lg font-black text-amber-400 tabular-nums">{myEntry.pending_predictions}</p>
               <p className="text-[9px] text-muted-foreground uppercase">Pending</p>
             </div>
             <div className="text-center">
