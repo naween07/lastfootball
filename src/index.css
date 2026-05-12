@@ -129,26 +129,20 @@
 
 /* ─── Custom Scrollbar ─────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: hsl(160 8% 5%); }
-::-webkit-scrollbar-thumb { background: hsl(140 5% 20%); border-radius: 10px; }
-::-webkit-scrollbar-thumb:hover { background: hsl(140 5% 28%); }
+::-webkit-scrollbar-track { background: hsl(160, 8%, 5%); }
+::-webkit-scrollbar-thumb { background: hsl(140, 5%, 20%); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(140, 5%, 28%); }
 
-  /* Tabular numbers for scores/stats — keeps digits aligned */
+@layer utilities {
+  /* ─── Tabular numbers for scores/stats ────────────────────────────────── */
   .tabular-nums {
     font-variant-numeric: tabular-nums;
   }
 
-  /* Hide scrollbars on horizontal scrollers (date nav, league tabs) */
-  .no-scrollbar::-webkit-scrollbar {
-    display: none;
-  }
-  .no-scrollbar {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-}
+  /* ─── Hide scrollbars on horizontal scrollers ────────────────────────── */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-@layer utilities {
   /* ─── Live match indicators ────────────────────────────────────────────── */
   .live-pulse {
     @apply relative;

@@ -35,14 +35,14 @@ export default function Index() {
   const [activeTab, setActiveTab] = useState<StatusTab>('all');
   const { isFavorite, toggleFavorite, favoriteTeamIds } = useFavorites();
 
-  const tabs: StatusTab[] = ['all', 'live', 'upcoming', 'finished'];
+  const tabOrder: StatusTab[] = ['all', 'live', 'upcoming', 'finished'];
   const goNextTab = useCallback(() => {
-    const idx = tabs.indexOf(activeTab);
-    if (idx < tabs.length - 1) setActiveTab(tabs[idx + 1]);
+    const idx = tabOrder.indexOf(activeTab);
+    if (idx < tabOrder.length - 1) setActiveTab(tabOrder[idx + 1]);
   }, [activeTab]);
   const goPrevTab = useCallback(() => {
-    const idx = tabs.indexOf(activeTab);
-    if (idx > 0) setActiveTab(tabs[idx - 1]);
+    const idx = tabOrder.indexOf(activeTab);
+    if (idx > 0) setActiveTab(tabOrder[idx - 1]);
   }, [activeTab]);
   const swipeHandlers = useSwipe(goNextTab, goPrevTab);
 
