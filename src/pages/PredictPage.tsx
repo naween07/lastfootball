@@ -325,6 +325,19 @@ function FullLeaderboard({ userId }: { userId?: string }) {
   const accuracy = (e: typeof entries[0]) =>
     e.total_predictions > 0 ? Math.round(((e.correct_scores + (e.total_points > 0 ? 1 : 0)) / e.total_predictions) * 100) : 0;
 
+  const [selectedUser, setSelectedUser] = useState<string | null>(null);
+  const [selectedUserPreds, setSelectedUserPreds] = useState<any[]>([]);
+  const [loadingUser, setLoadingUser] = useState(false);
+
+  const viewUserPredictions = async (uid: string, username: string) => {
+    if (selectedUser === uid) { setSelectedUser(null); return; }
+    setSelectedUser(uid);
+    setLoadingUser(true);
+    const { data } = await supabase.from('predictions').select('*').eq('user_id', uid).order('predicted_at', { ascending: false });
+    setSelectedUserPreds(data || []);
+    setLoadingUser(false);
+  };
+
   const myEntry = userId ? entries.find(e => e.user_id === userId) : null;
   const myRank = userId ? entries.findIndex(e => e.user_id === userId) + 1 : 0;
 
@@ -392,29 +405,60 @@ function FullLeaderboard({ userId }: { userId?: string }) {
             const rank = i + 1;
             const isMe = userId === entry.user_id;
             const eligible = entry.total_predictions >= 10;
+            const isSelected = selectedUser === entry.user_id;
 
             return (
-              <div key={entry.user_id} className={cn('flex items-center gap-2 px-4 py-2.5 border-b border-border/10 last:border-0', isMe && 'bg-primary/5')}>
-                <span className={cn('w-7 text-center font-black text-xs tabular-nums',
-                  rank === 1 ? 'text-amber-400' : rank === 2 ? 'text-gray-400' : rank === 3 ? 'text-orange-400' : 'text-muted-foreground',
-                )}>
-                  {rank <= 3 ? ['🥇', '🥈', '🥉'][rank - 1] : rank}
-                </span>
-                <span className={cn('flex-1 text-sm font-semibold truncate', isMe ? 'text-primary' : 'text-foreground')}>
-                  {isMe ? 'You' : entry.username}
-                </span>
-                <span className={cn('w-12 text-center text-sm font-black tabular-nums',
-                  entry.total_points >= 30 ? 'text-amber-400' : entry.total_points > 0 ? 'text-primary' : 'text-muted-foreground',
-                )}>
-                  {entry.total_points}
-                </span>
-                <span className="w-10 text-center text-xs text-foreground font-semibold tabular-nums">{entry.total_predictions}</span>
-                <span className="w-10 text-center text-xs text-emerald-400 font-semibold tabular-nums">{entry.correct_scores}</span>
-                <span className={cn('w-14 text-center text-[9px] font-bold rounded-full px-1 py-0.5',
-                  eligible ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400',
-                )}>
-                  {eligible ? '✓ Qual' : `${entry.total_predictions}/10`}
-                </span>
+              <div key={entry.user_id}>
+                <button
+                  onClick={() => viewUserPredictions(entry.user_id, entry.username)}
+                  className={cn('w-full flex items-center gap-2 px-4 py-2.5 border-b border-border/10 hover:bg-secondary/20 transition-colors text-left', isMe && 'bg-primary/5', isSelected && 'bg-secondary/30')}
+                >
+                  <span className={cn('w-7 text-center font-black text-xs tabular-nums',
+                    rank === 1 ? 'text-amber-400' : rank === 2 ? 'text-gray-400' : rank === 3 ? 'text-orange-400' : 'text-muted-foreground',
+                  )}>
+                    {rank <= 3 ? ['🥇', '🥈', '🥉'][rank - 1] : rank}
+                  </span>
+                  <span className={cn('flex-1 text-sm font-semibold truncate', isMe ? 'text-primary' : 'text-foreground')}>
+                    {isMe ? 'You' : entry.username} {isSelected ? '▾' : '▸'}
+                  </span>
+                  <span className={cn('w-12 text-center text-sm font-black tabular-nums',
+                    entry.total_points >= 30 ? 'text-amber-400' : entry.total_points > 0 ? 'text-primary' : 'text-muted-foreground',
+                  )}>
+                    {entry.total_points}
+                  </span>
+                  <span className="w-10 text-center text-xs text-foreground font-semibold tabular-nums">{entry.total_predictions}</span>
+                  <span className="w-10 text-center text-xs text-emerald-400 font-semibold tabular-nums">{entry.correct_scores}</span>
+                  <span className={cn('w-14 text-center text-[9px] font-bold rounded-full px-1 py-0.5',
+                    eligible ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400',
+                  )}>
+                    {eligible ? '✓ Qual' : `${entry.total_predictions}/10`}
+                  </span>
+                </button>
+                {/* Expanded user predictions */}
+                {isSelected && (
+                  <div className="bg-secondary/10 border-b border-border/20">
+                    {loadingUser ? (
+                      <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-primary" /></div>
+                    ) : selectedUserPreds.length === 0 ? (
+                      <p className="text-xs text-muted-foreground text-center py-4">No predictions found</p>
+                    ) : (
+                      selectedUserPreds.filter(p => p.points !== null).map(pred => (
+                        <Link key={pred.id} to={`/match/${pred.match_id}`} className="flex items-center gap-2 px-6 py-2 hover:bg-secondary/20 transition-colors border-b border-border/5 last:border-0">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-foreground truncate">{pred.home_team} vs {pred.away_team}</p>
+                            <p className="text-[10px] text-muted-foreground">{pred.match_date}</p>
+                          </div>
+                          <span className="text-xs font-bold text-foreground tabular-nums">{pred.home_score}-{pred.away_score}</span>
+                          <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-full',
+                            (pred.points || 0) >= 4 ? 'bg-emerald-500/10 text-emerald-400' : (pred.points || 0) > 0 ? 'bg-blue-500/10 text-blue-400' : 'bg-red-500/10 text-red-400',
+                          )}>
+                            {(pred.points || 0) > 0 ? '+' : ''}{pred.points}
+                          </span>
+                        </Link>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
             );
           })
@@ -424,22 +468,21 @@ function FullLeaderboard({ userId }: { userId?: string }) {
   );
 }
 
-// ─── My Predictions History ─────────────────────────────────────────────────
+// ─── My Predictions Wallet ──────────────────────────────────────────────────
 function MyPredictions({ userId }: { userId: string }) {
   const [preds, setPreds] = useState<{
     id: string; match_id: number; home_score: number; away_score: number;
     home_team: string; away_team: string; league_name: string; match_date: string;
-    points: number | null; predicted_at: string;
+    points: number | null; predicted_at: string; scored_at: string | null;
   }[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showAll, setShowAll] = useState(false);
+  const [activeTab, setActiveTab] = useState<'all' | 'scored' | 'pending' | 'ledger'>('all');
 
   useEffect(() => {
     const loadAndScore = async () => {
-      const { data } = await supabase.from('predictions').select('*').eq('user_id', userId).order('predicted_at', { ascending: false }).limit(50);
+      const { data } = await supabase.from('predictions').select('*').eq('user_id', userId).order('predicted_at', { ascending: false }).limit(100);
       if (!data) { setLoading(false); return; }
 
-      // Client-side scoring: check unscored predictions against API
       const unscored = data.filter(p => p.points === null);
       if (unscored.length > 0) {
         const { callApi } = await import('@/services/footballApi');
@@ -450,119 +493,182 @@ function MyPredictions({ userId }: { userId: string }) {
             const f = fixtures[0];
             const status = f.fixture?.status?.short;
             if (!['FT', 'AET', 'PEN'].includes(status)) continue;
-
             const actualHome = f.goals?.home;
             const actualAway = f.goals?.away;
             if (actualHome === null || actualAway === null) continue;
-
             let points = 0;
-            if (pred.home_score === actualHome && pred.away_score === actualAway) {
-              points = 4; // exact score (+3) + correct winner (+1)
-            } else if (
-              (pred.home_score > pred.away_score && actualHome > actualAway) ||
-              (pred.home_score < pred.away_score && actualHome < actualAway) ||
-              (pred.home_score === pred.away_score && actualHome === actualAway)
-            ) {
-              points = 1; // correct winner only
-            } else {
-              points = -2; // wrong winner + wrong score
-            }
-
-            // Update in Supabase
+            if (pred.home_score === actualHome && pred.away_score === actualAway) points = 4;
+            else if ((pred.home_score > pred.away_score && actualHome > actualAway) || (pred.home_score < pred.away_score && actualHome < actualAway) || (pred.home_score === pred.away_score && actualHome === actualAway)) points = 1;
+            else points = -2;
             await supabase.from('predictions').update({ points, scored_at: new Date().toISOString() }).eq('id', pred.id);
             pred.points = points;
+            pred.scored_at = new Date().toISOString();
           } catch {}
         }
       }
-
       setPreds(data);
       setLoading(false);
     };
     loadAndScore();
   }, [userId]);
 
-  if (loading || preds.length === 0) return null;
+  if (loading) return <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>;
+  if (preds.length === 0) return null;
 
   const scored = preds.filter(p => p.points !== null);
   const pending = preds.filter(p => p.points === null);
   const totalPoints = scored.reduce((sum, p) => sum + (p.points || 0), 0);
   const exactScores = scored.filter(p => p.points === 4).length;
   const correctWinners = scored.filter(p => p.points === 1).length;
-  const eligible = preds.length >= 10;
-  const display = showAll ? preds : preds.slice(0, 5);
+  const wrongPreds = scored.filter(p => (p.points || 0) < 0).length;
+
+  // Points ledger — running balance
+  const ledger = scored.sort((a, b) => new Date(a.scored_at || a.predicted_at).getTime() - new Date(b.scored_at || b.predicted_at).getTime());
+  let runningBalance = 0;
+  const ledgerEntries = ledger.map(p => {
+    runningBalance += p.points || 0;
+    return { ...p, balance: runningBalance };
+  }).reverse();
+
+  const filtered = activeTab === 'scored' ? scored : activeTab === 'pending' ? pending : activeTab === 'ledger' ? ledgerEntries : preds;
 
   return (
     <div className="mt-6">
-      <div className="bg-gradient-to-r from-primary/5 to-emerald-500/5 border border-primary/20 rounded-xl p-4 mb-4">
-        <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
-          <Target className="w-3.5 h-3.5 text-primary" /> My Prediction Summary
-        </h3>
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-          <div className="text-center">
-            <p className="text-lg font-black text-primary tabular-nums">{totalPoints}</p>
-            <p className="text-[9px] text-muted-foreground uppercase">Points</p>
+      {/* Wallet header */}
+      <div className="bg-gradient-to-r from-primary/5 via-emerald-500/5 to-amber-500/5 border border-primary/20 rounded-xl p-4 mb-4">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="p-1.5 rounded-lg bg-primary/20"><Target className="w-4 h-4 text-primary" /></div>
+          <h3 className="text-sm font-bold text-foreground">My Prediction Wallet</h3>
+        </div>
+
+        {/* Balance card */}
+        <div className="bg-background/50 rounded-xl p-4 mb-3 text-center">
+          <p className="text-3xl font-black text-primary tabular-nums">{totalPoints}</p>
+          <p className="text-[10px] text-muted-foreground uppercase font-semibold">Total Points{totalPoints >= 30 ? ' 🏆' : ` / 30 Goal`}</p>
+          {/* Progress bar to 30 */}
+          <div className="w-full h-2 bg-secondary rounded-full mt-2 overflow-hidden">
+            <div className="h-full rounded-full bg-gradient-to-r from-primary to-emerald-400 transition-all" style={{ width: `${Math.min(100, (totalPoints / 30) * 100)}%` }} />
           </div>
-          <div className="text-center">
-            <p className="text-lg font-black text-foreground tabular-nums">{preds.length}</p>
-            <p className="text-[9px] text-muted-foreground uppercase">Total</p>
+          <p className="text-[9px] text-muted-foreground mt-1">{Math.max(0, 30 - totalPoints)} points to NPR 30,000 reward</p>
+        </div>
+
+        <div className="grid grid-cols-5 gap-1.5">
+          <div className="text-center bg-background/30 rounded-lg p-2">
+            <p className="text-sm font-black text-foreground tabular-nums">{preds.length}</p>
+            <p className="text-[8px] text-muted-foreground uppercase">Total</p>
           </div>
-          <div className="text-center">
-            <p className="text-lg font-black text-emerald-400 tabular-nums">{exactScores}</p>
-            <p className="text-[9px] text-muted-foreground uppercase">Exact</p>
+          <div className="text-center bg-background/30 rounded-lg p-2">
+            <p className="text-sm font-black text-emerald-400 tabular-nums">{exactScores}</p>
+            <p className="text-[8px] text-muted-foreground uppercase">Exact</p>
           </div>
-          <div className="text-center">
-            <p className="text-lg font-black text-blue-400 tabular-nums">{correctWinners}</p>
-            <p className="text-[9px] text-muted-foreground uppercase">Winners</p>
+          <div className="text-center bg-background/30 rounded-lg p-2">
+            <p className="text-sm font-black text-blue-400 tabular-nums">{correctWinners}</p>
+            <p className="text-[8px] text-muted-foreground uppercase">Winner</p>
           </div>
-          <div className="text-center">
-            <p className="text-lg font-black text-amber-400 tabular-nums">{pending.length}</p>
-            <p className="text-[9px] text-muted-foreground uppercase">Pending</p>
+          <div className="text-center bg-background/30 rounded-lg p-2">
+            <p className="text-sm font-black text-red-400 tabular-nums">{wrongPreds}</p>
+            <p className="text-[8px] text-muted-foreground uppercase">Wrong</p>
           </div>
-          <div className="text-center">
-            <p className={cn('text-lg font-black tabular-nums', eligible ? 'text-emerald-400' : 'text-red-400')}>{eligible ? '✓' : `${preds.length}/10`}</p>
-            <p className="text-[9px] text-muted-foreground uppercase">Eligible</p>
+          <div className="text-center bg-background/30 rounded-lg p-2">
+            <p className="text-sm font-black text-amber-400 tabular-nums">{pending.length}</p>
+            <p className="text-[8px] text-muted-foreground uppercase">Pending</p>
           </div>
         </div>
-        {totalPoints >= 30 && (
-          <div className="mt-3 bg-amber-500/20 border border-amber-500/30 rounded-lg p-2 text-center">
-            <p className="text-xs font-bold text-amber-400">🎉 You reached 30 points! Claim your NPR 30,000 reward!</p>
-          </div>
-        )}
       </div>
 
-      <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-border/30">
-          <h3 className="text-sm font-bold text-foreground">My Predictions</h3>
-        </div>
-        <div className="divide-y divide-border/10">
-          {display.map(pred => (
-            <Link key={pred.id} to={`/match/${pred.match_id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-secondary/20 transition-colors">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-foreground truncate">{pred.home_team} vs {pred.away_team}</p>
-                <p className="text-[11px] text-muted-foreground">{pred.league_name} · {pred.match_date}</p>
-              </div>
-              <div className="text-center min-w-[60px]">
-                <p className="text-sm font-black text-foreground tabular-nums">{pred.home_score} - {pred.away_score}</p>
-                <p className="text-[9px] text-muted-foreground">Your pick</p>
-              </div>
-              <div className="min-w-[50px] text-center">
-                {pred.points === null ? (
-                  <span className="text-[10px] font-bold bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full">Pending</span>
-                ) : pred.points >= 4 ? (
-                  <span className="text-[10px] font-bold bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full">+{pred.points} 🎯</span>
-                ) : pred.points > 0 ? (
-                  <span className="text-[10px] font-bold bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-full">+{pred.points}</span>
-                ) : (
-                  <span className="text-[10px] font-bold bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full">{pred.points}</span>
-                )}
-              </div>
-            </Link>
-          ))}
-        </div>
-        {preds.length > 5 && (
-          <button onClick={() => setShowAll(!showAll)} className="w-full py-2.5 text-xs text-primary font-semibold hover:bg-secondary/20 transition-colors border-t border-border/30">
-            {showAll ? 'Show Less' : `View All ${preds.length} Predictions`}
+      {/* Tabs */}
+      <div className="flex gap-1 mb-3 overflow-x-auto">
+        {([
+          { key: 'all', label: `All (${preds.length})` },
+          { key: 'scored', label: `Scored (${scored.length})` },
+          { key: 'pending', label: `Pending (${pending.length})` },
+          { key: 'ledger', label: '📊 Ledger' },
+        ] as const).map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={cn('px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all',
+              activeTab === tab.key ? 'bg-primary/10 text-primary ring-1 ring-primary/20' : 'text-muted-foreground hover:bg-secondary',
+            )}
+          >
+            {tab.label}
           </button>
+        ))}
+      </div>
+
+      {/* Prediction list */}
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        {activeTab === 'ledger' ? (
+          // Points Ledger view
+          <>
+            <div className="flex items-center gap-2 px-4 py-2 bg-secondary/30 text-[10px] text-muted-foreground uppercase font-bold">
+              <span className="flex-1">Match</span>
+              <span className="w-14 text-center">Points</span>
+              <span className="w-14 text-center">Balance</span>
+            </div>
+            {ledgerEntries.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">No scored predictions yet</p>
+            ) : (
+              ledgerEntries.map(pred => (
+                <Link key={pred.id} to={`/match/${pred.match_id}`} className="flex items-center gap-2 px-4 py-2.5 border-b border-border/10 last:border-0 hover:bg-secondary/20 transition-colors">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-foreground truncate">{pred.home_team} vs {pred.away_team}</p>
+                    <p className="text-[10px] text-muted-foreground">{pred.match_date} · You: {pred.home_score}-{pred.away_score}</p>
+                  </div>
+                  <span className={cn('w-14 text-center text-xs font-black tabular-nums',
+                    (pred.points || 0) >= 4 ? 'text-emerald-400' : (pred.points || 0) > 0 ? 'text-blue-400' : 'text-red-400',
+                  )}>
+                    {(pred.points || 0) > 0 ? '+' : ''}{pred.points}
+                  </span>
+                  <span className={cn('w-14 text-center text-xs font-black tabular-nums',
+                    pred.balance > 0 ? 'text-primary' : pred.balance < 0 ? 'text-red-400' : 'text-muted-foreground',
+                  )}>
+                    {pred.balance}
+                  </span>
+                </Link>
+              ))
+            )}
+          </>
+        ) : (
+          // Normal prediction list
+          <>
+            {filtered.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">No predictions in this category</p>
+            ) : (
+              filtered.map(pred => (
+                <Link key={pred.id} to={`/match/${pred.match_id}`} className="flex items-center gap-3 px-4 py-3 border-b border-border/10 last:border-0 hover:bg-secondary/20 transition-colors">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-foreground truncate">{pred.home_team} vs {pred.away_team}</p>
+                    <p className="text-[11px] text-muted-foreground">{pred.league_name} · {pred.match_date}</p>
+                  </div>
+                  <div className="text-center min-w-[60px]">
+                    <p className="text-sm font-black text-foreground tabular-nums">{pred.home_score} - {pred.away_score}</p>
+                    <p className="text-[9px] text-muted-foreground">Your pick</p>
+                  </div>
+                  <div className="min-w-[55px] text-center">
+                    {pred.points === null ? (
+                      <span className="text-[10px] font-bold bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full">⏳ Pending</span>
+                    ) : pred.points >= 4 ? (
+                      <div>
+                        <span className="text-[10px] font-bold bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full">+{pred.points} 🎯</span>
+                        <p className="text-[8px] text-emerald-400 mt-0.5">Exact Score!</p>
+                      </div>
+                    ) : pred.points > 0 ? (
+                      <div>
+                        <span className="text-[10px] font-bold bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-full">+{pred.points}</span>
+                        <p className="text-[8px] text-blue-400 mt-0.5">Correct Winner</p>
+                      </div>
+                    ) : (
+                      <div>
+                        <span className="text-[10px] font-bold bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full">{pred.points}</span>
+                        <p className="text-[8px] text-red-400 mt-0.5">Wrong</p>
+                      </div>
+                    )}
+                  </div>
+                </Link>
+              ))
+            )}
+          </>
         )}
       </div>
     </div>
