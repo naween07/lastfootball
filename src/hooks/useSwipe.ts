@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState } from 'react';
+import { useRef, useCallback } from 'react';
 
 interface SwipeHandlers {
   onTouchStart: (e: React.TouchEvent) => void;
@@ -11,6 +11,10 @@ export function useSwipe(onSwipeLeft: () => void, onSwipeRight: () => void, thre
   const startY = useRef(0);
   const currentX = useRef(0);
   const swiping = useRef(false);
+  const leftRef = useRef(onSwipeLeft);
+  const rightRef = useRef(onSwipeRight);
+  leftRef.current = onSwipeLeft;
+  rightRef.current = onSwipeRight;
 
   const onTouchStart = useCallback((e: React.TouchEvent) => {
     startX.current = e.touches[0].clientX;
@@ -23,7 +27,6 @@ export function useSwipe(onSwipeLeft: () => void, onSwipeRight: () => void, thre
     currentX.current = e.touches[0].clientX;
     const deltaX = Math.abs(currentX.current - startX.current);
     const deltaY = Math.abs(e.touches[0].clientY - startY.current);
-    // Mark as swiping if horizontal movement is dominant
     if (deltaX > 20 && deltaX > deltaY) {
       swiping.current = true;
     }
@@ -34,13 +37,13 @@ export function useSwipe(onSwipeLeft: () => void, onSwipeRight: () => void, thre
     const deltaX = currentX.current - startX.current;
     if (Math.abs(deltaX) > threshold) {
       if (deltaX < 0) {
-        onSwipeLeft();
+        leftRef.current();
       } else {
-        onSwipeRight();
+        rightRef.current();
       }
     }
     swiping.current = false;
-  }, [onSwipeLeft, onSwipeRight, threshold]);
+  }, [threshold]);
 
   return { onTouchStart, onTouchMove, onTouchEnd };
 }
