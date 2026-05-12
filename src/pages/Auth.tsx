@@ -9,8 +9,10 @@ import { cn } from '@/lib/utils';
 export default function Auth() {
   const { user, loading } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
+  const [isResetMode, setIsResetMode] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [name, setName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -21,6 +23,20 @@ export default function Auth() {
     return () => clearTimeout(timer);
   }, []);
 
+  // Detect password reset flow from URL hash
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash && hash.includes('type=recovery')) {
+      setIsResetMode(true);
+      // Supabase auto-handles the token from hash
+      supabase.auth.onAuthStateChange((event) => {
+        if (event === 'PASSWORD_RECOVERY') {
+          setIsResetMode(true);
+        }
+      });
+    }
+  }, []);
+
   if (loading && !timedOut) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -29,7 +45,69 @@ export default function Auth() {
     );
   }
 
-  if (user) return <Navigate to="/" replace />;
+  if (user && !isResetMode) return <Navigate to="/" replace />;
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword || newPassword.length < 6) return toast.error('Password must be at least 6 characters');
+    setSubmitting(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      toast.success('Password updated successfully!');
+      setIsResetMode(false);
+      window.location.hash = '';
+      window.location.href = '/';
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update password');
+    }
+    setSubmitting(false);
+  };
+
+  // Show reset password form
+  if (isResetMode) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center mb-4">
+              <img src="/logo.png" alt="LastFootball" className="h-10 object-contain" />
+            </div>
+            <h1 className="text-2xl font-black text-foreground">Set New Password</h1>
+            <p className="text-sm text-muted-foreground mt-1">Enter your new password below</p>
+          </div>
+          <form onSubmit={handleResetPassword} className="space-y-4">
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                type={showPassword ? 'text' : 'password'}
+                placeholder="New password (min 6 characters)"
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+                className="w-full pl-10 pr-10 py-3 rounded-xl bg-card border border-border text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/30"
+                required
+                minLength={6}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center justify-center gap-2"
+            >
+              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Update Password'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
