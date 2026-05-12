@@ -1,32 +1,46 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useState } from 'react';
 
 interface SwipeHandlers {
   onTouchStart: (e: React.TouchEvent) => void;
-  onTouchEnd: (e: React.TouchEvent) => void;
+  onTouchMove: (e: React.TouchEvent) => void;
+  onTouchEnd: () => void;
 }
 
-export function useSwipe(onSwipeLeft: () => void, onSwipeRight: () => void, threshold = 50): SwipeHandlers {
-  const touchStartX = useRef<number>(0);
-  const touchStartY = useRef<number>(0);
+export function useSwipe(onSwipeLeft: () => void, onSwipeRight: () => void, threshold = 60): SwipeHandlers {
+  const startX = useRef(0);
+  const startY = useRef(0);
+  const currentX = useRef(0);
+  const swiping = useRef(false);
 
   const onTouchStart = useCallback((e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX;
-    touchStartY.current = e.touches[0].clientY;
+    startX.current = e.touches[0].clientX;
+    startY.current = e.touches[0].clientY;
+    currentX.current = e.touches[0].clientX;
+    swiping.current = false;
   }, []);
 
-  const onTouchEnd = useCallback((e: React.TouchEvent) => {
-    const deltaX = e.changedTouches[0].clientX - touchStartX.current;
-    const deltaY = e.changedTouches[0].clientY - touchStartY.current;
+  const onTouchMove = useCallback((e: React.TouchEvent) => {
+    currentX.current = e.touches[0].clientX;
+    const deltaX = Math.abs(currentX.current - startX.current);
+    const deltaY = Math.abs(e.touches[0].clientY - startY.current);
+    // Mark as swiping if horizontal movement is dominant
+    if (deltaX > 20 && deltaX > deltaY) {
+      swiping.current = true;
+    }
+  }, []);
 
-    // Only trigger if horizontal swipe is greater than vertical (not scrolling)
-    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > threshold) {
-      if (deltaX > 0) {
-        onSwipeRight(); // Swipe right → go to previous day
+  const onTouchEnd = useCallback(() => {
+    if (!swiping.current) return;
+    const deltaX = currentX.current - startX.current;
+    if (Math.abs(deltaX) > threshold) {
+      if (deltaX < 0) {
+        onSwipeLeft();
       } else {
-        onSwipeLeft(); // Swipe left → go to next day
+        onSwipeRight();
       }
     }
+    swiping.current = false;
   }, [onSwipeLeft, onSwipeRight, threshold]);
 
-  return { onTouchStart, onTouchEnd };
+  return { onTouchStart, onTouchMove, onTouchEnd };
 }
