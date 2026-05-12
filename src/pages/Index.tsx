@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import SEOHead, { buildWebsiteJsonLd } from '@/components/SEOHead';
@@ -7,6 +7,7 @@ import LeagueGroup from '@/components/LeagueGroup';
 import MatchCard from '@/components/MatchCard';
 import OptimizedImage from '@/components/OptimizedImage';
 import { useFavorites } from '@/hooks/useFavorites';
+import { useSwipe } from '@/hooks/useSwipe';
 import { Star, Zap, Clock, CheckCircle, Loader2 } from 'lucide-react';
 import {
   fetchLiveMatches,
@@ -33,6 +34,17 @@ export default function Index() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<StatusTab>('all');
   const { isFavorite, toggleFavorite, favoriteTeamIds } = useFavorites();
+
+  const tabs: StatusTab[] = ['all', 'live', 'upcoming', 'finished'];
+  const goNextTab = useCallback(() => {
+    const idx = tabs.indexOf(activeTab);
+    if (idx < tabs.length - 1) setActiveTab(tabs[idx + 1]);
+  }, [activeTab]);
+  const goPrevTab = useCallback(() => {
+    const idx = tabs.indexOf(activeTab);
+    if (idx > 0) setActiveTab(tabs[idx - 1]);
+  }, [activeTab]);
+  const swipeHandlers = useSwipe(goNextTab, goPrevTab);
 
   // Fetch today's matches + live matches
   useEffect(() => {
@@ -200,7 +212,7 @@ export default function Index() {
         </div>
       </div>
 
-      <main className="container py-4 pb-20 md:pb-4">
+      <main className="container py-4 pb-20 md:pb-4" {...swipeHandlers}>
         {loading ? (
           <MatchListSkeleton groups={4} />
         ) : (

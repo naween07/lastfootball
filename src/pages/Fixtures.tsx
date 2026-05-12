@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import Header from '@/components/Header';
 import SEOHead from '@/components/SEOHead';
 import LeagueFilter from '@/components/LeagueFilter';
 import LeagueGroup from '@/components/LeagueGroup';
 import DateNavigator from '@/components/DateNavigator';
 import { useFavorites } from '@/hooks/useFavorites';
+import { useSwipe } from '@/hooks/useSwipe';
 import {
   fetchMatchesByDate,
   getMatchesGroupedByLeague,
@@ -22,6 +23,18 @@ export default function Fixtures() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const { isFavorite, toggleFavorite } = useFavorites();
+
+  const goNext = useCallback(() => {
+    const idx = dates.indexOf(selectedDate);
+    if (idx < dates.length - 1) setSelectedDate(dates[idx + 1]);
+  }, [dates, selectedDate]);
+
+  const goPrev = useCallback(() => {
+    const idx = dates.indexOf(selectedDate);
+    if (idx > 0) setSelectedDate(dates[idx - 1]);
+  }, [dates, selectedDate]);
+
+  const swipeHandlers = useSwipe(goNext, goPrev);
 
   useEffect(() => {
     setLoading(true);
@@ -80,7 +93,7 @@ export default function Fixtures() {
         </div>
       )}
 
-      <main className="container py-2 pb-20 md:pb-4">
+      <main className="container py-2 pb-20 md:pb-4" {...swipeHandlers}>
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-6 h-6 animate-spin text-primary" />
