@@ -85,12 +85,51 @@ const STADIUMS = [
 ];
 
 // ─── Component ──────────────────────────────────────────────────────────────
+
+// Reverse lookup: team name → FIFA code
+function getTeamCode(name: string): string {
+  const n = name.toLowerCase();
+  for (const [code, info] of Object.entries(TEAM_INFO)) {
+    if (info.name.toLowerCase() === n) return code;
+  }
+  // Fuzzy match
+  for (const [code, info] of Object.entries(TEAM_INFO)) {
+    if (n.includes(info.name.toLowerCase()) || info.name.toLowerCase().includes(n)) return code;
+  }
+  return name.slice(0, 3).toUpperCase();
+}
+
 type TabKey = 'fixtures' | 'standings' | 'bracket';
 
 export default function WCFixtures() {
   const [activeTab, setActiveTab] = useState<TabKey>('fixtures');
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [countdown, setCountdown] = useState({ days: 0, hours: 0, mins: 0, secs: 0 });
+
+  const [apiFixtures, setApiFixtures] = useState<any[]>([]);
+  const [apiStandings, setApiStandings] = useState<any[]>([]);
+  const [loadingApi, setLoadingApi] = useState(true);
+
+  // Fetch real WC fixtures from API
+  useEffect(() => {
+    const fetchWC = async () => {
+      try {
+        const { callApi } = await import('@/services/footballApi');
+        const [fixtures, standings] = await Promise.allSettled([
+          callApi('fixtures', { league: '1', season: '2026' }),
+          callApi('standings', { league: '1', season: '2026' }),
+        ]);
+        if (fixtures.status === 'fulfilled' && fixtures.value?.length > 0) {
+          setApiFixtures(fixtures.value);
+        }
+        if (standings.status === 'fulfilled' && standings.value?.length > 0) {
+          setApiStandings(standings.value);
+        }
+      } catch {}
+      setLoadingApi(false);
+    };
+    fetchWC();
+  }, []);
 
   useEffect(() => {
     const tick = () => {
@@ -107,9 +146,41 @@ export default function WCFixtures() {
     return () => clearInterval(timer);
   }, []);
 
+  // Use API fixtures if available, otherwise fallback to generated
   const allGroupMatches = useMemo(() => {
+    if (apiFixtures.length > 0) {
+      // Map API fixtures to our format
+      return apiFixtures
+        .filter((f: any) => f.league?.round?.toLowerCase().includes('group'))
+        .map((f: any) => {
+          const groupLetter = f.league?.round?.replace(/Group\s*/i, '').trim() || '?';
+          // Determine matchday from round info
+          const roundStr = f.league?.round || '';
+          const mdMatch = roundStr.match(/(\d+)$/);
+          const matchday = mdMatch ? parseInt(mdMatch[1]) : 1;
+          return {
+            home: getTeamCode(f.teams?.home?.name || ''),
+            away: getTeamCode(f.teams?.away?.name || ''),
+            date: f.fixture?.date?.split('T')[0] || '',
+            time: f.fixture?.date ? new Date(f.fixture.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
+            group: groupLetter,
+            matchday,
+            homeScore: f.goals?.home,
+            awayScore: f.goals?.away,
+            status: f.fixture?.status?.short || 'NS',
+            minute: f.fixture?.status?.elapsed,
+            fixtureId: f.fixture?.id,
+            venue: f.fixture?.venue?.name || '',
+            city: f.fixture?.venue?.city || '',
+            homeLogo: f.teams?.home?.logo,
+            awayLogo: f.teams?.away?.logo,
+            homeName: f.teams?.home?.name,
+            awayName: f.teams?.away?.name,
+          };
+        });
+    }
     return GROUPS.flatMap(g => generateGroupMatches(g, GROUP_START_DATES[g.name]));
-  }, []);
+  }, [apiFixtures]);
 
   const filteredMatches = selectedGroup
     ? allGroupMatches.filter(m => m.group === selectedGroup)
@@ -268,48 +339,76 @@ export default function WCFixtures() {
         {/* ─── STANDINGS TAB ─────────────────────────────────────────── */}
         {activeTab === 'standings' && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {GROUPS.map(g => (
-              <div key={g.name} className="bg-[#111] border border-[#1e1e1e] rounded-lg overflow-hidden">
-                <div className="px-3 py-2 border-b border-[#1e1e1e] flex items-center gap-2">
-                  <span className="text-[10px] uppercase tracking-widest text-[#00ff87] font-bold">GROUP {g.name}</span>
+            {GROUPS.map(g => {
+              // Try to find real standings from API
+              const apiGroup = apiStandings.find((s: any) => {
+                const groupName = s[0]?.group || '';
+                return groupName.includes(g.name) || groupName.endsWith(g.name);
+              });
+
+              return (
+                <div key={g.name} className="bg-[#111] border border-[#1e1e1e] rounded-lg overflow-hidden">
+                  <div className="px-3 py-2 border-b border-[#1e1e1e] flex items-center gap-2">
+                    <span className="text-[10px] uppercase tracking-widest text-[#00ff87] font-bold">GROUP {g.name}</span>
+                  </div>
+                  <div className="flex items-center gap-2 px-3 py-1.5 text-[9px] uppercase tracking-widest text-[#444] font-bold">
+                    <span className="w-5 text-center">#</span>
+                    <span className="flex-1">TEAM</span>
+                    <span className="w-6 text-center">P</span>
+                    <span className="w-6 text-center">W</span>
+                    <span className="w-6 text-center">D</span>
+                    <span className="w-6 text-center">L</span>
+                    <span className="w-8 text-center">GD</span>
+                    <span className="w-8 text-center">PTS</span>
+                  </div>
+                  {(apiGroup || g.teams.map((code, i) => ({
+                    rank: i + 1,
+                    team: { name: TEAM_INFO[code]?.name || code, logo: '' },
+                    code,
+                    all: { played: 0, win: 0, draw: 0, lose: 0, goals: { for: 0, against: 0 } },
+                    goalsDiff: 0,
+                    points: 0,
+                  }))).map((entry: any, i: number) => {
+                    const teamName = entry.team?.name || '';
+                    const code = entry.code || getTeamCode(teamName) || g.teams[i];
+                    const played = entry.all?.played || 0;
+                    const won = entry.all?.win || 0;
+                    const drawn = entry.all?.draw || 0;
+                    const lost = entry.all?.lose || 0;
+                    const gd = entry.goalsDiff || 0;
+                    const pts = entry.points || 0;
+                    const rank = entry.rank || i + 1;
+
+                    return (
+                      <Link
+                        key={code}
+                        to={`/worldcup/team/${code}`}
+                        className={cn(
+                          'flex items-center gap-2 px-3 py-2 border-t border-[#1a1a1a] hover:bg-[#1a1a1a] transition-colors',
+                          rank <= 2 && 'border-l-2 border-l-[#00ff87]/30',
+                        )}
+                      >
+                        <span className="w-5 text-center text-[11px] font-bold text-[#555]">{rank}</span>
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          {entry.team?.logo ? (
+                            <img src={entry.team.logo} alt="" className="w-5 h-4 object-contain" />
+                          ) : (
+                            <Flag code={code} className="w-5 h-3.5" />
+                          )}
+                          <span className="text-xs font-semibold text-[#ccc] truncate">{TEAM_INFO[code]?.name || teamName}</span>
+                        </div>
+                        <span className="w-6 text-center text-[11px] text-[#555] tabular-nums">{played}</span>
+                        <span className="w-6 text-center text-[11px] text-[#555] tabular-nums">{won}</span>
+                        <span className="w-6 text-center text-[11px] text-[#555] tabular-nums">{drawn}</span>
+                        <span className="w-6 text-center text-[11px] text-[#555] tabular-nums">{lost}</span>
+                        <span className={cn('w-8 text-center text-[11px] tabular-nums', gd > 0 ? 'text-[#00ff87]' : gd < 0 ? 'text-red-400' : 'text-[#555]')}>{gd > 0 ? '+' : ''}{gd}</span>
+                        <span className="w-8 text-center text-[11px] font-bold text-white tabular-nums">{pts}</span>
+                      </Link>
+                    );
+                  })}
                 </div>
-                <div className="flex items-center gap-2 px-3 py-1.5 text-[9px] uppercase tracking-widest text-[#444] font-bold">
-                  <span className="w-5 text-center">#</span>
-                  <span className="flex-1">TEAM</span>
-                  <span className="w-6 text-center">P</span>
-                  <span className="w-6 text-center">W</span>
-                  <span className="w-6 text-center">D</span>
-                  <span className="w-6 text-center">L</span>
-                  <span className="w-8 text-center">GD</span>
-                  <span className="w-8 text-center">PTS</span>
-                </div>
-                {g.teams.map((code, i) => {
-                  const team = TEAM_INFO[code];
-                  return (
-                    <Link
-                      key={code}
-                      to={`/worldcup/team/${code}`}
-                      className={cn(
-                        'flex items-center gap-2 px-3 py-2 border-t border-[#1a1a1a] hover:bg-[#1a1a1a] transition-colors',
-                        i < 2 && 'border-l-2 border-l-[#00ff87]/30',
-                      )}
-                    >
-                      <span className="w-5 text-center text-[11px] font-bold text-[#555]">{i + 1}</span>
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <Flag code={code} className="w-5 h-3.5" />
-                        <span className="text-xs font-semibold text-[#ccc] truncate">{team.name}</span>
-                      </div>
-                      <span className="w-6 text-center text-[11px] text-[#555] tabular-nums">0</span>
-                      <span className="w-6 text-center text-[11px] text-[#555] tabular-nums">0</span>
-                      <span className="w-6 text-center text-[11px] text-[#555] tabular-nums">0</span>
-                      <span className="w-6 text-center text-[11px] text-[#555] tabular-nums">0</span>
-                      <span className="w-8 text-center text-[11px] text-[#555] tabular-nums">0</span>
-                      <span className="w-8 text-center text-[11px] font-bold text-white tabular-nums">0</span>
-                    </Link>
-                  );
-                })}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -365,43 +464,87 @@ export default function WCFixtures() {
 }
 
 // ─── WC Match Card ──────────────────────────────────────────────────────────
-function WCMatchCard({ match, stadium }: { match: GroupMatch; stadium: string }) {
-  const home = TEAM_INFO[match.home];
-  const away = TEAM_INFO[match.away];
-  if (!home || !away) return null;
+function WCMatchCard({ match, stadium }: { match: any; stadium: string }) {
+  const homeCode = match.home;
+  const awayCode = match.away;
+  const home = TEAM_INFO[homeCode];
+  const away = TEAM_INFO[awayCode];
+  const homeName = match.homeName || home?.name || homeCode;
+  const awayName = match.awayName || away?.name || awayCode;
+  const venue = match.venue || stadium;
+  const isLive = ['1H', '2H', 'HT', 'ET', 'BT', 'P'].includes(match.status);
+  const isFinished = ['FT', 'AET', 'PEN'].includes(match.status);
+  const hasScore = match.homeScore !== null && match.homeScore !== undefined;
 
   return (
-    <div className="bg-[#111] border border-[#1e1e1e] rounded-lg overflow-hidden hover:border-[#2a2a2a] transition-colors">
+    <div className={cn(
+      'bg-[#111] border rounded-lg overflow-hidden hover:border-[#2a2a2a] transition-colors',
+      isLive ? 'border-[#00ff87]/40 shadow-[0_0_10px_rgba(0,255,135,0.1)]' : 'border-[#1e1e1e]',
+    )}>
       {/* Top bar */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#1a1a1a]">
         <span className="text-[9px] uppercase tracking-widest text-[#00ff87] font-bold">GROUP {match.group} · MD{match.matchday}</span>
-        <div className="flex items-center gap-1.5">
-          <MapPin className="w-3 h-3 text-[#333]" />
-          <span className="text-[9px] text-[#444] truncate max-w-[140px]">{stadium}</span>
+        <div className="flex items-center gap-2">
+          {isLive && (
+            <div className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#00ff87] animate-pulse" />
+              <span className="text-[10px] font-bold text-[#00ff87]">{match.minute}'</span>
+            </div>
+          )}
+          {isFinished && <span className="text-[10px] font-bold text-[#444] uppercase tracking-widest">{match.status}</span>}
+          {!isLive && !isFinished && match.time && <span className="text-[10px] font-semibold text-[#555]">{match.time}</span>}
+          <div className="flex items-center gap-1">
+            <MapPin className="w-3 h-3 text-[#333]" />
+            <span className="text-[9px] text-[#444] truncate max-w-[120px]">{venue}</span>
+          </div>
         </div>
       </div>
 
       {/* Teams */}
       <div className="flex items-center px-3 py-3">
-        {/* Home */}
         <div className="flex items-center gap-2.5 flex-1 min-w-0">
-          <Flag code={match.home} size={28} className="rounded-sm" />
-          <Link to={`/worldcup/team/${match.home}`} className="text-sm font-semibold text-[#ccc] hover:text-white truncate transition-colors">
-            {home.name}
+          {match.homeLogo ? (
+            <img src={match.homeLogo} alt="" className="w-7 h-7 object-contain" />
+          ) : (
+            <Flag code={homeCode} size={28} className="rounded-sm" />
+          )}
+          <Link to={`/worldcup/team/${homeCode}`} className={cn(
+            'text-sm font-semibold truncate transition-colors',
+            hasScore && match.homeScore > match.awayScore ? 'text-white font-bold' :
+            hasScore && match.homeScore < match.awayScore && isFinished ? 'text-[#555]' :
+            'text-[#ccc] hover:text-white',
+          )}>
+            {homeName}
           </Link>
         </div>
 
         {/* Score / VS */}
-        <div className="px-4 text-center">
-          <span className="text-xs font-bold text-[#333] tracking-widest">VS</span>
+        <div className="px-3 text-center min-w-[60px]">
+          {hasScore ? (
+            <div>
+              <span className={cn('text-xl font-black tabular-nums', isLive ? 'text-[#00ff87]' : 'text-white')}>
+                {match.homeScore} - {match.awayScore}
+              </span>
+            </div>
+          ) : (
+            <span className="text-xs font-bold text-[#333] tracking-widest">VS</span>
+          )}
         </div>
 
-        {/* Away */}
         <div className="flex items-center gap-2.5 flex-1 min-w-0 justify-end">
-          <Link to={`/worldcup/team/${match.away}`} className="text-sm font-semibold text-[#ccc] hover:text-white truncate transition-colors text-right">
-            {away.name}
+          <Link to={`/worldcup/team/${awayCode}`} className={cn(
+            'text-sm font-semibold truncate transition-colors text-right',
+            hasScore && match.awayScore > match.homeScore ? 'text-white font-bold' :
+            hasScore && match.awayScore < match.homeScore && isFinished ? 'text-[#555]' :
+            'text-[#ccc] hover:text-white',
+          )}>
+            {awayName}
           </Link>
-          <Flag code={match.away} size={28} className="rounded-sm" />
+          {match.awayLogo ? (
+            <img src={match.awayLogo} alt="" className="w-7 h-7 object-contain" />
+          ) : (
+            <Flag code={awayCode} size={28} className="rounded-sm" />
+          )}
         </div>
       </div>
     </div>
