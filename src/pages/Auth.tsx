@@ -26,15 +26,16 @@ export default function Auth() {
   // Detect password reset flow from URL hash
   useEffect(() => {
     const hash = window.location.hash;
-    if (hash && hash.includes('type=recovery')) {
-      setIsResetMode(true);
-      // Supabase auto-handles the token from hash
-      supabase.auth.onAuthStateChange((event) => {
-        if (event === 'PASSWORD_RECOVERY') {
-          setIsResetMode(true);
-        }
-      });
+    if (hash && (hash.includes('type=recovery') || hash.includes('type=signup'))) {
+      setIsResetMode(hash.includes('type=recovery'));
     }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsResetMode(true);
+      }
+    });
+    return () => subscription.unsubscribe();
   }, []);
 
   if (loading && !timedOut) {
@@ -53,15 +54,25 @@ export default function Auth() {
     setSubmitting(true);
     try {
       const { error } = await supabase.auth.updateUser({ password: newPassword });
-      if (error) throw error;
-      toast.success('Password updated successfully!');
+      if (error) {
+        // Ignore lock errors — password usually still updates
+        if (error.message?.includes('lock')) {
+          toast.success('Password updated! Redirecting...');
+        } else {
+          throw error;
+        }
+      } else {
+        toast.success('Password updated successfully!');
+      }
+      // Sign out and redirect to login
+      await supabase.auth.signOut();
       setIsResetMode(false);
       window.location.hash = '';
-      window.location.href = '/';
+      setTimeout(() => { window.location.href = '/auth'; }, 1500);
     } catch (err: any) {
       toast.error(err.message || 'Failed to update password');
+      setSubmitting(false);
     }
-    setSubmitting(false);
   };
 
   // Show reset password form

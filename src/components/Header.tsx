@@ -46,9 +46,7 @@ export default function Header() {
         <div className="container flex items-center justify-between h-14 gap-2">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2 shrink-0">
-            <div className="h-8 w-8 rounded-lg bg-white/10 p-1 flex items-center justify-center">
-              <img src="/logo.png" alt="LF" className="h-full w-full object-contain brightness-110" />
-            </div>
+            <img src="/logo.png" alt="LF" className="h-8 object-contain" style={{ mixBlendMode: 'screen' }} />
             <span className="text-lg font-bold tracking-tight">
               Last<span className="text-primary">Football</span>
             </span>

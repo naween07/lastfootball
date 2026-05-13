@@ -20,7 +20,7 @@ interface Prediction {
 }
 
 export default function PredictPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user } = useAuth();
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [predictions, setPredictions] = useState<Map<number, Prediction>>(new Map());
@@ -91,10 +91,6 @@ export default function PredictPage() {
     }
     setSubmitting(null);
   };
-
-  if (authLoading) {
-    return <div className="min-h-screen bg-background"><Header /><div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div></div>;
-  }
 
   return (
     <div className="min-h-screen bg-background">

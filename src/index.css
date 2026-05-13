@@ -100,12 +100,18 @@
   html {
     /* Prevent zoom on input focus on iOS */
     -webkit-text-size-adjust: 100%;
+    /* Use dynamic viewport height for mobile browsers */
+    height: 100%;
+    overflow: hidden;
   }
 
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     font-feature-settings: 'cv11', 'ss01';
+    height: 100%;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
   }
 }
 

@@ -40,8 +40,8 @@ export default function BottomTabBar() {
   ];
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-md border-t border-border"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom)', transform: 'translate3d(0,0,0)', WebkitTransform: 'translate3d(0,0,0)', willChange: 'transform' }}>
       <div className="flex items-center justify-around h-14">
         {TABS.map(({ to, label, icon: Icon, special }) => {
           const isActive = pathname === to || (to !== '/' && pathname.startsWith(to));
