@@ -45,11 +45,8 @@ export default function Header() {
       <header className="sticky top-0 z-50 bg-card/95 backdrop-blur-md border-b border-border">
         <div className="container flex items-center justify-between h-14 gap-2">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2 shrink-0">
-            <img src="/logo.png" alt="LF" className="h-16 object-contain" style={{ mixBlendMode: 'screen' }} />
-            <span className="text-lg font-bold tracking-tight">
-              Last<span className="text-primary">Football</span>
-            </span>
+          <Link to="/" className="flex items-center shrink-0">
+            <img src="/logo.png" alt="LastFootball" className="h-12 sm:h-14 object-contain" style={{ mixBlendMode: 'screen' }} />
           </Link>
 
           {/* Desktop nav */}
