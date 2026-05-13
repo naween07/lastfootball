@@ -213,6 +213,11 @@ export default function WorldCup() {
               <span className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-amber-400" /> USA · Canada · Mexico</span>
               <span className="flex items-center gap-1.5"><Users className="w-3.5 h-3.5 text-amber-400" /> {enrollCount} fans enrolled</span>
             </div>
+            <div className="flex justify-center mt-4">
+              <Link to="/worldcup/fixtures" className="px-5 py-2 rounded-lg bg-[#00ff87] text-black text-xs font-bold uppercase tracking-widest hover:opacity-90 transition-opacity">
+                VIEW FULL SCHEDULE & BRACKET →
+              </Link>
+            </div>
           </div>
         </section>
 
