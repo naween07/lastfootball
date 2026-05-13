@@ -24,19 +24,19 @@ const GROUPS = [
   { name: 'L', teams: ['ITA', 'IRN', 'CMR', 'PER'] },
 ];
 
-const TEAM_INFO: Record<string, { name: string; flag: string }> = {
-  MEX: { name: 'Mexico', flag: 'mx' }, KOR: { name: 'South Korea', flag: 'kr' }, CZE: { name: 'Czechia', flag: 'cz' }, RSA: { name: 'South Africa', flag: 'za' },
-  CAN: { name: 'Canada', flag: 'ca' }, AUS: { name: 'Australia', flag: 'au' }, BIH: { name: 'Bosnia & Herz.', flag: 'ba' }, QAT: { name: 'Qatar', flag: 'qa' },
-  BRA: { name: 'Brazil', flag: 'br' }, MAR: { name: 'Morocco', flag: 'ma' }, SCO: { name: 'Scotland', flag: 'gb-sct' }, HAI: { name: 'Haiti', flag: 'ht' },
-  USA: { name: 'USA', flag: 'us' }, TUR: { name: 'Turkey', flag: 'tr' }, PAR: { name: 'Paraguay', flag: 'py' }, CRO: { name: 'Croatia', flag: 'hr' },
-  GER: { name: 'Germany', flag: 'de' }, CIV: { name: 'Ivory Coast', flag: 'ci' }, CUW: { name: 'Curaçao', flag: 'cw' }, ECU: { name: 'Ecuador', flag: 'ec' },
-  NED: { name: 'Netherlands', flag: 'nl' }, JPN: { name: 'Japan', flag: 'jp' }, SWE: { name: 'Sweden', flag: 'se' }, TUN: { name: 'Tunisia', flag: 'tn' },
-  ARG: { name: 'Argentina', flag: 'ar' }, COL: { name: 'Colombia', flag: 'co' }, AUT: { name: 'Austria', flag: 'at' }, UZB: { name: 'Uzbekistan', flag: 'uz' },
-  ESP: { name: 'Spain', flag: 'es' }, KSA: { name: 'Saudi Arabia', flag: 'sa' }, CPV: { name: 'Cape Verde', flag: 'cv' }, JOR: { name: 'Jordan', flag: 'jo' },
-  FRA: { name: 'France', flag: 'fr' }, SEN: { name: 'Senegal', flag: 'sn' }, NOR: { name: 'Norway', flag: 'no' }, IRQ: { name: 'Iraq', flag: 'iq' },
-  ENG: { name: 'England', flag: 'gb-eng' }, GHA: { name: 'Ghana', flag: 'gh' }, PAN: { name: 'Panama', flag: 'pa' }, ALG: { name: 'Algeria', flag: 'dz' },
-  POR: { name: 'Portugal', flag: 'pt' }, COD: { name: 'DR Congo', flag: 'cd' }, NGA: { name: 'Nigeria', flag: 'ng' }, SUI: { name: 'Switzerland', flag: 'ch' },
-  ITA: { name: 'Italy', flag: 'it' }, IRN: { name: 'Iran', flag: 'ir' }, CMR: { name: 'Cameroon', flag: 'cm' }, PER: { name: 'Peru', flag: 'pe' },
+const TEAM_INFO: Record<string, { name: string }> = {
+  MEX: { name: 'Mexico' }, KOR: { name: 'South Korea' }, CZE: { name: 'Czechia' }, RSA: { name: 'South Africa' },
+  CAN: { name: 'Canada' }, AUS: { name: 'Australia' }, BIH: { name: 'Bosnia & Herz.' }, QAT: { name: 'Qatar' },
+  BRA: { name: 'Brazil' }, MAR: { name: 'Morocco' }, SCO: { name: 'Scotland' }, HAI: { name: 'Haiti' },
+  USA: { name: 'USA' }, TUR: { name: 'Turkey' }, PAR: { name: 'Paraguay' }, CRO: { name: 'Croatia' },
+  GER: { name: 'Germany' }, CIV: { name: 'Ivory Coast' }, CUW: { name: 'Curaçao' }, ECU: { name: 'Ecuador' },
+  NED: { name: 'Netherlands' }, JPN: { name: 'Japan' }, SWE: { name: 'Sweden' }, TUN: { name: 'Tunisia' },
+  ARG: { name: 'Argentina' }, COL: { name: 'Colombia' }, AUT: { name: 'Austria' }, UZB: { name: 'Uzbekistan' },
+  ESP: { name: 'Spain' }, KSA: { name: 'Saudi Arabia' }, CPV: { name: 'Cape Verde' }, JOR: { name: 'Jordan' },
+  FRA: { name: 'France' }, SEN: { name: 'Senegal' }, NOR: { name: 'Norway' }, IRQ: { name: 'Iraq' },
+  ENG: { name: 'England' }, GHA: { name: 'Ghana' }, PAN: { name: 'Panama' }, ALG: { name: 'Algeria' },
+  POR: { name: 'Portugal' }, COD: { name: 'DR Congo' }, NGA: { name: 'Nigeria' }, SUI: { name: 'Switzerland' },
+  ITA: { name: 'Italy' }, IRN: { name: 'Iran' }, CMR: { name: 'Cameroon' }, PER: { name: 'Peru' },
 };
 
 // Group stage match schedule (3 matchdays per group)
@@ -296,7 +296,7 @@ export default function WCFixtures() {
                     >
                       <span className="w-5 text-center text-[11px] font-bold text-[#555]">{i + 1}</span>
                       <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <Flag code={team.flag} className="w-5 h-3.5" />
+                        <Flag code={code} className="w-5 h-3.5" />
                         <span className="text-xs font-semibold text-[#ccc] truncate">{team.name}</span>
                       </div>
                       <span className="w-6 text-center text-[11px] text-[#555] tabular-nums">0</span>
@@ -385,7 +385,7 @@ function WCMatchCard({ match, stadium }: { match: GroupMatch; stadium: string })
       <div className="flex items-center px-3 py-3">
         {/* Home */}
         <div className="flex items-center gap-2.5 flex-1 min-w-0">
-          <Flag code={home.flag} className="w-7 h-5 rounded-sm" />
+          <Flag code={match.home} size={28} className="rounded-sm" />
           <Link to={`/worldcup/team/${match.home}`} className="text-sm font-semibold text-[#ccc] hover:text-white truncate transition-colors">
             {home.name}
           </Link>
@@ -401,7 +401,7 @@ function WCMatchCard({ match, stadium }: { match: GroupMatch; stadium: string })
           <Link to={`/worldcup/team/${match.away}`} className="text-sm font-semibold text-[#ccc] hover:text-white truncate transition-colors text-right">
             {away.name}
           </Link>
-          <Flag code={away.flag} className="w-7 h-5 rounded-sm" />
+          <Flag code={match.away} size={28} className="rounded-sm" />
         </div>
       </div>
     </div>
