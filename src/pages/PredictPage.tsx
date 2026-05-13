@@ -111,7 +111,7 @@ export default function PredictPage() {
             Predict Scores. Earn Points. <span className="text-amber-400">Win Rewards.</span>
           </h1>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            Predict match scores before kickoff. Earn +3 for exact scores, +1 for correct winners. Reach 30 points to win <span className="text-amber-400 font-bold">NPR 30,000</span>!
+            Predict match scores before kickoff. Earn +4 for exact scores. Reach 30 points to win <span className="text-amber-400 font-bold">NPR 30,000</span>!
           </p>
         </div>
       </section>
@@ -142,10 +142,10 @@ export default function PredictPage() {
         <div className="bg-card border border-border rounded-xl p-4">
           <h3 className="text-xs font-bold text-foreground mb-2">Points System</h3>
           <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="flex justify-between py-1"><span className="text-muted-foreground">Correct exact score</span><span className="text-emerald-400 font-bold">+3</span></div>
-            <div className="flex justify-between py-1"><span className="text-muted-foreground">Correct winner</span><span className="text-emerald-400 font-bold">+1</span></div>
-            <div className="flex justify-between py-1"><span className="text-muted-foreground">Wrong winner</span><span className="text-red-400 font-bold">-1</span></div>
-            <div className="flex justify-between py-1"><span className="text-muted-foreground">Wrong score</span><span className="text-red-400 font-bold">-1</span></div>
+            <div className="flex justify-between py-1"><span className="text-muted-foreground">Correct score + winner</span><span className="text-emerald-400 font-bold">+4</span></div>
+            <div className="flex justify-between py-1"><span className="text-muted-foreground">Correct winner only</span><span className="text-amber-400 font-bold">0</span></div>
+            <div className="flex justify-between py-1"><span className="text-muted-foreground">Wrong winner + score</span><span className="text-red-400 font-bold">-2</span></div>
+            <div className="flex justify-between py-1"><span className="text-muted-foreground">30 points = reward</span><span className="text-amber-400 font-bold">🏆</span></div>
           </div>
         </div>
       </div>
@@ -494,7 +494,7 @@ function MyPredictions({ userId }: { userId: string }) {
             if (actualHome === null || actualAway === null) continue;
             let points = 0;
             if (pred.home_score === actualHome && pred.away_score === actualAway) points = 4;
-            else if ((pred.home_score > pred.away_score && actualHome > actualAway) || (pred.home_score < pred.away_score && actualHome < actualAway) || (pred.home_score === pred.away_score && actualHome === actualAway)) points = 1;
+            else if ((pred.home_score > pred.away_score && actualHome > actualAway) || (pred.home_score < pred.away_score && actualHome < actualAway) || (pred.home_score === pred.away_score && actualHome === actualAway)) points = 0;
             else points = -2;
             await supabase.from('predictions').update({ points, scored_at: new Date().toISOString() }).eq('id', pred.id);
             pred.points = points;
@@ -515,7 +515,7 @@ function MyPredictions({ userId }: { userId: string }) {
   const pending = preds.filter(p => p.points === null);
   const totalPoints = scored.reduce((sum, p) => sum + (p.points || 0), 0);
   const exactScores = scored.filter(p => p.points === 4).length;
-  const correctWinners = scored.filter(p => p.points === 1).length;
+  const correctWinners = scored.filter(p => p.points === 0).length;
   const wrongPreds = scored.filter(p => (p.points || 0) < 0).length;
 
   // Points ledger — running balance
@@ -612,7 +612,7 @@ function MyPredictions({ userId }: { userId: string }) {
                     <p className="text-[10px] text-muted-foreground">{pred.match_date} · You: {pred.home_score}-{pred.away_score}</p>
                   </div>
                   <span className={cn('w-14 text-center text-xs font-black tabular-nums',
-                    (pred.points || 0) >= 4 ? 'text-emerald-400' : (pred.points || 0) > 0 ? 'text-blue-400' : 'text-red-400',
+                    (pred.points || 0) >= 4 ? 'text-emerald-400' : (pred.points || 0) === 0 ? 'text-amber-400' : 'text-red-400',
                   )}>
                     {(pred.points || 0) > 0 ? '+' : ''}{pred.points}
                   </span>
@@ -649,10 +649,10 @@ function MyPredictions({ userId }: { userId: string }) {
                         <span className="text-[10px] font-bold bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full">+{pred.points} 🎯</span>
                         <p className="text-[8px] text-emerald-400 mt-0.5">Exact Score!</p>
                       </div>
-                    ) : pred.points > 0 ? (
+                    ) : pred.points === 0 ? (
                       <div>
-                        <span className="text-[10px] font-bold bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-full">+{pred.points}</span>
-                        <p className="text-[8px] text-blue-400 mt-0.5">Correct Winner</p>
+                        <span className="text-[10px] font-bold bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full">0</span>
+                        <p className="text-[8px] text-amber-400 mt-0.5">Right Team</p>
                       </div>
                     ) : (
                       <div>
