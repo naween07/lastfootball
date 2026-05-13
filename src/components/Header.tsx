@@ -45,8 +45,13 @@ export default function Header() {
       <header className="sticky top-0 z-50 bg-card/95 backdrop-blur-md border-b border-border">
         <div className="container flex items-center justify-between h-14 gap-2">
           {/* Logo */}
-          <Link to="/" className="flex items-center shrink-0">
-            <img src="/logo.png" alt="LastFootball" className="h-12 sm:h-14 object-contain" style={{ mixBlendMode: 'screen' }} />
+          <Link to="/" className="flex items-center shrink-0 overflow-hidden h-10">
+            <img 
+              src="/logo.png" 
+              alt="LastFootball" 
+              className="h-[72px] object-cover object-center scale-150 origin-center" 
+              style={{ mixBlendMode: 'screen', marginTop: '-2px', marginBottom: '-2px' }} 
+            />
           </Link>
 
           {/* Desktop nav */}
