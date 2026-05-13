@@ -118,6 +118,7 @@ export default function Header() {
             <MobileNavItem to="/predict" label="Predict & Win" icon="🎯" pathname={pathname} onClick={() => setMenuOpen(false)} highlight />
             <MobileNavItem to="/leaderboard" label="Leaderboard" icon="🏅" pathname={pathname} onClick={() => setMenuOpen(false)} />
             <MobileNavItem to="/worldcup" label="World Cup 2026" icon="🏆" pathname={pathname} onClick={() => setMenuOpen(false)} highlight />
+            <MobileNavItem to="/fantasy" label="Fantasy WC" icon="⚽" pathname={pathname} onClick={() => setMenuOpen(false)} highlight />
 
             <div className="pt-4 border-t border-border/30 mt-4 flex items-center gap-3 px-3">
               <ThemeToggle />
