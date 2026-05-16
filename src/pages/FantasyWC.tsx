@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import SEOHead from '@/components/SEOHead';
@@ -108,6 +108,45 @@ export default function FantasyWC() {
     setPanelLoading(false);
   };
 
+  // Search player by name across all WC teams
+  const searchTimer = useRef<any>(null);
+  const searchPlayerByName = (query: string) => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(async () => {
+      if (query.length < 3) return;
+      setPanelLoading(true);
+      try {
+        const data = await callApi('players', { search: query, league: '1', season: '2026' });
+        if (data?.length > 0) {
+          setPanelPlayers(data.map((p: any) => ({
+            id: p.player?.id,
+            name: p.player?.name,
+            photo: p.player?.photo,
+            position: p.statistics?.[0]?.games?.position || 'Midfielder',
+            number: p.statistics?.[0]?.games?.number,
+            nationName: p.statistics?.[0]?.team?.name,
+            nationId: p.statistics?.[0]?.team?.id,
+          })));
+        } else {
+          // Fallback: search across loaded nations
+          const results: any[] = [];
+          for (const nation of NATIONS.slice(0, 6)) {
+            try {
+              const d = await callApi('players/squads', { team: String(nation.id) });
+              if (d?.[0]?.players) {
+                const matches = d[0].players.filter((p: any) => p.name.toLowerCase().includes(query.toLowerCase()));
+                results.push(...matches.map((p: any) => ({ ...p, nationName: nation.name, nationId: nation.id })));
+              }
+            } catch {}
+            if (results.length >= 10) break;
+          }
+          setPanelPlayers(results);
+        }
+      } catch { setPanelPlayers([]); }
+      setPanelLoading(false);
+    }, 500);
+  };
+
   // Filtered panel players
   const filteredPlayers = useMemo(() => {
     let list = panelPlayers;
@@ -124,7 +163,7 @@ export default function FantasyWC() {
     if (!teamId || !user) return toast.error('Create team first');
     const pos = posShort(player.position);
     const price = getPlayerPrice(pos);
-    const nation = NATIONS.find(n => n.id === panelNation);
+    const nation = NATIONS.find(n => n.id === (player.nationId || panelNation));
 
     if (squad.find(p => p.player_id === player.id)) return toast.error('Already in squad');
     if (squad.filter(p => p.position === pos).length >= SQUAD_LIMITS[pos]) return toast.error(`Max ${SQUAD_LIMITS[pos]} ${pos}`);
@@ -133,7 +172,7 @@ export default function FantasyWC() {
 
     const np: SPlayer = {
       player_id: player.id, player_name: player.name, player_photo: player.photo || '',
-      team_name: nation?.name || '', nation: nation?.name || '', nation_flag: nation?.flag || '',
+      team_name: player.nationName || nation?.name || '', nation: player.nationName || nation?.name || '', nation_flag: nation?.flag || '',
       position: pos, price, points: 0,
       is_starting: squad.filter(p => p.position === pos && p.is_starting).length < STARTING[pos],
       is_captain: false, is_vice_captain: false,
@@ -313,7 +352,14 @@ export default function FantasyWC() {
             <div className="px-3 py-2 border-b border-[#1a1a1a]">
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#444]" />
-                <input type="text" placeholder="Search player..." value={panelSearch} onChange={e => setPanelSearch(e.target.value)}
+                <input type="text" placeholder="Search player name..." value={panelSearch}
+                  onChange={e => {
+                    setPanelSearch(e.target.value);
+                    // If no nation selected, search via API
+                    if (!panelNation && e.target.value.length >= 3) {
+                      searchPlayerByName(e.target.value);
+                    }
+                  }}
                   className="w-full pl-8 pr-3 py-2 rounded-lg bg-[#111] border border-[#1e1e1e] text-xs text-white placeholder:text-[#444] focus:outline-none focus:border-[#00ff87]/30" />
               </div>
             </div>
