@@ -105,8 +105,8 @@ export default function Header() {
 
       {/* Mobile fullscreen menu */}
       {menuOpen && (
-        <div className="md:hidden fixed inset-0 top-14 z-40 bg-background/98 backdrop-blur-md overflow-y-auto">
-          <nav className="container py-4 space-y-1">
+        <div className="md:hidden fixed inset-0 top-14 z-40 bg-background/98 backdrop-blur-md overflow-y-auto overscroll-contain">
+          <nav className="container py-2 space-y-0.5">
             <MobileNavItem to="/" label="Home" icon="🏠" pathname={pathname} onClick={() => setMenuOpen(false)} />
             <MobileNavItem to="/live" label="Live Scores" icon="⚡" pathname={pathname} onClick={() => setMenuOpen(false)} />
             <MobileNavItem to="/fixtures" label="Fixtures" icon="📅" pathname={pathname} onClick={() => setMenuOpen(false)} />
@@ -120,7 +120,7 @@ export default function Header() {
             <MobileNavItem to="/worldcup" label="World Cup 2026" icon="🏆" pathname={pathname} onClick={() => setMenuOpen(false)} highlight />
             <MobileNavItem to="/fantasy" label="Fantasy WC" icon="⚽" pathname={pathname} onClick={() => setMenuOpen(false)} highlight />
 
-            <div className="pt-4 border-t border-border/30 mt-4 flex items-center gap-3 px-3">
+            <div className="pt-2 border-t border-border/30 mt-2 flex items-center gap-3 px-3">
               <ThemeToggle />
               <span className="text-xs text-muted-foreground">Toggle Theme</span>
             </div>
@@ -141,17 +141,17 @@ function MobileNavItem({ to, label, icon, pathname, onClick, highlight, isLogo }
       to={to}
       onClick={onClick}
       className={cn(
-        'flex items-center gap-3 px-3 py-3.5 rounded-xl transition-colors',
+        'flex items-center gap-2.5 px-3 py-2 rounded-lg transition-colors',
         isActive ? (highlight ? 'bg-amber-500/10 text-amber-400' : 'bg-primary/10 text-primary') : 'hover:bg-secondary/50',
       )}
     >
       {isLogo ? (
-        <img src={icon} alt="My Club" className="w-7 h-7 rounded-full object-contain ring-2 ring-primary/30" />
+        <img src={icon} alt="My Club" className="w-5 h-5 rounded-full object-contain ring-2 ring-primary/30" />
       ) : (
-        <span className="text-lg w-7 text-center">{icon}</span>
+        <span className="text-base w-6 text-center">{icon}</span>
       )}
       <span className={cn(
-        'text-sm font-semibold flex-1',
+        'text-[13px] font-semibold flex-1',
         isActive ? (highlight ? 'text-amber-400' : 'text-primary') : 'text-foreground',
       )}>
         {label}
