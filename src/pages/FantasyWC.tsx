@@ -1,493 +1,305 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import SEOHead from '@/components/SEOHead';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { callApi } from '@/services/footballApi';
-import { Trophy, Search, X, Loader2, Shield, Crown, Coins, ChevronDown } from 'lucide-react';
+import { Trophy, Search, X, Loader2, Shield, Crown, Coins } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
-function getPlayerPrice(pos: string): number {
-  if (pos === 'GK') return 5;
-  if (pos === 'DEF') return 6;
-  if (pos === 'MID') return 7;
-  return 9;
-}
-
-function posShort(pos: string): string {
-  if (pos?.includes('Goal')) return 'GK';
-  if (pos?.includes('Defend')) return 'DEF';
-  if (pos?.includes('Mid')) return 'MID';
-  return 'FWD';
-}
-
-const SQUAD_LIMITS: Record<string, number> = { GK: 2, DEF: 5, MID: 5, FWD: 3 };
-const STARTING: Record<string, number> = { GK: 1, DEF: 4, MID: 4, FWD: 2 };
-
-const NATIONS = [
-  { name: 'Argentina', id: 26, flag: 'ar' }, { name: 'Brazil', id: 6, flag: 'br' },
-  { name: 'France', id: 2, flag: 'fr' }, { name: 'England', id: 10, flag: 'gb-eng' },
-  { name: 'Germany', id: 25, flag: 'de' }, { name: 'Spain', id: 9, flag: 'es' },
-  { name: 'Portugal', id: 27, flag: 'pt' }, { name: 'Netherlands', id: 1118, flag: 'nl' },
-  { name: 'Italy', id: 768, flag: 'it' }, { name: 'Croatia', id: 3, flag: 'hr' },
-  { name: 'Morocco', id: 31, flag: 'ma' }, { name: 'Japan', id: 12, flag: 'jp' },
-  { name: 'USA', id: 2384, flag: 'us' }, { name: 'Mexico', id: 16, flag: 'mx' },
-  { name: 'Colombia', id: 1580, flag: 'co' }, { name: 'South Korea', id: 17, flag: 'kr' },
-  { name: 'Turkey', id: 135, flag: 'tr' }, { name: 'Nigeria', id: 1024, flag: 'ng' },
-  { name: 'Senegal', id: 20, flag: 'sn' }, { name: 'Australia', id: 24, flag: 'au' },
+// ─── Player Pool (Top WC players with prices) ──────────────────────────────
+const PLAYER_POOL = [
+  { id: 1, name: 'Kylian Mbappé', pos: 'FWD', nation: 'France', flag: '🇫🇷', club: 'Real Madrid', price: 14.5, power: 98 },
+  { id: 2, name: 'Erling Haaland', pos: 'FWD', nation: 'Norway', flag: '🇳🇴', club: 'Man City', price: 14.0, power: 96 },
+  { id: 3, name: 'Vinícius Júnior', pos: 'FWD', nation: 'Brazil', flag: '🇧🇷', club: 'Real Madrid', price: 13.5, power: 97 },
+  { id: 4, name: 'Lionel Messi', pos: 'FWD', nation: 'Argentina', flag: '🇦🇷', club: 'Inter Miami', price: 12.0, power: 93 },
+  { id: 5, name: 'Harry Kane', pos: 'FWD', nation: 'England', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', club: 'Bayern', price: 11.5, power: 92 },
+  { id: 6, name: 'Victor Osimhen', pos: 'FWD', nation: 'Nigeria', flag: '🇳🇬', club: 'Napoli', price: 10.0, power: 89 },
+  { id: 7, name: 'Lautaro Martínez', pos: 'FWD', nation: 'Argentina', flag: '🇦🇷', club: 'Inter Milan', price: 10.5, power: 90 },
+  { id: 8, name: 'Julián Álvarez', pos: 'FWD', nation: 'Argentina', flag: '🇦🇷', club: 'Atlético', price: 9.0, power: 87 },
+  { id: 9, name: 'Alexander Isak', pos: 'FWD', nation: 'Sweden', flag: '🇸🇪', club: 'Newcastle', price: 9.5, power: 88 },
+  { id: 10, name: 'Viktor Gyökeres', pos: 'FWD', nation: 'Sweden', flag: '🇸🇪', club: 'Sporting', price: 9.0, power: 88 },
+  { id: 20, name: 'Jude Bellingham', pos: 'MID', nation: 'England', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', club: 'Real Madrid', price: 12.0, power: 95 },
+  { id: 21, name: 'Bukayo Saka', pos: 'MID', nation: 'England', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', club: 'Arsenal', price: 11.5, power: 90 },
+  { id: 22, name: 'Jamal Musiala', pos: 'MID', nation: 'Germany', flag: '🇩🇪', club: 'Bayern', price: 10.5, power: 91 },
+  { id: 23, name: 'Pedri', pos: 'MID', nation: 'Spain', flag: '🇪🇸', club: 'Barcelona', price: 10.0, power: 89 },
+  { id: 24, name: 'Federico Valverde', pos: 'MID', nation: 'Uruguay', flag: '🇺🇾', club: 'Real Madrid', price: 9.5, power: 89 },
+  { id: 25, name: 'Florian Wirtz', pos: 'MID', nation: 'Germany', flag: '🇩🇪', club: 'Leverkusen', price: 10.0, power: 90 },
+  { id: 26, name: 'Martin Ødegaard', pos: 'MID', nation: 'Norway', flag: '🇳🇴', club: 'Arsenal', price: 9.0, power: 88 },
+  { id: 27, name: 'Kevin De Bruyne', pos: 'MID', nation: 'Belgium', flag: '🇧🇪', club: 'Man City', price: 9.5, power: 88 },
+  { id: 28, name: 'Bruno Fernandes', pos: 'MID', nation: 'Portugal', flag: '🇵🇹', club: 'Man United', price: 8.5, power: 86 },
+  { id: 29, name: 'Arda Güler', pos: 'MID', nation: 'Turkey', flag: '🇹🇷', club: 'Real Madrid', price: 7.5, power: 85 },
+  { id: 30, name: 'Moisés Caicedo', pos: 'MID', nation: 'Ecuador', flag: '🇪🇨', club: 'Chelsea', price: 7.0, power: 83 },
+  { id: 31, name: 'Rodrigo De Paul', pos: 'MID', nation: 'Argentina', flag: '🇦🇷', club: 'Atlético', price: 7.5, power: 82 },
+  { id: 32, name: 'Takefusa Kubo', pos: 'MID', nation: 'Japan', flag: '🇯🇵', club: 'R. Sociedad', price: 7.0, power: 83 },
+  { id: 33, name: 'Luis Díaz', pos: 'MID', nation: 'Colombia', flag: '🇨🇴', club: 'Liverpool', price: 8.0, power: 85 },
+  { id: 40, name: 'Virgil van Dijk', pos: 'DEF', nation: 'Netherlands', flag: '🇳🇱', club: 'Liverpool', price: 6.5, power: 86 },
+  { id: 41, name: 'Joško Gvardiol', pos: 'DEF', nation: 'Croatia', flag: '🇭🇷', club: 'Man City', price: 6.5, power: 84 },
+  { id: 42, name: 'William Saliba', pos: 'DEF', nation: 'France', flag: '🇫🇷', club: 'Arsenal', price: 6.5, power: 88 },
+  { id: 43, name: 'Theo Hernández', pos: 'DEF', nation: 'France', flag: '🇫🇷', club: 'AC Milan', price: 6.0, power: 85 },
+  { id: 44, name: 'Achraf Hakimi', pos: 'DEF', nation: 'Morocco', flag: '🇲🇦', club: 'PSG', price: 6.0, power: 85 },
+  { id: 45, name: 'Rúben Dias', pos: 'DEF', nation: 'Portugal', flag: '🇵🇹', club: 'Man City', price: 6.0, power: 85 },
+  { id: 46, name: 'Kim Min-jae', pos: 'DEF', nation: 'South Korea', flag: '🇰🇷', club: 'Bayern', price: 5.5, power: 83 },
+  { id: 47, name: 'Jeremie Frimpong', pos: 'DEF', nation: 'Netherlands', flag: '🇳🇱', club: 'Leverkusen', price: 5.5, power: 84 },
+  { id: 48, name: 'Piero Hincapié', pos: 'DEF', nation: 'Ecuador', flag: '🇪🇨', club: 'Leverkusen', price: 5.0, power: 81 },
+  { id: 49, name: 'Alphonso Davies', pos: 'DEF', nation: 'Canada', flag: '🇨🇦', club: 'Real Madrid', price: 6.0, power: 85 },
+  { id: 60, name: 'Alisson Becker', pos: 'GK', nation: 'Brazil', flag: '🇧🇷', club: 'Liverpool', price: 6.0, power: 89 },
+  { id: 61, name: 'Emiliano Martínez', pos: 'GK', nation: 'Argentina', flag: '🇦🇷', club: 'Aston Villa', price: 5.5, power: 88 },
+  { id: 62, name: 'Thibaut Courtois', pos: 'GK', nation: 'Belgium', flag: '🇧🇪', club: 'Real Madrid', price: 5.5, power: 87 },
+  { id: 63, name: 'Marc-André ter Stegen', pos: 'GK', nation: 'Germany', flag: '🇩🇪', club: 'Barcelona', price: 5.0, power: 86 },
+  { id: 64, name: 'Mike Maignan', pos: 'GK', nation: 'France', flag: '🇫🇷', club: 'AC Milan', price: 5.0, power: 85 },
+  { id: 65, name: 'Diogo Costa', pos: 'GK', nation: 'Portugal', flag: '🇵🇹', club: 'Porto', price: 4.5, power: 82 },
 ];
 
-interface SPlayer {
-  player_id: number; player_name: string; player_photo: string;
-  team_name: string; nation: string; nation_flag: string;
-  position: string; price: number; is_starting: boolean;
-  is_captain: boolean; is_vice_captain: boolean; points: number;
-}
+const POS_LIMITS: Record<string, number> = { GK: 2, DEF: 5, MID: 5, FWD: 3 };
+const POS_COLORS: Record<string, string> = { GK: 'border-yellow-400 bg-yellow-500/20', DEF: 'border-blue-400 bg-blue-500/20', MID: 'border-green-400 bg-green-500/20', FWD: 'border-red-400 bg-red-500/20' };
+const STARTING_XI: Record<string, number> = { GK: 1, DEF: 4, MID: 4, FWD: 2 };
 
 export default function FantasyWC() {
   const { user } = useAuth();
-  const [teamId, setTeamId] = useState<string | null>(null);
+  const [squad, setSquad] = useState<typeof PLAYER_POOL>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState('ALL');
+  const [sortBy, setSortBy] = useState<'power' | 'price'>('power');
   const [teamName, setTeamName] = useState('My Fantasy XI');
-  const [squad, setSquad] = useState<SPlayer[]>([]);
-  const [budget, setBudget] = useState(100);
-  const [loading, setLoading] = useState(true);
+  const [teamCreated, setTeamCreated] = useState(false);
 
-  // Panel state
-  const [panelOpen, setPanelOpen] = useState(false);
-  const [panelPosition, setPanelPosition] = useState<string | null>(null);
-  const [panelNation, setPanelNation] = useState<number | null>(null);
-  const [panelSearch, setPanelSearch] = useState('');
-  const [panelPlayers, setPanelPlayers] = useState<any[]>([]);
-  const [panelLoading, setPanelLoading] = useState(false);
-  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const budget = useMemo(() => 100 - squad.reduce((s, p) => s + p.price, 0), [squad]);
+  const getByPos = useCallback((pos: string) => squad.filter(p => p.pos === pos), [squad]);
+  const isSelected = useCallback((id: number) => squad.some(p => p.id === id), [squad]);
 
-  // Load team
-  useEffect(() => {
-    if (!user) { setLoading(false); return; }
-    (async () => {
-      const { data: team } = await supabase.from('fantasy_teams').select('*').eq('user_id', user.id).single();
-      if (team) {
-        setTeamId(team.id);
-        setTeamName(team.team_name);
-        setBudget(Number(team.budget_remaining));
-        const { data: players } = await supabase.from('fantasy_squad').select('*').eq('team_id', team.id);
-        if (players) setSquad(players);
-      }
-      setLoading(false);
-    })();
-  }, [user]);
-
-  const createTeam = async () => {
-    if (!user) return;
-    const { data, error } = await supabase.from('fantasy_teams').insert({ user_id: user.id, team_name: teamName }).select().single();
-    if (error) return toast.error(error.message);
-    setTeamId(data.id);
-    toast.success('Team created!');
-  };
-
-  // Open player panel for a position
-  const openPanel = (pos: string) => {
-    setPanelPosition(pos);
-    setPanelOpen(true);
-    setPanelNation(null);
-    setPanelPlayers([]);
-    setPanelSearch('');
-  };
-
-  // Fetch players by nation
-  const fetchNation = async (nationId: number) => {
-    setPanelNation(nationId);
-    setPanelLoading(true);
-    try {
-      const data = await callApi('players/squads', { team: String(nationId) });
-      if (data?.[0]?.players) setPanelPlayers(data[0].players);
-      else setPanelPlayers([]);
-    } catch { setPanelPlayers([]); }
-    setPanelLoading(false);
-  };
-
-  // Search player by name across all WC teams
-  const searchTimer = useRef<any>(null);
-  const searchPlayerByName = (query: string) => {
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(async () => {
-      if (query.length < 3) return;
-      setPanelLoading(true);
-      try {
-        const data = await callApi('players', { search: query, league: '1', season: '2026' });
-        if (data?.length > 0) {
-          setPanelPlayers(data.map((p: any) => ({
-            id: p.player?.id,
-            name: p.player?.name,
-            photo: p.player?.photo,
-            position: p.statistics?.[0]?.games?.position || 'Midfielder',
-            number: p.statistics?.[0]?.games?.number,
-            nationName: p.statistics?.[0]?.team?.name,
-            nationId: p.statistics?.[0]?.team?.id,
-          })));
-        } else {
-          // Fallback: search across loaded nations
-          const results: any[] = [];
-          for (const nation of NATIONS.slice(0, 6)) {
-            try {
-              const d = await callApi('players/squads', { team: String(nation.id) });
-              if (d?.[0]?.players) {
-                const matches = d[0].players.filter((p: any) => p.name.toLowerCase().includes(query.toLowerCase()));
-                results.push(...matches.map((p: any) => ({ ...p, nationName: nation.name, nationId: nation.id })));
-              }
-            } catch {}
-            if (results.length >= 10) break;
-          }
-          setPanelPlayers(results);
-        }
-      } catch { setPanelPlayers([]); }
-      setPanelLoading(false);
-    }, 500);
-  };
-
-  // Filtered panel players
   const filteredPlayers = useMemo(() => {
-    let list = panelPlayers;
-    if (panelPosition) list = list.filter(p => posShort(p.position) === panelPosition);
-    if (panelSearch) {
-      const q = panelSearch.toLowerCase();
-      list = list.filter(p => p.name.toLowerCase().includes(q));
-    }
-    return list;
-  }, [panelPlayers, panelPosition, panelSearch]);
+    return PLAYER_POOL.filter(p => {
+      const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.nation.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.club.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchPos = activeFilter === 'ALL' || p.pos === activeFilter;
+      return matchSearch && matchPos;
+    }).sort((a, b) => sortBy === 'power' ? b.power - a.power : b.price - a.price);
+  }, [searchQuery, activeFilter, sortBy]);
 
-  // Add player
-  const addPlayer = async (player: any) => {
-    if (!teamId || !user) return toast.error('Create team first');
-    const pos = posShort(player.position);
-    const price = getPlayerPrice(pos);
-    const nation = NATIONS.find(n => n.id === (player.nationId || panelNation));
-
-    if (squad.find(p => p.player_id === player.id)) return toast.error('Already in squad');
-    if (squad.filter(p => p.position === pos).length >= SQUAD_LIMITS[pos]) return toast.error(`Max ${SQUAD_LIMITS[pos]} ${pos}`);
+  const addPlayer = (player: typeof PLAYER_POOL[0]) => {
     if (squad.length >= 15) return toast.error('Squad full (15 max)');
-    if (budget < price) return toast.error(`Need ${price}M, have ${budget.toFixed(1)}M`);
-
-    const np: SPlayer = {
-      player_id: player.id, player_name: player.name, player_photo: player.photo || '',
-      team_name: player.nationName || nation?.name || '', nation: player.nationName || nation?.name || '', nation_flag: nation?.flag || '',
-      position: pos, price, points: 0,
-      is_starting: squad.filter(p => p.position === pos && p.is_starting).length < STARTING[pos],
-      is_captain: false, is_vice_captain: false,
-    };
-
-    const { error } = await supabase.from('fantasy_squad').insert({ team_id: teamId, user_id: user.id, ...np });
-    if (error) return toast.error(error.message);
-    setSquad([...squad, np]);
-    const nb = budget - price;
-    setBudget(nb);
-    await supabase.from('fantasy_teams').update({ budget_remaining: nb }).eq('id', teamId);
-    toast.success(`${player.name} added (${price}M)`);
+    if (budget - player.price < 0) return toast.error('Insufficient budget');
+    if (squad.filter(p => p.nation === player.nation).length >= 3) return toast.error(`Max 3 players from ${player.nation}`);
+    if (getByPos(player.pos).length >= POS_LIMITS[player.pos]) return toast.error(`${player.pos} slots full`);
+    setSquad([...squad, player]);
+    toast.success(`${player.name} added`);
   };
 
-  // Remove player
-  const removePlayer = async (pid: number) => {
-    if (!teamId) return;
-    const p = squad.find(s => s.player_id === pid);
-    if (!p) return;
-    await supabase.from('fantasy_squad').delete().eq('team_id', teamId).eq('player_id', pid);
-    setSquad(squad.filter(s => s.player_id !== pid));
-    const nb = budget + p.price;
-    setBudget(nb);
-    await supabase.from('fantasy_teams').update({ budget_remaining: nb }).eq('id', teamId);
-    toast.success(`${p.player_name} removed (+${p.price}M)`);
+  const removePlayer = (id: number) => {
+    const p = squad.find(s => s.id === id);
+    setSquad(squad.filter(s => s.id !== id));
+    if (p) toast.success(`${p.name} removed`);
   };
 
-  // Set captain
-  const setCaptain = async (pid: number) => {
-    if (!teamId) return;
-    const updated = squad.map(p => ({ ...p, is_captain: p.player_id === pid }));
-    setSquad(updated);
-    await supabase.from('fantasy_squad').update({ is_captain: false }).eq('team_id', teamId);
-    await supabase.from('fantasy_squad').update({ is_captain: true }).eq('team_id', teamId).eq('player_id', pid);
-    toast.success('Captain set!');
-  };
+  const autoPick = () => {
+    const newSquad: typeof PLAYER_POOL = [];
+    const sorted = [...PLAYER_POOL].sort((a, b) => b.power - a.power);
+    let remaining = 100;
+    const targets: Record<string, number> = { GK: 2, DEF: 5, MID: 5, FWD: 3 };
 
-  const starters = squad.filter(p => p.is_starting);
-  const bench = squad.filter(p => !p.is_starting);
+    for (const p of sorted) {
+      if (newSquad.length >= 15) break;
+      const posCount = newSquad.filter(s => s.pos === p.pos).length;
+      const nationCount = newSquad.filter(s => s.nation === p.nation).length;
+      if (posCount < targets[p.pos] && nationCount < 3 && remaining >= p.price) {
+        newSquad.push(p);
+        remaining -= p.price;
+      }
+    }
+    setSquad(newSquad);
+    toast.success(`AI picked ${newSquad.length} players!`);
+  };
 
   if (!user) return (
-    <div className="min-h-screen bg-[#0a0a0a]"><Header />
+    <div className="min-h-screen bg-[#0B0E14]"><Header />
       <div className="text-center py-20">
-        <Trophy className="w-16 h-16 text-[#00ff87]/20 mx-auto mb-4" />
+        <Trophy className="w-16 h-16 text-[#00FF66]/20 mx-auto mb-4" />
         <h2 className="text-xl font-black text-white mb-2">Fantasy World Cup 2026</h2>
         <p className="text-sm text-[#555] mb-6">Build your dream team · 100M budget · Compete globally</p>
-        <Link to="/auth" className="px-6 py-3 rounded-lg bg-[#00ff87] text-black font-bold text-sm">Sign In to Play</Link>
-      </div>
-    </div>
-  );
-
-  if (!teamId && !loading) return (
-    <div className="min-h-screen bg-[#0a0a0a]"><Header />
-      <div className="text-center py-20">
-        <Shield className="w-16 h-16 text-[#00ff87]/20 mx-auto mb-4" />
-        <h2 className="text-xl font-black text-white mb-3">Create Your Team</h2>
-        <input type="text" value={teamName} onChange={e => setTeamName(e.target.value)} placeholder="Team name..."
-          className="w-full max-w-xs mx-auto mb-4 px-4 py-3 rounded-lg bg-[#111] border border-[#222] text-white text-center text-sm focus:outline-none focus:border-[#00ff87]/50" />
-        <br /><button onClick={createTeam} className="px-6 py-3 rounded-lg bg-[#00ff87] text-black font-bold text-sm">Create Team</button>
+        <Link to="/auth" className="px-6 py-3 rounded-lg bg-[#00FF66] text-black font-bold text-sm">Sign In to Play</Link>
       </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a]">
+    <div className="min-h-screen bg-[#0B0E14] text-gray-100">
       <SEOHead title="Fantasy World Cup 2026 | LastFootball" description="Build your FIFA World Cup 2026 fantasy team." path="/fantasy" />
       <Header />
 
-      {/* Stats bar */}
-      <div className="bg-[#0d0d0d] border-b border-[#1a1a1a]">
-        <div className="container max-w-6xl flex items-center gap-3 py-2 overflow-x-auto no-scrollbar">
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-[#111] rounded-lg border border-[#1e1e1e]">
-            <Coins className="w-3.5 h-3.5 text-[#00ff87]" />
-            <span className="text-[10px] text-[#555] uppercase tracking-widest">Budget</span>
-            <span className="text-sm font-black text-[#00ff87] tabular-nums">{budget.toFixed(1)}M</span>
+      {/* ─── STATS HEADER BAR ────────────────────────────────────────── */}
+      <div className="bg-[#161B26]/80 backdrop-blur-md border-b border-gray-800 sticky top-14 z-30 px-4 py-2">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+          <span className="text-sm font-black tracking-wider text-white">LAST<span className="text-[#00FF66]">FOOTBALL</span> <span className="text-[10px] text-gray-500 ml-1">FANTASY WC</span></span>
+
+          <div className="flex items-center gap-4 bg-black/40 px-4 py-1.5 rounded-xl border border-gray-800/60">
+            <div className="text-center">
+              <p className="text-[9px] text-gray-500 uppercase tracking-widest">Budget</p>
+              <p className={cn('text-sm font-mono font-bold', budget >= 0 ? 'text-[#00FF66]' : 'text-red-400')}>${budget.toFixed(1)}M</p>
+            </div>
+            <div className="h-6 w-px bg-gray-800" />
+            <div className="text-center">
+              <p className="text-[9px] text-gray-500 uppercase tracking-widest">Squad</p>
+              <p className="text-sm font-mono font-bold text-white">{squad.length}/15</p>
+            </div>
+            <div className="h-6 w-px bg-gray-800" />
+            <div className="text-center">
+              <p className="text-[9px] text-gray-500 uppercase tracking-widest">Transfers</p>
+              <p className="text-sm font-mono font-bold text-white">2/2</p>
+            </div>
           </div>
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-[#111] rounded-lg border border-[#1e1e1e]">
-            <Shield className="w-3.5 h-3.5 text-white" />
-            <span className="text-[10px] text-[#555] uppercase tracking-widest">Squad</span>
-            <span className="text-sm font-black text-white tabular-nums">{squad.length}/15</span>
+
+          <div className="flex items-center gap-2">
+            <button onClick={autoPick} className="bg-gray-800 hover:bg-gray-700 text-[10px] font-bold px-3 py-1.5 rounded-lg text-gray-200 flex items-center gap-1">
+              🤖 AI Pick
+            </button>
+            <button onClick={() => { if (squad.length < 15) toast.error(`Need ${15 - squad.length} more`); else toast.success('Squad saved!'); }}
+              className="bg-[#00FF66] hover:opacity-90 text-black text-[10px] font-black px-3 py-1.5 rounded-lg uppercase tracking-wider">
+              Save
+            </button>
           </div>
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-[#111] rounded-lg border border-[#1e1e1e]">
-            <Trophy className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-[10px] text-[#555] uppercase tracking-widest">Points</span>
-            <span className="text-sm font-black text-amber-400 tabular-nums">{squad.reduce((s, p) => s + p.points, 0)}</span>
-          </div>
-          <button onClick={() => setShowLeaderboard(!showLeaderboard)}
-            className="flex items-center gap-1.5 px-3 py-1 bg-[#111] rounded-lg border border-[#1e1e1e] text-[10px] text-[#555] uppercase tracking-widest hover:text-white transition-colors ml-auto">
-            <Crown className="w-3.5 h-3.5 text-amber-400" /> Rankings
-          </button>
         </div>
       </div>
 
-      {showLeaderboard && (
-        <div className="container max-w-6xl py-4"><FantasyLeaderboard userId={user?.id} /><button onClick={() => setShowLeaderboard(false)} className="text-xs text-[#555] mt-2 hover:text-white">Close Rankings</button></div>
-      )}
+      {/* ─── MAIN SPLIT: PITCH + MARKET ──────────────────────────────── */}
+      <main className="max-w-7xl mx-auto p-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
 
-      {/* ─── MAIN SPLIT LAYOUT ───────────────────────────────────────── */}
-      <div className="container max-w-6xl py-4 pb-20 md:pb-6">
-        <div className="flex gap-4 flex-col lg:flex-row">
+        {/* LEFT — PITCH (7 cols) */}
+        <section className="lg:col-span-7">
+          <div className="relative bg-gradient-to-b from-[#111827] to-[#061F12] rounded-2xl border border-gray-800 p-4 min-h-[540px] flex flex-col justify-between">
+            {/* Pitch lines */}
+            <div className="absolute inset-[5%] border-2 border-[#00FF66]/10 pointer-events-none rounded" />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 border-2 border-[#00FF66]/10 rounded-full pointer-events-none" />
 
-          {/* LEFT — Pitch */}
-          <div className="flex-1 min-w-0">
-            <div className="relative bg-gradient-to-b from-[#1a3a1a] to-[#0d2a0d] rounded-xl border border-[#2a4a2a] overflow-hidden" style={{ minHeight: '420px' }}>
-              {/* Pitch markings */}
-              <div className="absolute inset-0 pointer-events-none">
-                <div className="absolute top-1/2 left-0 right-0 h-px bg-white/10" />
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 rounded-full border border-white/10" />
-                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-40 h-14 border-t border-l border-r border-white/10 rounded-t-none" />
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-40 h-14 border-b border-l border-r border-white/10" />
-              </div>
-
-              <div className="relative z-10 flex flex-col items-center gap-3 py-5">
-                {/* FWD row */}
-                <PitchRow pos="FWD" starters={starters} limit={STARTING.FWD} onAdd={() => openPanel('FWD')} onRemove={removePlayer} onCaptain={setCaptain} />
-                {/* MID row */}
-                <PitchRow pos="MID" starters={starters} limit={STARTING.MID} onAdd={() => openPanel('MID')} onRemove={removePlayer} onCaptain={setCaptain} />
-                {/* DEF row */}
-                <PitchRow pos="DEF" starters={starters} limit={STARTING.DEF} onAdd={() => openPanel('DEF')} onRemove={removePlayer} onCaptain={setCaptain} />
-                {/* GK row */}
-                <PitchRow pos="GK" starters={starters} limit={STARTING.GK} onAdd={() => openPanel('GK')} onRemove={removePlayer} onCaptain={setCaptain} />
-              </div>
-            </div>
+            {/* FWD */}
+            <PitchLine pos="FWD" squad={getByPos('FWD')} limit={3} onAdd={() => setActiveFilter('FWD')} onRemove={removePlayer} />
+            {/* MID */}
+            <PitchLine pos="MID" squad={getByPos('MID')} limit={5} onAdd={() => setActiveFilter('MID')} onRemove={removePlayer} />
+            {/* DEF */}
+            <PitchLine pos="DEF" squad={getByPos('DEF')} limit={5} onAdd={() => setActiveFilter('DEF')} onRemove={removePlayer} />
+            {/* GK */}
+            <PitchLine pos="GK" squad={getByPos('GK')} limit={2} onAdd={() => setActiveFilter('GK')} onRemove={removePlayer} />
 
             {/* Bench */}
-            {bench.length > 0 && (
-              <div className="bg-[#111] border border-[#1e1e1e] rounded-xl p-3 mt-3">
-                <p className="text-[9px] uppercase tracking-widest text-[#555] font-bold mb-2">SUBSTITUTES</p>
-                <div className="flex gap-3 overflow-x-auto no-scrollbar">
-                  {bench.map(p => (
-                    <div key={p.player_id} className="flex-shrink-0 text-center group relative">
-                      <div className="w-11 h-11 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] overflow-hidden mx-auto">
-                        {p.player_photo ? <img src={p.player_photo} alt="" className="w-full h-full object-cover" /> :
-                          <div className="w-full h-full flex items-center justify-center text-[8px] text-[#444]">{p.position}</div>}
-                      </div>
-                      <p className="text-[8px] text-[#888] mt-1 truncate max-w-[55px]">{p.player_name.split(' ').pop()}</p>
-                      <button onClick={() => removePlayer(p.player_id)} className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500/80 text-white text-[8px] hidden group-hover:flex items-center justify-center">✕</button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* RIGHT — Player Panel (always visible on desktop, slide-up on mobile) */}
-          <div className={cn(
-            'lg:w-[340px] flex-shrink-0',
-            // Mobile: fixed bottom panel
-            panelOpen ? 'fixed inset-x-0 bottom-0 z-40 max-h-[70vh] bg-[#0d0d0d] border-t border-[#222] rounded-t-2xl lg:static lg:max-h-none lg:border-t-0 lg:rounded-none' : 'hidden lg:block',
-          )}>
-            {/* Panel header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e1e1e]">
-              <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4 text-[#00ff87]" />
-                <span className="text-xs font-bold text-white uppercase tracking-widest">
-                  {panelPosition ? `Select ${panelPosition}` : 'Player Market'}
-                </span>
-              </div>
-              {/* Mobile close */}
-              <button onClick={() => setPanelOpen(false)} className="lg:hidden p-1 text-[#555] hover:text-white">
-                <X className="w-4 h-4" />
-              </button>
-              {/* Position filter on desktop */}
-              <div className="hidden lg:flex gap-1">
-                {['GK', 'DEF', 'MID', 'FWD'].map(pos => (
-                  <button key={pos} onClick={() => setPanelPosition(panelPosition === pos ? null : pos)}
-                    className={cn('px-2 py-0.5 rounded text-[9px] font-bold uppercase',
-                      panelPosition === pos ? 'bg-[#00ff87] text-black' : 'text-[#555] hover:text-white',
-                    )}>
-                    {pos}
-                  </button>
+            <div className="relative z-10 mt-3 pt-2 border-t border-gray-800/60 bg-black/30 rounded-xl p-2">
+              <p className="text-[9px] text-gray-500 uppercase tracking-widest text-center mb-1.5">Bench</p>
+              <div className="flex justify-center gap-3 flex-wrap">
+                {squad.slice(11).map(p => (
+                  <div key={p.id} onClick={() => removePlayer(p.id)} className="text-center w-12 cursor-pointer group">
+                    <div className="w-8 h-8 mx-auto bg-gray-800 group-hover:bg-red-500/20 rounded-lg flex items-center justify-center border border-gray-700 text-sm">👕</div>
+                    <p className="text-[8px] text-gray-400 truncate mt-0.5">{p.name.split(' ').pop()}</p>
+                  </div>
                 ))}
+                {squad.length <= 11 && <p className="text-[10px] text-gray-600 italic py-1">Fill starting XI first</p>}
               </div>
             </div>
+          </div>
+        </section>
+
+        {/* RIGHT — MARKET (5 cols) */}
+        <section className="lg:col-span-5">
+          <div className="bg-[#161B26] border border-gray-800 rounded-2xl p-3 flex flex-col" style={{ height: '540px' }}>
 
             {/* Search */}
-            <div className="px-3 py-2 border-b border-[#1a1a1a]">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#444]" />
-                <input type="text" placeholder="Search player name..." value={panelSearch}
-                  onChange={e => {
-                    setPanelSearch(e.target.value);
-                    // If no nation selected, search via API
-                    if (!panelNation && e.target.value.length >= 3) {
-                      searchPlayerByName(e.target.value);
-                    }
-                  }}
-                  className="w-full pl-8 pr-3 py-2 rounded-lg bg-[#111] border border-[#1e1e1e] text-xs text-white placeholder:text-[#444] focus:outline-none focus:border-[#00ff87]/30" />
-              </div>
+            <div className="relative mb-2">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
+              <input type="text" placeholder="Search player, nation, club..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                className="w-full bg-[#0B0E14] border border-gray-700 rounded-xl pl-9 pr-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#00FF66] transition" />
             </div>
 
-            {/* Nation pills */}
-            <div className="flex gap-1 px-3 py-2 overflow-x-auto no-scrollbar border-b border-[#1a1a1a]">
-              {NATIONS.map(n => (
-                <button key={n.id} onClick={() => fetchNation(n.id)}
-                  className={cn('flex items-center gap-1 px-2 py-1 rounded-full text-[9px] font-bold whitespace-nowrap transition-all flex-shrink-0',
-                    panelNation === n.id ? 'bg-[#00ff87] text-black' : 'bg-[#111] text-[#555] border border-[#1e1e1e]',
+            {/* Position filter */}
+            <div className="grid grid-cols-5 gap-1 bg-[#0B0E14] p-1 rounded-xl border border-gray-800 mb-2">
+              {['ALL', 'GK', 'DEF', 'MID', 'FWD'].map(pos => (
+                <button key={pos} onClick={() => setActiveFilter(pos)}
+                  className={cn('text-[10px] font-bold py-1.5 rounded-lg transition',
+                    activeFilter === pos ? 'bg-[#00FF66] text-black' : 'text-gray-500 hover:text-white',
                   )}>
-                  <img src={`https://flagcdn.com/w16/${n.flag}.png`} alt="" className="w-3 h-2 object-cover rounded-sm" />
-                  {n.name.length > 8 ? n.name.slice(0, 7) + '.' : n.name}
+                  {pos}
                 </button>
               ))}
             </div>
 
+            {/* Sort */}
+            <div className="flex gap-2 mb-2">
+              <button onClick={() => setSortBy('power')} className={cn('text-[9px] px-2 py-1 rounded font-bold', sortBy === 'power' ? 'bg-[#00FF66]/20 text-[#00FF66]' : 'text-gray-600')}>⭐ Rating</button>
+              <button onClick={() => setSortBy('price')} className={cn('text-[9px] px-2 py-1 rounded font-bold', sortBy === 'price' ? 'bg-[#00FF66]/20 text-[#00FF66]' : 'text-gray-600')}>💰 Price</button>
+            </div>
+
             {/* Player list */}
-            <div className="overflow-y-auto" style={{ maxHeight: 'calc(70vh - 160px)' }}>
-              {panelLoading ? (
-                <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-[#00ff87]" /></div>
-              ) : !panelNation ? (
-                <p className="text-xs text-[#444] text-center py-10">Select a nation to browse players</p>
-              ) : filteredPlayers.length === 0 ? (
-                <p className="text-xs text-[#444] text-center py-10">No {panelPosition || ''} players found</p>
-              ) : (
-                filteredPlayers.map(p => {
-                  const pos = posShort(p.position);
-                  const price = getPlayerPrice(pos);
-                  const inSquad = squad.some(s => s.player_id === p.id);
-                  return (
-                    <div key={p.id} className={cn('flex items-center gap-2 px-3 py-2 border-b border-[#111] hover:bg-[#111] transition-colors',
-                      inSquad && 'opacity-50',
-                    )}>
-                      <div className="w-9 h-9 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] overflow-hidden flex-shrink-0">
-                        {p.photo ? <img src={p.photo} alt="" className="w-full h-full object-cover" /> :
-                          <div className="w-full h-full flex items-center justify-center text-[8px] text-[#444]">{pos}</div>}
+            <div className="flex-1 overflow-y-auto space-y-1 pr-1">
+              {filteredPlayers.map(player => {
+                const selected = isSelected(player.id);
+                return (
+                  <div key={player.id} className={cn('flex items-center justify-between p-2 rounded-xl border transition group',
+                    selected ? 'bg-[#00FF66]/5 border-[#00FF66]/20' : 'bg-[#0B0E14]/60 hover:bg-[#0B0E14] border-gray-800/60',
+                  )}>
+                    <div className="flex items-center gap-2.5">
+                      <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center border text-lg', POS_COLORS[player.pos])}>
+                        👕
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-white truncate">{p.name}</p>
-                        <p className="text-[9px] text-[#444]">{pos} · #{p.number || '?'}</p>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-bold text-white group-hover:text-[#00FF66] transition">{player.name}</span>
+                          <span className="text-[9px] font-mono bg-gray-800 text-gray-400 px-1 rounded">{player.pos}</span>
+                        </div>
+                        <p className="text-[10px] text-gray-500">{player.flag} {player.nation} · <span className="text-gray-600 font-mono">{player.club}</span></p>
                       </div>
-                      <span className="text-[10px] font-bold text-[#00ff87] tabular-nums mr-1">{price}M</span>
-                      {inSquad ? (
-                        <span className="text-[8px] text-[#00ff87] bg-[#00ff87]/10 px-1.5 py-0.5 rounded font-bold">IN</span>
-                      ) : (
-                        <button onClick={() => addPlayer(p)}
-                          className="text-[9px] font-bold px-2.5 py-1 bg-[#00ff87] text-black rounded hover:opacity-90">+</button>
-                      )}
                     </div>
-                  );
-                })
+                    <div className="flex items-center gap-2">
+                      <div className="text-right">
+                        <p className="text-xs font-mono font-bold text-white">${player.price.toFixed(1)}M</p>
+                        <p className="text-[9px] text-gray-600">⭐ {player.power}</p>
+                      </div>
+                      <button onClick={() => selected ? removePlayer(player.id) : addPlayer(player)}
+                        className={cn('w-7 h-7 rounded-lg flex items-center justify-center font-black text-xs transition',
+                          selected ? 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500 hover:text-white' : 'bg-[#00FF66] text-black hover:opacity-80',
+                        )}>
+                        {selected ? '✕' : '+'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+              {filteredPlayers.length === 0 && (
+                <p className="text-xs text-gray-600 text-center py-10">No matching players</p>
               )}
             </div>
           </div>
-        </div>
-      </div>
+        </section>
+      </main>
     </div>
   );
 }
 
-// ─── Pitch Row ──────────────────────────────────────────────────────────────
-function PitchRow({ pos, starters, limit, onAdd, onRemove, onCaptain }: {
-  pos: string; starters: SPlayer[]; limit: number;
-  onAdd: () => void; onRemove: (id: number) => void; onCaptain: (id: number) => void;
+// ─── Pitch Line Component ───────────────────────────────────────────────────
+function PitchLine({ pos, squad, limit, onAdd, onRemove }: {
+  pos: string; squad: typeof PLAYER_POOL; limit: number;
+  onAdd: () => void; onRemove: (id: number) => void;
 }) {
-  const players = starters.filter(p => p.position === pos);
-  const empty = Math.max(0, limit - players.length);
-  const gap = pos === 'GK' ? 'gap-8' : pos === 'DEF' ? 'gap-4' : pos === 'MID' ? 'gap-5' : 'gap-8';
+  const empty = Math.max(0, limit - squad.length);
+  const gap = pos === 'GK' ? 'gap-6' : pos === 'DEF' ? 'gap-2 sm:gap-3' : 'gap-2 sm:gap-4';
 
   return (
-    <div className={cn('flex justify-center items-end', gap, pos !== 'FWD' && 'mt-3')}>
-      {players.map(p => (
-        <div key={p.player_id} className="text-center group relative">
-          <div className={cn('w-12 h-12 sm:w-14 sm:h-14 rounded-full border-2 overflow-hidden mx-auto transition-all cursor-pointer',
-            p.is_captain ? 'border-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.4)]' : 'border-white/20 hover:border-white/40',
-          )}>
-            {p.player_photo ? <img src={p.player_photo} alt="" className="w-full h-full object-cover" /> :
-              <div className="w-full h-full bg-[#1a3a1a] flex items-center justify-center text-[9px] text-white/40">{pos}</div>}
+    <div className={cn('relative z-10 flex justify-center flex-wrap my-1', gap)}>
+      {squad.map(p => (
+        <div key={p.id} onClick={() => onRemove(p.id)} className="group cursor-pointer text-center w-14 sm:w-16">
+          <div className={cn('relative mx-auto w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center rounded-xl border-2 transition shadow-lg group-hover:bg-red-500/20 group-hover:border-red-400', POS_COLORS[p.pos])}>
+            <span className="text-xl">👕</span>
+            <span className="absolute -top-1 -right-1 bg-black text-[7px] text-white px-1 rounded font-mono border border-gray-700">{p.pos}</span>
           </div>
-          {p.is_captain && (
-            <div className="absolute -top-1 -right-0.5 w-4 h-4 rounded-full bg-amber-400 flex items-center justify-center shadow">
-              <span className="text-[7px] font-black text-black">C</span>
-            </div>
-          )}
-          <p className="text-[8px] sm:text-[9px] font-bold text-white mt-1 truncate max-w-[60px] sm:max-w-[70px]">{p.player_name.split(' ').pop()}</p>
-          <p className="text-[7px] text-white/30">{p.price}M</p>
-          {/* Hover actions */}
-          <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 hidden group-hover:flex gap-0.5 bg-[#111] border border-[#222] rounded px-1 py-0.5 z-20">
-            <button onClick={() => onCaptain(p.player_id)} className="text-[7px] text-amber-400 px-1 hover:text-amber-300" title="Captain">C</button>
-            <button onClick={() => onRemove(p.player_id)} className="text-[7px] text-red-400 px-1 hover:text-red-300" title="Remove">✕</button>
-          </div>
+          <p className="text-[9px] font-bold text-white truncate mt-0.5 drop-shadow">{p.name.split(' ').pop()}</p>
+          <p className="text-[8px] font-mono text-[#00FF66]">${p.price}M</p>
         </div>
       ))}
       {Array.from({ length: empty }).map((_, i) => (
-        <button key={`e-${i}`} onClick={onAdd} className="text-center">
-          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full border-2 border-dashed border-white/10 flex items-center justify-center mx-auto hover:border-[#00ff87]/40 transition-colors">
-            <span className="text-base text-white/10 hover:text-[#00ff87]/40">+</span>
+        <div key={`e-${i}`} onClick={onAdd} className="cursor-pointer text-center w-14 sm:w-16 group">
+          <div className="mx-auto w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center border-2 border-dashed border-gray-600 group-hover:border-[#00FF66] rounded-xl transition bg-black/40">
+            <span className="text-gray-600 group-hover:text-[#00FF66] text-lg">+</span>
           </div>
-          <p className="text-[8px] text-white/15 mt-1 font-bold">{pos}</p>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// ─── Leaderboard ────────────────────────────────────────────────────────────
-function FantasyLeaderboard({ userId }: { userId?: string }) {
-  const [teams, setTeams] = useState<any[]>([]);
-  useEffect(() => {
-    supabase.from('fantasy_teams').select('*').order('total_points', { ascending: false }).limit(20)
-      .then(({ data }) => { if (data) setTeams(data); });
-  }, []);
-
-  if (teams.length === 0) return <p className="text-xs text-[#555] text-center py-6">No teams yet</p>;
-
-  return (
-    <div className="bg-[#111] border border-[#1e1e1e] rounded-xl overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-2 bg-[#0d0d0d] text-[9px] uppercase tracking-widest text-[#444] font-bold">
-        <span className="w-7 text-center">#</span><span className="flex-1">TEAM</span><span className="w-14 text-center">PTS</span>
-      </div>
-      {teams.map((t, i) => (
-        <div key={t.id} className={cn('flex items-center gap-2 px-4 py-2 border-t border-[#1a1a1a]', userId === t.user_id && 'bg-[#00ff87]/5')}>
-          <span className={cn('w-7 text-center text-xs font-black', i === 0 ? 'text-amber-400' : i === 1 ? 'text-gray-400' : i === 2 ? 'text-orange-400' : 'text-[#555]')}>
-            {i <= 2 ? ['🥇', '🥈', '🥉'][i] : i + 1}
-          </span>
-          <span className={cn('flex-1 text-sm font-semibold truncate', userId === t.user_id ? 'text-[#00ff87]' : 'text-white')}>{t.team_name}</span>
-          <span className="w-14 text-center text-sm font-black text-white tabular-nums">{t.total_points}</span>
+          <p className="text-[8px] text-gray-600 mt-0.5 uppercase tracking-wider">{pos}</p>
         </div>
       ))}
     </div>
