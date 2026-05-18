@@ -15,6 +15,9 @@ const CODE_MAP: Record<string, string> = {
   ENG: 'gb-eng', GHA: 'gh', PAN: 'pa', ALG: 'dz',
   POR: 'pt', COD: 'cd', NGA: 'ng', SUI: 'ch',
   ITA: 'it', IRN: 'ir', CMR: 'cm', PER: 'pe',
+  BEL: 'be', EGY: 'eg', NZL: 'nz', URU: 'uy',
+  WAL: 'gb-wls', NIR: 'gb-nir', DEN: 'dk', POL: 'pl',
+  SRB: 'rs', UKR: 'ua', ROU: 'ro', GRE: 'gr',
 };
 
 interface FlagProps {
