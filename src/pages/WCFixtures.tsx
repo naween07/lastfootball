@@ -10,33 +10,33 @@ import { cn } from '@/lib/utils';
 const WC_START = new Date('2026-06-11T19:00:00Z').getTime();
 
 const GROUPS = [
-  { name: 'A', teams: ['MEX', 'KOR', 'CZE', 'RSA'] },
-  { name: 'B', teams: ['CAN', 'AUS', 'BIH', 'QAT'] },
-  { name: 'C', teams: ['BRA', 'MAR', 'SCO', 'HAI'] },
-  { name: 'D', teams: ['USA', 'TUR', 'PAR', 'CRO'] },
-  { name: 'E', teams: ['GER', 'CIV', 'CUW', 'ECU'] },
-  { name: 'F', teams: ['NED', 'JPN', 'SWE', 'TUN'] },
-  { name: 'G', teams: ['ARG', 'COL', 'AUT', 'UZB'] },
-  { name: 'H', teams: ['ESP', 'KSA', 'CPV', 'JOR'] },
+  { name: 'A', teams: ['MEX', 'RSA', 'KOR', 'CZE'] },
+  { name: 'B', teams: ['CAN', 'SUI', 'QAT', 'BIH'] },
+  { name: 'C', teams: ['BRA', 'MAR', 'HAI', 'SCO'] },
+  { name: 'D', teams: ['USA', 'PAR', 'AUS', 'TUR'] },
+  { name: 'E', teams: ['GER', 'CUW', 'CIV', 'ECU'] },
+  { name: 'F', teams: ['NED', 'JPN', 'TUN', 'SWE'] },
+  { name: 'G', teams: ['BEL', 'EGY', 'IRN', 'NZL'] },
+  { name: 'H', teams: ['ESP', 'CPV', 'KSA', 'URU'] },
   { name: 'I', teams: ['FRA', 'SEN', 'NOR', 'IRQ'] },
-  { name: 'J', teams: ['ENG', 'GHA', 'PAN', 'ALG'] },
-  { name: 'K', teams: ['POR', 'COD', 'NGA', 'SUI'] },
-  { name: 'L', teams: ['ITA', 'IRN', 'CMR', 'PER'] },
+  { name: 'J', teams: ['ARG', 'ALG', 'AUT', 'JOR'] },
+  { name: 'K', teams: ['POR', 'UZB', 'COL', 'COD'] },
+  { name: 'L', teams: ['ENG', 'CRO', 'GHA', 'PAN'] },
 ];
 
 const TEAM_INFO: Record<string, { name: string }> = {
   MEX: { name: 'Mexico' }, KOR: { name: 'South Korea' }, CZE: { name: 'Czechia' }, RSA: { name: 'South Africa' },
-  CAN: { name: 'Canada' }, AUS: { name: 'Australia' }, BIH: { name: 'Bosnia & Herz.' }, QAT: { name: 'Qatar' },
+  CAN: { name: 'Canada' }, SUI: { name: 'Switzerland' }, BIH: { name: 'Bosnia & Herz.' }, QAT: { name: 'Qatar' },
   BRA: { name: 'Brazil' }, MAR: { name: 'Morocco' }, SCO: { name: 'Scotland' }, HAI: { name: 'Haiti' },
-  USA: { name: 'USA' }, TUR: { name: 'Turkey' }, PAR: { name: 'Paraguay' }, CRO: { name: 'Croatia' },
-  GER: { name: 'Germany' }, CIV: { name: 'Ivory Coast' }, CUW: { name: 'Curaçao' }, ECU: { name: 'Ecuador' },
+  USA: { name: 'USA' }, TUR: { name: 'Türkiye' }, PAR: { name: 'Paraguay' }, AUS: { name: 'Australia' },
+  GER: { name: 'Germany' }, CIV: { name: "Côte d'Ivoire" }, CUW: { name: 'Curaçao' }, ECU: { name: 'Ecuador' },
   NED: { name: 'Netherlands' }, JPN: { name: 'Japan' }, SWE: { name: 'Sweden' }, TUN: { name: 'Tunisia' },
-  ARG: { name: 'Argentina' }, COL: { name: 'Colombia' }, AUT: { name: 'Austria' }, UZB: { name: 'Uzbekistan' },
-  ESP: { name: 'Spain' }, KSA: { name: 'Saudi Arabia' }, CPV: { name: 'Cape Verde' }, JOR: { name: 'Jordan' },
+  BEL: { name: 'Belgium' }, EGY: { name: 'Egypt' }, IRN: { name: 'IR Iran' }, NZL: { name: 'New Zealand' },
+  ESP: { name: 'Spain' }, KSA: { name: 'Saudi Arabia' }, CPV: { name: 'Cabo Verde' }, URU: { name: 'Uruguay' },
   FRA: { name: 'France' }, SEN: { name: 'Senegal' }, NOR: { name: 'Norway' }, IRQ: { name: 'Iraq' },
-  ENG: { name: 'England' }, GHA: { name: 'Ghana' }, PAN: { name: 'Panama' }, ALG: { name: 'Algeria' },
-  POR: { name: 'Portugal' }, COD: { name: 'DR Congo' }, NGA: { name: 'Nigeria' }, SUI: { name: 'Switzerland' },
-  ITA: { name: 'Italy' }, IRN: { name: 'Iran' }, CMR: { name: 'Cameroon' }, PER: { name: 'Peru' },
+  ARG: { name: 'Argentina' }, ALG: { name: 'Algeria' }, AUT: { name: 'Austria' }, JOR: { name: 'Jordan' },
+  POR: { name: 'Portugal' }, UZB: { name: 'Uzbekistan' }, COL: { name: 'Colombia' }, COD: { name: 'DR Congo' },
+  ENG: { name: 'England' }, CRO: { name: 'Croatia' }, GHA: { name: 'Ghana' }, PAN: { name: 'Panama' },
 };
 
 // Group stage match schedule (3 matchdays per group)
