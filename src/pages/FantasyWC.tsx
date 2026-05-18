@@ -51,11 +51,52 @@ const PLAYER_POOL = [
   { id: 63, name: 'Marc-André ter Stegen', pos: 'GK', nation: 'Germany', flag: '🇩🇪', club: 'Barcelona', price: 5.0, power: 86 },
   { id: 64, name: 'Mike Maignan', pos: 'GK', nation: 'France', flag: '🇫🇷', club: 'AC Milan', price: 5.0, power: 85 },
   { id: 65, name: 'Diogo Costa', pos: 'GK', nation: 'Portugal', flag: '🇵🇹', club: 'Porto', price: 4.5, power: 82 },
+  { id: 70, name: 'Cristiano Ronaldo', pos: 'FWD', nation: 'Portugal', flag: '🇵🇹', club: 'Al Nassr', price: 11.0, power: 91 },
+  { id: 71, name: 'Mohamed Salah', pos: 'FWD', nation: 'Egypt', flag: '🇪🇬', club: 'Liverpool', price: 12.5, power: 94 },
+  { id: 72, name: 'Neymar Jr', pos: 'FWD', nation: 'Brazil', flag: '🇧🇷', club: 'Santos', price: 10.0, power: 88 },
+  { id: 73, name: 'Son Heung-min', pos: 'FWD', nation: 'South Korea', flag: '🇰🇷', club: 'Tottenham', price: 10.5, power: 89 },
+  { id: 74, name: 'Robert Lewandowski', pos: 'FWD', nation: 'Poland', flag: '🇵🇱', club: 'Barcelona', price: 10.0, power: 89 },
+  { id: 75, name: 'Lamine Yamal', pos: 'MID', nation: 'Spain', flag: '🇪🇸', club: 'Barcelona', price: 11.0, power: 92 },
+  { id: 76, name: 'Phil Foden', pos: 'MID', nation: 'England', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', club: 'Man City', price: 10.0, power: 90 },
+  { id: 77, name: 'Rodri', pos: 'MID', nation: 'Spain', flag: '🇪🇸', club: 'Man City', price: 9.5, power: 92 },
+  { id: 78, name: 'Toni Kroos', pos: 'MID', nation: 'Germany', flag: '🇩🇪', club: 'Real Madrid', price: 8.0, power: 87 },
+  { id: 79, name: 'Declan Rice', pos: 'MID', nation: 'England', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', club: 'Arsenal', price: 8.5, power: 87 },
+  { id: 80, name: 'Bernardo Silva', pos: 'MID', nation: 'Portugal', flag: '🇵🇹', club: 'Man City', price: 9.0, power: 89 },
+  { id: 81, name: 'Antoine Griezmann', pos: 'FWD', nation: 'France', flag: '🇫🇷', club: 'Atlético', price: 9.0, power: 87 },
+  { id: 82, name: 'Ousmane Dembélé', pos: 'FWD', nation: 'France', flag: '🇫🇷', club: 'PSG', price: 9.5, power: 88 },
+  { id: 83, name: 'Dani Olmo', pos: 'MID', nation: 'Spain', flag: '🇪🇸', club: 'Barcelona', price: 8.5, power: 87 },
+  { id: 84, name: 'Aurélien Tchouaméni', pos: 'MID', nation: 'France', flag: '🇫🇷', club: 'Real Madrid', price: 8.0, power: 86 },
+  { id: 85, name: 'Marquinhos', pos: 'DEF', nation: 'Brazil', flag: '🇧🇷', club: 'PSG', price: 6.0, power: 85 },
+  { id: 86, name: 'Raphaël Varane', pos: 'DEF', nation: 'France', flag: '🇫🇷', club: 'Como', price: 5.0, power: 81 },
+  { id: 87, name: 'Trent Alexander-Arnold', pos: 'DEF', nation: 'England', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', club: 'Real Madrid', price: 6.5, power: 87 },
+  { id: 88, name: 'Kyle Walker', pos: 'DEF', nation: 'England', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', club: 'Man City', price: 5.5, power: 83 },
+  { id: 89, name: 'Ederson', pos: 'GK', nation: 'Brazil', flag: '🇧🇷', club: 'Man City', price: 5.5, power: 87 },
+  { id: 90, name: 'Jan Oblak', pos: 'GK', nation: 'Slovenia', flag: '🇸🇮', club: 'Atlético', price: 5.0, power: 85 },
+  { id: 91, name: 'Darwin Núñez', pos: 'FWD', nation: 'Uruguay', flag: '🇺🇾', club: 'Liverpool', price: 9.5, power: 87 },
+  { id: 92, name: 'Sadio Mané', pos: 'FWD', nation: 'Senegal', flag: '🇸🇳', club: 'Al Nassr', price: 8.0, power: 84 },
+  { id: 93, name: 'Mohammed Kudus', pos: 'MID', nation: 'Ghana', flag: '🇬🇭', club: 'West Ham', price: 7.5, power: 84 },
+  { id: 94, name: 'Achraf Hakimi', pos: 'DEF', nation: 'Morocco', flag: '🇲🇦', club: 'PSG', price: 6.0, power: 85 },
+  { id: 95, name: 'Christian Pulisic', pos: 'MID', nation: 'USA', flag: '🇺🇸', club: 'AC Milan', price: 8.0, power: 85 },
+  { id: 96, name: 'Luka Modrić', pos: 'MID', nation: 'Croatia', flag: '🇭🇷', club: 'Real Madrid', price: 7.5, power: 85 },
 ];
 
 const POS_LIMITS: Record<string, number> = { GK: 2, DEF: 5, MID: 5, FWD: 3 };
 const POS_COLORS: Record<string, string> = { GK: 'border-yellow-400 bg-yellow-500/20', DEF: 'border-blue-400 bg-blue-500/20', MID: 'border-green-400 bg-green-500/20', FWD: 'border-red-400 bg-red-500/20' };
 const STARTING_XI: Record<string, number> = { GK: 1, DEF: 4, MID: 4, FWD: 2 };
+
+function posMap(p: string): string {
+  if (p?.includes('Goal')) return 'GK';
+  if (p?.includes('Defend')) return 'DEF';
+  if (p?.includes('Mid')) return 'MID';
+  return 'FWD';
+}
+
+function getPrice(pos: string): number {
+  if (pos === 'GK') return 5.0;
+  if (pos === 'DEF') return 6.0;
+  if (pos === 'MID') return 8.0;
+  return 10.0;
+}
 
 export default function FantasyWC() {
   const { user } = useAuth();
@@ -65,20 +106,72 @@ export default function FantasyWC() {
   const [sortBy, setSortBy] = useState<'power' | 'price'>('power');
   const [teamName, setTeamName] = useState('My Fantasy XI');
   const [teamCreated, setTeamCreated] = useState(false);
+  const [apiPlayers, setApiPlayers] = useState<typeof PLAYER_POOL>([]);
+  const [apiLoading, setApiLoading] = useState(false);
+  const searchTimer = useRef<any>(null);
+
+  // Combined player list: hardcoded pool + API results
+  const allPlayers = useMemo(() => {
+    const ids = new Set(PLAYER_POOL.map(p => p.id));
+    const merged = [...PLAYER_POOL];
+    for (const p of apiPlayers) {
+      if (!ids.has(p.id)) { merged.push(p); ids.add(p.id); }
+    }
+    return merged;
+  }, [apiPlayers]);
+
+  // Search API when typing
+  useEffect(() => {
+    if (searchQuery.length < 3) return;
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(async () => {
+      setApiLoading(true);
+      try {
+        // Search across all WC nation squads
+        const nations = [26, 6, 2, 10, 25, 9, 27, 1118, 768, 3, 31, 12, 2384, 16, 1580, 17, 135, 1024, 20, 24, 15, 1105, 21, 13, 1569, 30, 29, 22, 14, 1530];
+        const results: typeof PLAYER_POOL = [];
+        const q = searchQuery.toLowerCase();
+        
+        // Try API search first
+        try {
+          const data = await callApi('players', { search: searchQuery, league: '1', season: '2026' });
+          if (data?.length) {
+            for (const item of data) {
+              const p = item.player;
+              const s = item.statistics?.[0];
+              if (!p?.id) continue;
+              const pos = posMap(s?.games?.position || 'Midfielder');
+              results.push({
+                id: p.id, name: p.name, pos,
+                nation: s?.team?.name || '', flag: '', club: s?.team?.name || '',
+                price: getPrice(pos), power: Math.round((s?.games?.rating || 7) * 10),
+              });
+            }
+          }
+        } catch {}
+
+        // Also search hardcoded pool by name/nation/club
+        // (already handled by filteredPlayers)
+
+        if (results.length > 0) setApiPlayers(prev => [...prev, ...results]);
+      } catch {}
+      setApiLoading(false);
+    }, 600);
+  }, [searchQuery]);
 
   const budget = useMemo(() => 100 - squad.reduce((s, p) => s + p.price, 0), [squad]);
   const getByPos = useCallback((pos: string) => squad.filter(p => p.pos === pos), [squad]);
   const isSelected = useCallback((id: number) => squad.some(p => p.id === id), [squad]);
 
   const filteredPlayers = useMemo(() => {
-    return PLAYER_POOL.filter(p => {
+    return allPlayers.filter(p => {
       const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.nation.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.club.toLowerCase().includes(searchQuery.toLowerCase());
       const matchPos = activeFilter === 'ALL' || p.pos === activeFilter;
       return matchSearch && matchPos;
     }).sort((a, b) => sortBy === 'power' ? b.power - a.power : b.price - a.price);
-  }, [searchQuery, activeFilter, sortBy]);
+  }, [searchQuery, activeFilter, sortBy, allPlayers]);
 
   const addPlayer = (player: typeof PLAYER_POOL[0]) => {
     if (squad.length >= 15) return toast.error('Squad full (15 max)');
@@ -263,8 +356,11 @@ export default function FantasyWC() {
                   </div>
                 );
               })}
-              {filteredPlayers.length === 0 && (
-                <p className="text-xs text-gray-600 text-center py-10">No matching players</p>
+              {filteredPlayers.length === 0 && !apiLoading && (
+                <p className="text-xs text-gray-600 text-center py-10">No matching players{searchQuery.length >= 3 ? ' — try a different name' : ''}</p>
+              )}
+              {apiLoading && (
+                <div className="flex justify-center py-6"><Loader2 className="w-4 h-4 animate-spin text-[#00FF66]" /></div>
               )}
             </div>
           </div>
