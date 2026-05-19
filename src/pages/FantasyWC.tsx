@@ -82,6 +82,76 @@ const PLAYER_POOL = [
 
 const POS_LIMITS: Record<string, number> = { GK: 2, DEF: 5, MID: 5, FWD: 3 };
 const POS_COLORS: Record<string, string> = { GK: 'border-yellow-400 bg-yellow-500/20', DEF: 'border-blue-400 bg-blue-500/20', MID: 'border-green-400 bg-green-500/20', FWD: 'border-red-400 bg-red-500/20' };
+// Nation jersey colors (home kit primary color)
+const JERSEY_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  'Argentina': { bg: 'bg-sky-200', text: 'text-sky-900', border: 'border-sky-300' },
+  'France': { bg: 'bg-blue-700', text: 'text-white', border: 'border-blue-500' },
+  'Brazil': { bg: 'bg-yellow-400', text: 'text-green-800', border: 'border-yellow-500' },
+  'England': { bg: 'bg-white', text: 'text-red-600', border: 'border-gray-300' },
+  'Germany': { bg: 'bg-white', text: 'text-black', border: 'border-gray-300' },
+  'Spain': { bg: 'bg-red-600', text: 'text-yellow-300', border: 'border-red-400' },
+  'Portugal': { bg: 'bg-red-700', text: 'text-green-400', border: 'border-red-500' },
+  'Netherlands': { bg: 'bg-orange-500', text: 'text-white', border: 'border-orange-400' },
+  'Belgium': { bg: 'bg-red-600', text: 'text-yellow-400', border: 'border-red-400' },
+  'Croatia': { bg: 'bg-red-500', text: 'text-white', border: 'border-white' },
+  'Uruguay': { bg: 'bg-sky-500', text: 'text-white', border: 'border-sky-400' },
+  'Morocco': { bg: 'bg-red-700', text: 'text-green-400', border: 'border-red-500' },
+  'Japan': { bg: 'bg-blue-800', text: 'text-white', border: 'border-blue-600' },
+  'USA': { bg: 'bg-white', text: 'text-blue-800', border: 'border-red-400' },
+  'Mexico': { bg: 'bg-green-700', text: 'text-white', border: 'border-green-500' },
+  'Colombia': { bg: 'bg-yellow-400', text: 'text-blue-800', border: 'border-yellow-500' },
+  'Senegal': { bg: 'bg-green-600', text: 'text-yellow-300', border: 'border-green-400' },
+  'South Korea': { bg: 'bg-red-600', text: 'text-white', border: 'border-red-400' },
+  'Türkiye': { bg: 'bg-red-600', text: 'text-white', border: 'border-red-400' },
+  'Egypt': { bg: 'bg-red-700', text: 'text-white', border: 'border-red-500' },
+  'Norway': { bg: 'bg-red-600', text: 'text-white', border: 'border-blue-400' },
+  'Australia': { bg: 'bg-yellow-500', text: 'text-green-800', border: 'border-yellow-400' },
+  'Sweden': { bg: 'bg-yellow-400', text: 'text-blue-800', border: 'border-yellow-500' },
+  'Switzerland': { bg: 'bg-red-600', text: 'text-white', border: 'border-red-400' },
+  'Ecuador': { bg: 'bg-yellow-400', text: 'text-blue-800', border: 'border-blue-400' },
+  'Ghana': { bg: 'bg-white', text: 'text-black', border: 'border-yellow-400' },
+  'Tunisia': { bg: 'bg-red-600', text: 'text-white', border: 'border-red-400' },
+  'IR Iran': { bg: 'bg-white', text: 'text-green-700', border: 'border-red-400' },
+  'Algeria': { bg: 'bg-white', text: 'text-green-700', border: 'border-green-400' },
+  'Saudi Arabia': { bg: 'bg-green-700', text: 'text-white', border: 'border-green-500' },
+  'Iraq': { bg: 'bg-white', text: 'text-green-700', border: 'border-green-400' },
+  'Panama': { bg: 'bg-red-600', text: 'text-white', border: 'border-blue-400' },
+  'DR Congo': { bg: 'bg-blue-600', text: 'text-yellow-400', border: 'border-blue-400' },
+  'Austria': { bg: 'bg-red-600', text: 'text-white', border: 'border-red-400' },
+  'Jordan': { bg: 'bg-white', text: 'text-red-600', border: 'border-green-400' },
+  'Uzbekistan': { bg: 'bg-white', text: 'text-blue-600', border: 'border-blue-400' },
+  'Scotland': { bg: 'bg-blue-800', text: 'text-white', border: 'border-blue-600' },
+  'Haiti': { bg: 'bg-blue-700', text: 'text-red-500', border: 'border-blue-500' },
+  'South Africa': { bg: 'bg-yellow-400', text: 'text-green-800', border: 'border-green-400' },
+  'Czechia': { bg: 'bg-white', text: 'text-red-600', border: 'border-blue-400' },
+  'Qatar': { bg: 'bg-red-800', text: 'text-white', border: 'border-red-600' },
+  "Côte d'Ivoire": { bg: 'bg-orange-500', text: 'text-green-800', border: 'border-orange-400' },
+  'Curaçao': { bg: 'bg-blue-600', text: 'text-yellow-400', border: 'border-blue-400' },
+  'New Zealand': { bg: 'bg-white', text: 'text-black', border: 'border-gray-300' },
+  'Cabo Verde': { bg: 'bg-blue-600', text: 'text-white', border: 'border-red-400' },
+  'Bosnia & Herz.': { bg: 'bg-blue-700', text: 'text-yellow-300', border: 'border-blue-500' },
+  'Paraguay': { bg: 'bg-red-500', text: 'text-white', border: 'border-blue-400' },
+  'Slovenia': { bg: 'bg-white', text: 'text-green-600', border: 'border-blue-400' },
+  'Poland': { bg: 'bg-white', text: 'text-red-600', border: 'border-red-400' },
+};
+
+const DEFAULT_JERSEY = { bg: 'bg-gray-600', text: 'text-white', border: 'border-gray-500' };
+
+function getJersey(nation: string) {
+  return JERSEY_COLORS[nation] || DEFAULT_JERSEY;
+}
+
+// Jersey SVG icon component
+function JerseyIcon({ nation, size = 'sm', number }: { nation: string; size?: 'sm' | 'md'; number?: string }) {
+  const j = getJersey(nation);
+  const s = size === 'md' ? 'w-10 h-10 sm:w-11 sm:h-11 text-[10px]' : 'w-9 h-9 text-[9px]';
+  return (
+    <div className={cn(s, j.bg, j.text, 'rounded-lg flex items-center justify-center border', j.border, 'font-black shadow-md relative')}>
+      <span className="text-lg leading-none">👕</span>
+      {number && <span className="absolute -bottom-0.5 text-[7px] font-mono opacity-70">{number}</span>}
+    </div>
+  );
+}
 const STARTING_XI: Record<string, number> = { GK: 1, DEF: 4, MID: 4, FWD: 2 };
 
 function posMap(p: string): string {
@@ -491,9 +561,7 @@ export default function FantasyWC() {
                     selected ? 'bg-[#00FF66]/5 border-[#00FF66]/20' : 'bg-[#0B0E14]/60 hover:bg-[#0B0E14] border-gray-800/60',
                   )}>
                     <div className="flex items-center gap-2.5">
-                      <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center border text-lg', POS_COLORS[player.pos])}>
-                        👕
-                      </div>
+                      <JerseyIcon nation={player.nation} />
                       <div>
                         <div className="flex items-center gap-1.5">
                           <span className="text-xs font-bold text-white group-hover:text-[#00FF66] transition">{player.name}</span>
@@ -546,8 +614,8 @@ function PitchLine({ pos, squad, limit, onAdd, onRemove }: {
     <div className={cn('relative z-10 flex justify-center flex-wrap my-1', gap)}>
       {squad.map(p => (
         <div key={p.id} onClick={() => onRemove(p.id)} className="group cursor-pointer text-center w-14 sm:w-16">
-          <div className={cn('relative mx-auto w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center rounded-xl border-2 transition shadow-lg group-hover:bg-red-500/20 group-hover:border-red-400', POS_COLORS[p.pos])}>
-            <span className="text-xl">👕</span>
+          <div className="relative mx-auto transition shadow-lg group-hover:scale-110">
+            <JerseyIcon nation={p.nation} size="md" />
             <span className="absolute -top-1 -right-1 bg-black text-[7px] text-white px-1 rounded font-mono border border-gray-700">{p.pos}</span>
           </div>
           <p className="text-[9px] font-bold text-white truncate mt-0.5 drop-shadow">{p.name.split(' ').pop()}</p>
