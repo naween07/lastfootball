@@ -278,21 +278,77 @@ export default function FantasyWC() {
 
   const autoPick = () => {
     const newSquad: typeof PLAYER_POOL = [];
-    const sorted = [...PLAYER_POOL].sort((a, b) => b.power - a.power);
     let remaining = 100;
     const targets: Record<string, number> = { GK: 2, DEF: 5, MID: 5, FWD: 3 };
+    const nationCount: Record<string, number> = {};
 
-    for (const p of sorted) {
-      if (newSquad.length >= 15) break;
-      const posCount = newSquad.filter(s => s.pos === p.pos).length;
-      const nationCount = newSquad.filter(s => s.nation === p.nation).length;
-      if (posCount < targets[p.pos] && nationCount < 3 && remaining >= p.price) {
+    // Shuffle all available players for randomness
+    const shuffled = [...allPlayers].sort(() => Math.random() - 0.5);
+
+    // Phase 1: Fill each position to target
+    for (const pos of ['GK', 'DEF', 'MID', 'FWD']) {
+      const posPlayers = shuffled.filter(p => p.pos === pos);
+      // Mix of star + budget players: pick some top, some random
+      const sorted = [...posPlayers].sort((a, b) => {
+        // 50% chance to prefer higher power, 50% random
+        return Math.random() > 0.5 ? b.power - a.power : Math.random() - 0.5;
+      });
+
+      for (const p of sorted) {
+        const posCount = newSquad.filter(s => s.pos === pos).length;
+        if (posCount >= targets[pos]) break;
+        const nc = nationCount[p.nation] || 0;
+        if (nc >= 3) continue;
+        if (remaining < p.price) continue;
+        if (newSquad.some(s => s.id === p.id)) continue;
+
+        // Budget check: leave enough for remaining slots
+        const slotsLeft = 15 - newSquad.length - 1;
+        const minCostPerSlot = 4.0;
+        if (slotsLeft > 0 && remaining - p.price < slotsLeft * minCostPerSlot) continue;
+
         newSquad.push(p);
         remaining -= p.price;
+        nationCount[p.nation] = nc + 1;
       }
     }
+
+    // Phase 2: If not full, fill remaining from cheapest available
+    if (newSquad.length < 15) {
+      const cheapest = shuffled
+        .filter(p => !newSquad.some(s => s.id === p.id))
+        .sort((a, b) => a.price - b.price);
+
+      for (const p of cheapest) {
+        if (newSquad.length >= 15) break;
+        const posCount = newSquad.filter(s => s.pos === p.pos).length;
+        if (posCount >= targets[p.pos]) continue;
+        const nc = nationCount[p.nation] || 0;
+        if (nc >= 3) continue;
+        if (remaining < p.price) continue;
+
+        newSquad.push(p);
+        remaining -= p.price;
+        nationCount[p.nation] = (nationCount[p.nation] || 0) + 1;
+      }
+    }
+
+    // Phase 3: Set captain (highest power FWD or MID)
+    const captainCandidates = newSquad
+      .filter(p => p.pos === 'FWD' || p.pos === 'MID')
+      .sort((a, b) => b.power - a.power);
+
+    if (captainCandidates.length > 0) {
+      // Random between top 3 candidates
+      const pick = captainCandidates[Math.floor(Math.random() * Math.min(3, captainCandidates.length))];
+      const idx = newSquad.findIndex(p => p.id === pick.id);
+      if (idx >= 0) {
+        newSquad[idx] = { ...newSquad[idx] };
+      }
+    }
+
     setSquad(newSquad);
-    toast.success(`AI picked ${newSquad.length} players!`);
+    toast.success(`🤖 AI picked ${newSquad.length} players! Budget: ${remaining.toFixed(1)}M remaining`);
   };
 
   if (!user) return (
