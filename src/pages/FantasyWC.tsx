@@ -11,74 +11,85 @@ import { toast } from 'sonner';
 
 // ─── Player Pool (Top WC players with prices) ──────────────────────────────
 const PLAYER_POOL = [
-  { id: 1, name: 'Kylian Mbappé', pos: 'FWD', nation: 'France', flag: '🇫🇷', club: 'Real Madrid', price: 14.5, power: 98 },
-  { id: 2, name: 'Erling Haaland', pos: 'FWD', nation: 'Norway', flag: '🇳🇴', club: 'Man City', price: 14.0, power: 96 },
+  // FWD - Elite Heavyweights (12.0-13.5M)
+  { id: 1, name: 'Kylian Mbappé', pos: 'FWD', nation: 'France', flag: '🇫🇷', club: 'Real Madrid', price: 13.5, power: 98 },
   { id: 3, name: 'Vinícius Júnior', pos: 'FWD', nation: 'Brazil', flag: '🇧🇷', club: 'Real Madrid', price: 13.5, power: 97 },
-  { id: 4, name: 'Lionel Messi', pos: 'FWD', nation: 'Argentina', flag: '🇦🇷', club: 'Inter Miami', price: 12.0, power: 93 },
-  { id: 5, name: 'Harry Kane', pos: 'FWD', nation: 'England', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', club: 'Bayern', price: 11.5, power: 92 },
-  { id: 6, name: 'Victor Osimhen', pos: 'FWD', nation: 'Nigeria', flag: '🇳🇬', club: 'Napoli', price: 10.0, power: 89 },
-  { id: 7, name: 'Lautaro Martínez', pos: 'FWD', nation: 'Argentina', flag: '🇦🇷', club: 'Inter Milan', price: 10.5, power: 90 },
-  { id: 8, name: 'Julián Álvarez', pos: 'FWD', nation: 'Argentina', flag: '🇦🇷', club: 'Atlético', price: 9.0, power: 87 },
-  { id: 9, name: 'Alexander Isak', pos: 'FWD', nation: 'Sweden', flag: '🇸🇪', club: 'Newcastle', price: 9.5, power: 88 },
+  { id: 2, name: 'Erling Haaland', pos: 'FWD', nation: 'Norway', flag: '🇳🇴', club: 'Man City', price: 12.5, power: 96 },
+  { id: 71, name: 'Mohamed Salah', pos: 'FWD', nation: 'Egypt', flag: '🇪🇬', club: 'Liverpool', price: 12.5, power: 95 },
+  // FWD - Premium Regulars (9.0-11.5M)
+  { id: 5, name: 'Harry Kane', pos: 'FWD', nation: 'England', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', club: 'Bayern', price: 11.0, power: 92 },
+  { id: 4, name: 'Lionel Messi', pos: 'FWD', nation: 'Argentina', flag: '🇦🇷', club: 'Inter Miami', price: 11.0, power: 93 },
+  { id: 7, name: 'Lautaro Martínez', pos: 'FWD', nation: 'Argentina', flag: '🇦🇷', club: 'Inter Milan', price: 11.0, power: 90 },
+  { id: 70, name: 'Cristiano Ronaldo', pos: 'FWD', nation: 'Portugal', flag: '🇵🇹', club: 'Al Nassr', price: 10.0, power: 90 },
+  { id: 73, name: 'Son Heung-min', pos: 'FWD', nation: 'South Korea', flag: '🇰🇷', club: 'Tottenham', price: 9.0, power: 89 },
+  { id: 8, name: 'Julián Álvarez', pos: 'FWD', nation: 'Argentina', flag: '🇦🇷', club: 'Atlético', price: 9.5, power: 88 },
+  { id: 9, name: 'Alexander Isak', pos: 'FWD', nation: 'Sweden', flag: '🇸🇪', club: 'Newcastle', price: 9.0, power: 88 },
+  { id: 91, name: 'Darwin Núñez', pos: 'FWD', nation: 'Uruguay', flag: '🇺🇾', club: 'Liverpool', price: 9.0, power: 88 },
+  { id: 81, name: 'Antoine Griezmann', pos: 'FWD', nation: 'France', flag: '🇫🇷', club: 'Atlético', price: 9.0, power: 88 },
+  { id: 82, name: 'Ousmane Dembélé', pos: 'FWD', nation: 'France', flag: '🇫🇷', club: 'PSG', price: 9.0, power: 88 },
+  // FWD - Mid-Tier (7.0-8.5M)
+  { id: 72, name: 'Neymar Jr', pos: 'FWD', nation: 'Brazil', flag: '🇧🇷', club: 'Santos', price: 8.5, power: 86 },
+  { id: 6, name: 'Victor Osimhen', pos: 'FWD', nation: 'Nigeria', flag: '🇳🇬', club: 'Napoli', price: 7.5, power: 82 },
+  { id: 92, name: 'Sadio Mané', pos: 'FWD', nation: 'Senegal', flag: '🇸🇳', club: 'Al Nassr', price: 7.5, power: 82 },
+  // FWD - Enablers (4.5-6.0M)
   { id: 10, name: 'Viktor Gyökeres', pos: 'FWD', nation: 'Sweden', flag: '🇸🇪', club: 'Sporting', price: 9.0, power: 88 },
+  // MID - Elite Heavyweights (10.5-12.0M)
   { id: 20, name: 'Jude Bellingham', pos: 'MID', nation: 'England', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', club: 'Real Madrid', price: 12.0, power: 95 },
-  { id: 21, name: 'Bukayo Saka', pos: 'MID', nation: 'England', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', club: 'Arsenal', price: 11.5, power: 90 },
-  { id: 22, name: 'Jamal Musiala', pos: 'MID', nation: 'Germany', flag: '🇩🇪', club: 'Bayern', price: 10.5, power: 91 },
-  { id: 23, name: 'Pedri', pos: 'MID', nation: 'Spain', flag: '🇪🇸', club: 'Barcelona', price: 10.0, power: 89 },
-  { id: 24, name: 'Federico Valverde', pos: 'MID', nation: 'Uruguay', flag: '🇺🇾', club: 'Real Madrid', price: 9.5, power: 89 },
-  { id: 25, name: 'Florian Wirtz', pos: 'MID', nation: 'Germany', flag: '🇩🇪', club: 'Leverkusen', price: 10.0, power: 90 },
-  { id: 26, name: 'Martin Ødegaard', pos: 'MID', nation: 'Norway', flag: '🇳🇴', club: 'Arsenal', price: 9.0, power: 88 },
-  { id: 27, name: 'Kevin De Bruyne', pos: 'MID', nation: 'Belgium', flag: '🇧🇪', club: 'Man City', price: 9.5, power: 88 },
-  { id: 28, name: 'Bruno Fernandes', pos: 'MID', nation: 'Portugal', flag: '🇵🇹', club: 'Man United', price: 8.5, power: 86 },
-  { id: 29, name: 'Arda Güler', pos: 'MID', nation: 'Turkey', flag: '🇹🇷', club: 'Real Madrid', price: 7.5, power: 85 },
-  { id: 30, name: 'Moisés Caicedo', pos: 'MID', nation: 'Ecuador', flag: '🇪🇨', club: 'Chelsea', price: 7.0, power: 83 },
-  { id: 31, name: 'Rodrigo De Paul', pos: 'MID', nation: 'Argentina', flag: '🇦🇷', club: 'Atlético', price: 7.5, power: 82 },
-  { id: 32, name: 'Takefusa Kubo', pos: 'MID', nation: 'Japan', flag: '🇯🇵', club: 'R. Sociedad', price: 7.0, power: 83 },
-  { id: 33, name: 'Luis Díaz', pos: 'MID', nation: 'Colombia', flag: '🇨🇴', club: 'Liverpool', price: 8.0, power: 85 },
-  { id: 40, name: 'Virgil van Dijk', pos: 'DEF', nation: 'Netherlands', flag: '🇳🇱', club: 'Liverpool', price: 6.5, power: 86 },
-  { id: 41, name: 'Joško Gvardiol', pos: 'DEF', nation: 'Croatia', flag: '🇭🇷', club: 'Man City', price: 6.5, power: 84 },
-  { id: 42, name: 'William Saliba', pos: 'DEF', nation: 'France', flag: '🇫🇷', club: 'Arsenal', price: 6.5, power: 88 },
-  { id: 43, name: 'Theo Hernández', pos: 'DEF', nation: 'France', flag: '🇫🇷', club: 'AC Milan', price: 6.0, power: 85 },
-  { id: 44, name: 'Achraf Hakimi', pos: 'DEF', nation: 'Morocco', flag: '🇲🇦', club: 'PSG', price: 6.0, power: 85 },
-  { id: 45, name: 'Rúben Dias', pos: 'DEF', nation: 'Portugal', flag: '🇵🇹', club: 'Man City', price: 6.0, power: 85 },
-  { id: 46, name: 'Kim Min-jae', pos: 'DEF', nation: 'South Korea', flag: '🇰🇷', club: 'Bayern', price: 5.5, power: 83 },
-  { id: 47, name: 'Jeremie Frimpong', pos: 'DEF', nation: 'Netherlands', flag: '🇳🇱', club: 'Leverkusen', price: 5.5, power: 84 },
-  { id: 48, name: 'Piero Hincapié', pos: 'DEF', nation: 'Ecuador', flag: '🇪🇨', club: 'Leverkusen', price: 5.0, power: 81 },
-  { id: 49, name: 'Alphonso Davies', pos: 'DEF', nation: 'Canada', flag: '🇨🇦', club: 'Real Madrid', price: 6.0, power: 85 },
-  { id: 60, name: 'Alisson Becker', pos: 'GK', nation: 'Brazil', flag: '🇧🇷', club: 'Liverpool', price: 6.0, power: 89 },
-  { id: 61, name: 'Emiliano Martínez', pos: 'GK', nation: 'Argentina', flag: '🇦🇷', club: 'Aston Villa', price: 5.5, power: 88 },
-  { id: 62, name: 'Thibaut Courtois', pos: 'GK', nation: 'Belgium', flag: '🇧🇪', club: 'Real Madrid', price: 5.5, power: 87 },
-  { id: 63, name: 'Marc-André ter Stegen', pos: 'GK', nation: 'Germany', flag: '🇩🇪', club: 'Barcelona', price: 5.0, power: 86 },
-  { id: 64, name: 'Mike Maignan', pos: 'GK', nation: 'France', flag: '🇫🇷', club: 'AC Milan', price: 5.0, power: 85 },
-  { id: 65, name: 'Diogo Costa', pos: 'GK', nation: 'Portugal', flag: '🇵🇹', club: 'Porto', price: 4.5, power: 82 },
-  { id: 70, name: 'Cristiano Ronaldo', pos: 'FWD', nation: 'Portugal', flag: '🇵🇹', club: 'Al Nassr', price: 11.0, power: 91 },
-  { id: 71, name: 'Mohamed Salah', pos: 'FWD', nation: 'Egypt', flag: '🇪🇬', club: 'Liverpool', price: 12.5, power: 94 },
-  { id: 72, name: 'Neymar Jr', pos: 'FWD', nation: 'Brazil', flag: '🇧🇷', club: 'Santos', price: 10.0, power: 88 },
-  { id: 73, name: 'Son Heung-min', pos: 'FWD', nation: 'South Korea', flag: '🇰🇷', club: 'Tottenham', price: 10.5, power: 89 },
-  { id: 74, name: 'Robert Lewandowski', pos: 'FWD', nation: 'Poland', flag: '🇵🇱', club: 'Barcelona', price: 10.0, power: 89 },
-  { id: 75, name: 'Lamine Yamal', pos: 'MID', nation: 'Spain', flag: '🇪🇸', club: 'Barcelona', price: 11.0, power: 92 },
+  { id: 75, name: 'Lamine Yamal', pos: 'MID', nation: 'Spain', flag: '🇪🇸', club: 'Barcelona', price: 12.0, power: 94 },
+  { id: 22, name: 'Jamal Musiala', pos: 'MID', nation: 'Germany', flag: '🇩🇪', club: 'Bayern', price: 11.0, power: 91 },
+  // MID - Premium Regulars (8.0-10.0M)
+  { id: 21, name: 'Bukayo Saka', pos: 'MID', nation: 'England', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', club: 'Arsenal', price: 10.0, power: 90 },
   { id: 76, name: 'Phil Foden', pos: 'MID', nation: 'England', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', club: 'Man City', price: 10.0, power: 90 },
-  { id: 77, name: 'Rodri', pos: 'MID', nation: 'Spain', flag: '🇪🇸', club: 'Man City', price: 9.5, power: 92 },
-  { id: 78, name: 'Toni Kroos', pos: 'MID', nation: 'Germany', flag: '🇩🇪', club: 'Real Madrid', price: 8.0, power: 87 },
-  { id: 79, name: 'Declan Rice', pos: 'MID', nation: 'England', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', club: 'Arsenal', price: 8.5, power: 87 },
+  { id: 25, name: 'Florian Wirtz', pos: 'MID', nation: 'Germany', flag: '🇩🇪', club: 'Leverkusen', price: 9.0, power: 90 },
+  { id: 23, name: 'Pedri', pos: 'MID', nation: 'Spain', flag: '🇪🇸', club: 'Barcelona', price: 10.0, power: 89 },
+  { id: 24, name: 'Federico Valverde', pos: 'MID', nation: 'Uruguay', flag: '🇺🇾', club: 'Real Madrid', price: 9.0, power: 89 },
   { id: 80, name: 'Bernardo Silva', pos: 'MID', nation: 'Portugal', flag: '🇵🇹', club: 'Man City', price: 9.0, power: 89 },
-  { id: 81, name: 'Antoine Griezmann', pos: 'FWD', nation: 'France', flag: '🇫🇷', club: 'Atlético', price: 9.0, power: 87 },
-  { id: 82, name: 'Ousmane Dembélé', pos: 'FWD', nation: 'France', flag: '🇫🇷', club: 'PSG', price: 9.5, power: 88 },
-  { id: 83, name: 'Dani Olmo', pos: 'MID', nation: 'Spain', flag: '🇪🇸', club: 'Barcelona', price: 8.5, power: 87 },
-  { id: 84, name: 'Aurélien Tchouaméni', pos: 'MID', nation: 'France', flag: '🇫🇷', club: 'Real Madrid', price: 8.0, power: 86 },
+  { id: 27, name: 'Kevin De Bruyne', pos: 'MID', nation: 'Belgium', flag: '🇧🇪', club: 'Man City', price: 9.0, power: 88 },
+  { id: 26, name: 'Martin Ødegaard', pos: 'MID', nation: 'Norway', flag: '🇳🇴', club: 'Arsenal', price: 8.0, power: 88 },
+  { id: 83, name: 'Dani Olmo', pos: 'MID', nation: 'Spain', flag: '🇪🇸', club: 'Barcelona', price: 8.0, power: 87 },
+  { id: 28, name: 'Bruno Fernandes', pos: 'MID', nation: 'Portugal', flag: '🇵🇹', club: 'Man United', price: 8.0, power: 86 },
+  // MID - Mid-Tier (6.0-7.5M)
+  { id: 77, name: 'Rodri', pos: 'MID', nation: 'Spain', flag: '🇪🇸', club: 'Man City', price: 7.5, power: 86 },
+  { id: 31, name: 'Rodrigo De Paul', pos: 'MID', nation: 'Argentina', flag: '🇦🇷', club: 'Atlético', price: 7.5, power: 82 },
+  { id: 95, name: 'Christian Pulisic', pos: 'MID', nation: 'USA', flag: '🇺🇸', club: 'AC Milan', price: 7.0, power: 83 },
+  { id: 33, name: 'Luis Díaz', pos: 'MID', nation: 'Colombia', flag: '🇨🇴', club: 'Liverpool', price: 7.0, power: 83 },
+  { id: 29, name: 'Arda Güler', pos: 'MID', nation: 'Türkiye', flag: '🇹🇷', club: 'Real Madrid', price: 7.0, power: 83 },
+  { id: 96, name: 'Luka Modrić', pos: 'MID', nation: 'Croatia', flag: '🇭🇷', club: 'Real Madrid', price: 7.0, power: 83 },
+  { id: 93, name: 'Mohammed Kudus', pos: 'MID', nation: 'Ghana', flag: '🇬🇭', club: 'West Ham', price: 6.5, power: 80 },
+  { id: 30, name: 'Moisés Caicedo', pos: 'MID', nation: 'Ecuador', flag: '🇪🇨', club: 'Chelsea', price: 6.5, power: 80 },
+  { id: 32, name: 'Takefusa Kubo', pos: 'MID', nation: 'Japan', flag: '🇯🇵', club: 'R. Sociedad', price: 6.5, power: 80 },
+  // MID - Enablers (4.0-5.5M)
+  { id: 84, name: 'Aurélien Tchouaméni', pos: 'MID', nation: 'France', flag: '🇫🇷', club: 'Real Madrid', price: 5.5, power: 78 },
+  { id: 79, name: 'Declan Rice', pos: 'MID', nation: 'England', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', club: 'Arsenal', price: 5.0, power: 78 },
+  // DEF - Elite Heavyweights (6.5-7.0M)
+  { id: 42, name: 'William Saliba', pos: 'DEF', nation: 'France', flag: '🇫🇷', club: 'Arsenal', price: 7.0, power: 88 },
+  { id: 43, name: 'Theo Hernández', pos: 'DEF', nation: 'France', flag: '🇫🇷', club: 'AC Milan', price: 7.0, power: 88 },
+  { id: 87, name: 'Trent Alexander-Arnold', pos: 'DEF', nation: 'England', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', club: 'Real Madrid', price: 7.0, power: 88 },
+  { id: 40, name: 'Virgil van Dijk', pos: 'DEF', nation: 'Netherlands', flag: '🇳🇱', club: 'Liverpool', price: 6.5, power: 88 },
+  { id: 44, name: 'Achraf Hakimi', pos: 'DEF', nation: 'Morocco', flag: '🇲🇦', club: 'PSG', price: 6.5, power: 88 },
+  { id: 45, name: 'Rúben Dias', pos: 'DEF', nation: 'Portugal', flag: '🇵🇹', club: 'Man City', price: 6.5, power: 88 },
+  // DEF - Premium Regulars (5.5-6.0M)
   { id: 85, name: 'Marquinhos', pos: 'DEF', nation: 'Brazil', flag: '🇧🇷', club: 'PSG', price: 6.0, power: 85 },
-  { id: 86, name: 'Raphaël Varane', pos: 'DEF', nation: 'France', flag: '🇫🇷', club: 'Como', price: 5.0, power: 81 },
-  { id: 87, name: 'Trent Alexander-Arnold', pos: 'DEF', nation: 'England', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', club: 'Real Madrid', price: 6.5, power: 87 },
-  { id: 88, name: 'Kyle Walker', pos: 'DEF', nation: 'England', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', club: 'Man City', price: 5.5, power: 83 },
+  { id: 41, name: 'Joško Gvardiol', pos: 'DEF', nation: 'Croatia', flag: '🇭🇷', club: 'Man City', price: 6.0, power: 85 },
+  { id: 49, name: 'Alphonso Davies', pos: 'DEF', nation: 'Canada', flag: '🇨🇦', club: 'Real Madrid', price: 5.5, power: 85 },
+  { id: 47, name: 'Jeremie Frimpong', pos: 'DEF', nation: 'Netherlands', flag: '🇳🇱', club: 'Leverkusen', price: 5.5, power: 84 },
+  { id: 94, name: 'Ronald Araújo', pos: 'DEF', nation: 'Uruguay', flag: '🇺🇾', club: 'Barcelona', price: 5.5, power: 84 },
+  // DEF - Mid-Tier (4.5-5.0M)
+  { id: 46, name: 'Kim Min-jae', pos: 'DEF', nation: 'South Korea', flag: '🇰🇷', club: 'Bayern', price: 5.0, power: 83 },
+  { id: 88, name: 'Kyle Walker', pos: 'DEF', nation: 'England', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', club: 'Man City', price: 5.0, power: 80 },
+  { id: 48, name: 'Piero Hincapié', pos: 'DEF', nation: 'Ecuador', flag: '🇪🇨', club: 'Leverkusen', price: 4.5, power: 79 },
+  // GK - Elite (6.0-6.5M)
+  { id: 60, name: 'Alisson Becker', pos: 'GK', nation: 'Brazil', flag: '🇧🇷', club: 'Liverpool', price: 6.5, power: 89 },
+  { id: 61, name: 'Emiliano Martínez', pos: 'GK', nation: 'Argentina', flag: '🇦🇷', club: 'Aston Villa', price: 6.5, power: 89 },
+  { id: 64, name: 'Mike Maignan', pos: 'GK', nation: 'France', flag: '🇫🇷', club: 'AC Milan', price: 6.0, power: 88 },
+  { id: 62, name: 'Thibaut Courtois', pos: 'GK', nation: 'Belgium', flag: '🇧🇪', club: 'Real Madrid', price: 6.0, power: 87 },
+  // GK - Premium (5.0-5.5M)
+  { id: 63, name: 'Marc-André ter Stegen', pos: 'GK', nation: 'Germany', flag: '🇩🇪', club: 'Barcelona', price: 5.5, power: 86 },
+  { id: 65, name: 'Diogo Costa', pos: 'GK', nation: 'Portugal', flag: '🇵🇹', club: 'Porto', price: 5.5, power: 85 },
   { id: 89, name: 'Ederson', pos: 'GK', nation: 'Brazil', flag: '🇧🇷', club: 'Man City', price: 5.5, power: 87 },
   { id: 90, name: 'Jan Oblak', pos: 'GK', nation: 'Slovenia', flag: '🇸🇮', club: 'Atlético', price: 5.0, power: 85 },
-  { id: 91, name: 'Darwin Núñez', pos: 'FWD', nation: 'Uruguay', flag: '🇺🇾', club: 'Liverpool', price: 9.5, power: 87 },
-  { id: 92, name: 'Sadio Mané', pos: 'FWD', nation: 'Senegal', flag: '🇸🇳', club: 'Al Nassr', price: 8.0, power: 84 },
-  { id: 93, name: 'Mohammed Kudus', pos: 'MID', nation: 'Ghana', flag: '🇬🇭', club: 'West Ham', price: 7.5, power: 84 },
-  { id: 94, name: 'Achraf Hakimi', pos: 'DEF', nation: 'Morocco', flag: '🇲🇦', club: 'PSG', price: 6.0, power: 85 },
-  { id: 95, name: 'Christian Pulisic', pos: 'MID', nation: 'USA', flag: '🇺🇸', club: 'AC Milan', price: 8.0, power: 85 },
-  { id: 96, name: 'Luka Modrić', pos: 'MID', nation: 'Croatia', flag: '🇭🇷', club: 'Real Madrid', price: 7.5, power: 85 },
 ];
+
 
 const POS_LIMITS: Record<string, number> = { GK: 2, DEF: 5, MID: 5, FWD: 3 };
 const POS_COLORS: Record<string, string> = { GK: 'border-yellow-400 bg-yellow-500/20', DEF: 'border-blue-400 bg-blue-500/20', MID: 'border-green-400 bg-green-500/20', FWD: 'border-red-400 bg-red-500/20' };
@@ -163,40 +174,45 @@ function posMap(p: string): string {
 
 // Tier A nations get price boost
 const TIER_A = ['Argentina', 'France', 'Brazil', 'England', 'Spain'];
-const TIER_B = ['Netherlands', 'Portugal', 'Germany', 'Belgium', 'Italy', 'Croatia', 'Uruguay'];
+const TIER_B = ['Netherlands', 'Portugal', 'Germany', 'Belgium', 'Croatia', 'Uruguay'];
 
+// Algorithmic Pricing Index — based on the Cost Optimization Engine
 function getPrice(pos: string, nation?: string, power?: number): number {
-  // Base price by position
-  const base: Record<string, number> = { GK: 4.0, DEF: 4.5, MID: 5.0, FWD: 6.0 };
-  let price = base[pos] || 5.0;
-
-  // Add power-based premium (power ranges 70-98)
-  if (power) {
-    if (power >= 90) price += 6.0;
-    else if (power >= 85) price += 4.0;
-    else if (power >= 80) price += 2.5;
-    else if (power >= 75) price += 1.0;
+  const tier = TIER_A.includes(nation || '') ? 'A' : TIER_B.includes(nation || '') ? 'B' : 'C';
+  
+  if (pos === 'FWD') {
+    if (power && power >= 95) return tier === 'A' ? 13.5 : 12.5; // Elite Heavyweight
+    if (power && power >= 88) return tier === 'A' ? 11.0 : tier === 'B' ? 10.0 : 9.0; // Premium Regular
+    if (power && power >= 80) return tier === 'A' ? 8.5 : tier === 'B' ? 8.0 : 7.5; // Mid-Tier Value
+    return tier === 'A' ? 6.0 : tier === 'B' ? 5.5 : 5.0; // Enabler
   }
-
-  // Nation tier boost
-  if (nation && TIER_A.includes(nation)) price += 1.0;
-  else if (nation && TIER_B.includes(nation)) price += 0.5;
-
-  // Position ceilings
-  const caps: Record<string, number> = { GK: 6.0, DEF: 7.0, MID: 14.0, FWD: 15.0 };
-  price = Math.min(price, caps[pos] || 15.0);
-
-  // Round to 0.5
-  return Math.round(price * 2) / 2;
+  if (pos === 'MID') {
+    if (power && power >= 93) return tier === 'A' ? 12.0 : 11.0; // Elite Heavyweight
+    if (power && power >= 86) return tier === 'A' ? 10.0 : tier === 'B' ? 9.0 : 8.0; // Premium Regular
+    if (power && power >= 78) return tier === 'A' ? 7.5 : tier === 'B' ? 7.0 : 6.5; // Mid-Tier Value
+    return tier === 'A' ? 5.5 : tier === 'B' ? 5.0 : 4.5; // Enabler
+  }
+  if (pos === 'DEF') {
+    if (power && power >= 88) return tier === 'A' ? 7.0 : tier === 'B' ? 6.5 : 6.0; // Elite Heavyweight
+    if (power && power >= 83) return tier === 'A' ? 6.0 : 5.5; // Premium Regular
+    if (power && power >= 77) return tier === 'A' ? 5.0 : 4.5; // Mid-Tier Value
+    return 4.0; // Enabler
+  }
+  // GK
+  if (power && power >= 88) return tier === 'A' ? 6.5 : 6.0; // Elite Heavyweight
+  if (power && power >= 84) return tier === 'A' ? 5.5 : 5.0; // Premium Regular
+  if (power && power >= 78) return 4.5; // Mid-Tier Value
+  return 4.0; // Enabler
 }
 
-// Generate a realistic power rating for API-loaded players based on position and nation
+// Generate a realistic power rating for API-loaded players
 function generatePower(pos: string, nation: string): number {
-  let base = 72 + Math.floor(Math.random() * 12); // 72-83
-  if (TIER_A.includes(nation)) base += 5;
-  else if (TIER_B.includes(nation)) base += 3;
-  if (pos === 'GK') base -= 2; // GKs tend to score lower
-  return Math.min(95, Math.max(65, base));
+  const tier = TIER_A.includes(nation) ? 'A' : TIER_B.includes(nation) ? 'B' : 'C';
+  // Starters from top nations are stronger
+  let base = tier === 'A' ? 78 : tier === 'B' ? 75 : 72;
+  base += Math.floor(Math.random() * 14); // +0 to +13
+  if (pos === 'GK') base -= 1;
+  return Math.min(96, Math.max(65, base));
 }
 
 export default function FantasyWC() {
