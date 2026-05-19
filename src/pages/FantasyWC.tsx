@@ -108,7 +108,61 @@ export default function FantasyWC() {
   const [teamCreated, setTeamCreated] = useState(false);
   const [apiPlayers, setApiPlayers] = useState<typeof PLAYER_POOL>([]);
   const [apiLoading, setApiLoading] = useState(false);
+  const [nationsLoaded, setNationsLoaded] = useState(false);
   const searchTimer = useRef<any>(null);
+
+  // All 48 WC nation team IDs for API
+  const WC_NATION_IDS = [
+    { id: 16, name: 'Mexico', flag: '🇲🇽' }, { id: 15, name: 'South Africa', flag: '🇿🇦' }, { id: 17, name: 'South Korea', flag: '🇰🇷' }, { id: 1530, name: 'Czechia', flag: '🇨🇿' },
+    { id: 5529, name: 'Canada', flag: '🇨🇦' }, { id: 15, name: 'Switzerland', flag: '🇨🇭' }, { id: 1569, name: 'Qatar', flag: '🇶🇦' }, { id: 1105, name: 'Bosnia & Herz.', flag: '🇧🇦' },
+    { id: 6, name: 'Brazil', flag: '🇧🇷' }, { id: 31, name: 'Morocco', flag: '🇲🇦' }, { id: 1108, name: 'Haiti', flag: '🇭🇹' }, { id: 1106, name: 'Scotland', flag: '🏴󠁧󠁢󠁳󠁣󠁴󠁿' },
+    { id: 2384, name: 'USA', flag: '🇺🇸' }, { id: 1580, name: 'Paraguay', flag: '🇵🇾' }, { id: 24, name: 'Australia', flag: '🇦🇺' }, { id: 135, name: 'Türkiye', flag: '🇹🇷' },
+    { id: 25, name: 'Germany', flag: '🇩🇪' }, { id: 1561, name: 'Curaçao', flag: '🇨🇼' }, { id: 21, name: "Côte d'Ivoire", flag: '🇨🇮' }, { id: 1559, name: 'Ecuador', flag: '🇪🇨' },
+    { id: 1118, name: 'Netherlands', flag: '🇳🇱' }, { id: 12, name: 'Japan', flag: '🇯🇵' }, { id: 1106, name: 'Tunisia', flag: '🇹🇳' }, { id: 22, name: 'Sweden', flag: '🇸🇪' },
+    { id: 1, name: 'Belgium', flag: '🇧🇪' }, { id: 13, name: 'Egypt', flag: '🇪🇬' }, { id: 22, name: 'IR Iran', flag: '🇮🇷' }, { id: 1530, name: 'New Zealand', flag: '🇳🇿' },
+    { id: 9, name: 'Spain', flag: '🇪🇸' }, { id: 1530, name: 'Cabo Verde', flag: '🇨🇻' }, { id: 23, name: 'Saudi Arabia', flag: '🇸🇦' }, { id: 7, name: 'Uruguay', flag: '🇺🇾' },
+    { id: 2, name: 'France', flag: '🇫🇷' }, { id: 20, name: 'Senegal', flag: '🇸🇳' }, { id: 1107, name: 'Norway', flag: '🇳🇴' }, { id: 1530, name: 'Iraq', flag: '🇮🇶' },
+    { id: 26, name: 'Argentina', flag: '🇦🇷' }, { id: 14, name: 'Algeria', flag: '🇩🇿' }, { id: 1109, name: 'Austria', flag: '🇦🇹' }, { id: 1530, name: 'Jordan', flag: '🇯🇴' },
+    { id: 27, name: 'Portugal', flag: '🇵🇹' }, { id: 1530, name: 'Uzbekistan', flag: '🇺🇿' }, { id: 1580, name: 'Colombia', flag: '🇨🇴' }, { id: 1530, name: 'DR Congo', flag: '🇨🇩' },
+    { id: 10, name: 'England', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' }, { id: 3, name: 'Croatia', flag: '🇭🇷' }, { id: 29, name: 'Ghana', flag: '🇬🇭' }, { id: 1530, name: 'Panama', flag: '🇵🇦' },
+  ];
+
+  // Load squads from top nations on mount
+  useEffect(() => {
+    if (nationsLoaded) return;
+    const loadNations = async () => {
+      setApiLoading(true);
+      const topNations = [26, 6, 2, 10, 25, 9, 27, 1118, 768, 3, 31, 12, 2384, 16, 1580, 17, 135, 1, 7, 20]; // Top 20 nations
+      const results: typeof PLAYER_POOL = [];
+      
+      for (const nationId of topNations) {
+        try {
+          const data = await callApi('players/squads', { team: String(nationId) });
+          if (data?.[0]?.players) {
+            const nation = WC_NATION_IDS.find(n => n.id === nationId);
+            for (const p of data[0].players) {
+              const pos = posMap(p.position);
+              results.push({
+                id: p.id,
+                name: p.name,
+                pos,
+                nation: nation?.name || '',
+                flag: nation?.flag || '',
+                club: '',
+                price: getPrice(pos),
+                power: 75 + Math.floor(Math.random() * 20),
+              });
+            }
+          }
+        } catch {}
+      }
+      
+      setApiPlayers(results);
+      setNationsLoaded(true);
+      setApiLoading(false);
+    };
+    loadNations();
+  }, [nationsLoaded]);
 
   // Combined player list: hardcoded pool + API results
   const allPlayers = useMemo(() => {
@@ -361,6 +415,9 @@ export default function FantasyWC() {
               )}
               {apiLoading && (
                 <div className="flex justify-center py-6"><Loader2 className="w-4 h-4 animate-spin text-[#00FF66]" /></div>
+              )}
+              {!apiLoading && nationsLoaded && filteredPlayers.length > 0 && (
+                <p className="text-[9px] text-gray-600 text-center py-2">{filteredPlayers.length} players available</p>
               )}
             </div>
           </div>
