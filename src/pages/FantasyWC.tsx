@@ -206,13 +206,15 @@ function getPrice(pos: string, nation?: string, power?: number): number {
 }
 
 // Generate a realistic power rating for API-loaded players
+// Most squad players are rotation/bench — only a few are stars
 function generatePower(pos: string, nation: string): number {
   const tier = TIER_A.includes(nation) ? 'A' : TIER_B.includes(nation) ? 'B' : 'C';
-  // Starters from top nations are stronger
-  let base = tier === 'A' ? 78 : tier === 'B' ? 75 : 72;
-  base += Math.floor(Math.random() * 14); // +0 to +13
-  if (pos === 'GK') base -= 1;
-  return Math.min(96, Math.max(65, base));
+  // Most API-loaded players are NOT stars — keep power low
+  // Stars are already in PLAYER_POOL with accurate prices
+  let base = tier === 'A' ? 70 : tier === 'B' ? 68 : 65;
+  base += Math.floor(Math.random() * 10); // +0 to +9, so range 65-79
+  if (pos === 'GK') base -= 2;
+  return Math.min(79, Math.max(60, base)); // Cap at 79 — anything higher is a star in PLAYER_POOL
 }
 
 export default function FantasyWC() {
