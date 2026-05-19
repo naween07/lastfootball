@@ -197,14 +197,30 @@ export default function FantasyWC() {
     loadNations();
   }, [nationsLoaded]);
 
-  // Combined player list: hardcoded pool + API results
+  // Combined player list: hardcoded pool + API results, strict dedup by name
   const allPlayers = useMemo(() => {
-    const ids = new Set(PLAYER_POOL.map(p => p.id));
-    const merged = [...PLAYER_POOL];
-    for (const p of apiPlayers) {
-      if (!ids.has(p.id)) { merged.push(p); ids.add(p.id); }
+    const seen = new Map<string, typeof PLAYER_POOL[0]>();
+    // Hardcoded stars take priority (accurate pricing)
+    for (const p of PLAYER_POOL) {
+      const key = p.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      seen.set(key, p);
     }
-    return merged;
+    // Add API players only if name not already present
+    for (const p of apiPlayers) {
+      const key = p.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      // Check exact match and partial match (e.g. "Vinicius Junior" vs "Vinícius Júnior")
+      const lastName = key.split(' ').pop() || key;
+      const firstName = key.split(' ')[0] || '';
+      let isDupe = seen.has(key);
+      if (!isDupe) {
+        for (const [existingKey] of seen) {
+          if (existingKey.includes(lastName) && existingKey.includes(firstName)) { isDupe = true; break; }
+          if (lastName.length > 4 && existingKey.includes(lastName)) { isDupe = true; break; }
+        }
+      }
+      if (!isDupe) seen.set(key, p);
+    }
+    return Array.from(seen.values());
   }, [apiPlayers]);
 
   // Search API when typing
