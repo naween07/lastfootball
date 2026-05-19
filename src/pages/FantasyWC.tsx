@@ -204,7 +204,7 @@ export default function FantasyWC() {
   const [squad, setSquad] = useState<typeof PLAYER_POOL>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('ALL');
-  const [sortBy, setSortBy] = useState<'power' | 'price'>('power');
+  const [sortBy, setSortBy] = useState<'power' | 'price-high' | 'price-low'>('power');
   const [teamName, setTeamName] = useState('My Fantasy XI');
   const [teamCreated, setTeamCreated] = useState(false);
   const [apiPlayers, setApiPlayers] = useState<typeof PLAYER_POOL>([]);
@@ -344,7 +344,7 @@ export default function FantasyWC() {
         p.club.toLowerCase().includes(searchQuery.toLowerCase());
       const matchPos = activeFilter === 'ALL' || p.pos === activeFilter;
       return matchSearch && matchPos;
-    }).sort((a, b) => sortBy === 'power' ? b.power - a.power : b.price - a.price);
+    }).sort((a, b) => sortBy === 'power' ? b.power - a.power : sortBy === 'price-high' ? b.price - a.price : a.price - b.price);
   }, [searchQuery, activeFilter, sortBy, allPlayers]);
 
   const addPlayer = (player: typeof PLAYER_POOL[0]) => {
@@ -549,7 +549,8 @@ export default function FantasyWC() {
             {/* Sort */}
             <div className="flex gap-2 mb-2">
               <button onClick={() => setSortBy('power')} className={cn('text-[9px] px-2 py-1 rounded font-bold', sortBy === 'power' ? 'bg-[#00FF66]/20 text-[#00FF66]' : 'text-gray-600')}>⭐ Rating</button>
-              <button onClick={() => setSortBy('price')} className={cn('text-[9px] px-2 py-1 rounded font-bold', sortBy === 'price' ? 'bg-[#00FF66]/20 text-[#00FF66]' : 'text-gray-600')}>💰 Price</button>
+              <button onClick={() => setSortBy('price-high')} className={cn('text-[9px] px-2 py-1 rounded font-bold', sortBy === 'price-high' ? 'bg-[#00FF66]/20 text-[#00FF66]' : 'text-gray-600')}>💰 Price ↓</button>
+              <button onClick={() => setSortBy('price-low')} className={cn('text-[9px] px-2 py-1 rounded font-bold', sortBy === 'price-low' ? 'bg-[#00FF66]/20 text-[#00FF66]' : 'text-gray-600')}>💰 Price ↑</button>
             </div>
 
             {/* Player list */}
