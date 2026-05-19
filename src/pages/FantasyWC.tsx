@@ -91,11 +91,42 @@ function posMap(p: string): string {
   return 'FWD';
 }
 
-function getPrice(pos: string): number {
-  if (pos === 'GK') return 5.0;
-  if (pos === 'DEF') return 6.0;
-  if (pos === 'MID') return 8.0;
-  return 10.0;
+// Tier A nations get price boost
+const TIER_A = ['Argentina', 'France', 'Brazil', 'England', 'Spain'];
+const TIER_B = ['Netherlands', 'Portugal', 'Germany', 'Belgium', 'Italy', 'Croatia', 'Uruguay'];
+
+function getPrice(pos: string, nation?: string, power?: number): number {
+  // Base price by position
+  const base: Record<string, number> = { GK: 4.0, DEF: 4.5, MID: 5.0, FWD: 6.0 };
+  let price = base[pos] || 5.0;
+
+  // Add power-based premium (power ranges 70-98)
+  if (power) {
+    if (power >= 90) price += 6.0;
+    else if (power >= 85) price += 4.0;
+    else if (power >= 80) price += 2.5;
+    else if (power >= 75) price += 1.0;
+  }
+
+  // Nation tier boost
+  if (nation && TIER_A.includes(nation)) price += 1.0;
+  else if (nation && TIER_B.includes(nation)) price += 0.5;
+
+  // Position ceilings
+  const caps: Record<string, number> = { GK: 6.0, DEF: 7.0, MID: 14.0, FWD: 15.0 };
+  price = Math.min(price, caps[pos] || 15.0);
+
+  // Round to 0.5
+  return Math.round(price * 2) / 2;
+}
+
+// Generate a realistic power rating for API-loaded players based on position and nation
+function generatePower(pos: string, nation: string): number {
+  let base = 72 + Math.floor(Math.random() * 12); // 72-83
+  if (TIER_A.includes(nation)) base += 5;
+  else if (TIER_B.includes(nation)) base += 3;
+  if (pos === 'GK') base -= 2; // GKs tend to score lower
+  return Math.min(95, Math.max(65, base));
 }
 
 export default function FantasyWC() {
@@ -142,15 +173,17 @@ export default function FantasyWC() {
             const nation = WC_NATION_IDS.find(n => n.id === nationId);
             for (const p of data[0].players) {
               const pos = posMap(p.position);
+              const nationName = nation?.name || '';
+              const power = generatePower(pos, nationName);
               results.push({
                 id: p.id,
                 name: p.name,
                 pos,
-                nation: nation?.name || '',
+                nation: nationName,
                 flag: nation?.flag || '',
                 club: '',
-                price: getPrice(pos),
-                power: 75 + Math.floor(Math.random() * 20),
+                price: getPrice(pos, nationName, power),
+                power,
               });
             }
           }
@@ -195,10 +228,11 @@ export default function FantasyWC() {
               const s = item.statistics?.[0];
               if (!p?.id) continue;
               const pos = posMap(s?.games?.position || 'Midfielder');
+              const pwr = Math.round((s?.games?.rating || 7) * 10);
               results.push({
                 id: p.id, name: p.name, pos,
                 nation: s?.team?.name || '', flag: '', club: s?.team?.name || '',
-                price: getPrice(pos), power: Math.round((s?.games?.rating || 7) * 10),
+                price: getPrice(pos, s?.team?.name, pwr), power: pwr,
               });
             }
           }
