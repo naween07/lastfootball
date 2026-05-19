@@ -304,8 +304,8 @@ export default function FantasyWC() {
 
         // Budget check: leave enough for remaining slots
         const slotsLeft = 15 - newSquad.length - 1;
-        const minCostPerSlot = 4.0;
-        if (slotsLeft > 0 && remaining - p.price < slotsLeft * minCostPerSlot) continue;
+        const minCostPerSlot = 3.0;
+        if (slotsLeft > 3 && remaining - p.price < slotsLeft * minCostPerSlot) continue;
 
         newSquad.push(p);
         remaining -= p.price;
@@ -313,16 +313,17 @@ export default function FantasyWC() {
       }
     }
 
-    // Phase 2: If not full, fill remaining from cheapest available
+    // Phase 2: If not full, fill remaining with cheapest available (relax constraints slightly)
     if (newSquad.length < 15) {
-      const cheapest = shuffled
+      const available = [...allPlayers, ...PLAYER_POOL]
         .filter(p => !newSquad.some(s => s.id === p.id))
         .sort((a, b) => a.price - b.price);
 
-      for (const p of cheapest) {
+      for (const p of available) {
         if (newSquad.length >= 15) break;
         const posCount = newSquad.filter(s => s.pos === p.pos).length;
-        if (posCount >= targets[p.pos]) continue;
+        const maxPos: Record<string, number> = { GK: 2, DEF: 5, MID: 5, FWD: 3 };
+        if (posCount >= maxPos[p.pos]) continue;
         const nc = nationCount[p.nation] || 0;
         if (nc >= 3) continue;
         if (remaining < p.price) continue;
