@@ -93,74 +93,114 @@ const PLAYER_POOL = [
 
 const POS_LIMITS: Record<string, number> = { GK: 2, DEF: 5, MID: 5, FWD: 3 };
 const POS_COLORS: Record<string, string> = { GK: 'border-yellow-400 bg-yellow-500/20', DEF: 'border-blue-400 bg-blue-500/20', MID: 'border-green-400 bg-green-500/20', FWD: 'border-red-400 bg-red-500/20' };
-// Nation jersey colors (home kit primary color)
-const JERSEY_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  'Argentina': { bg: 'bg-sky-200', text: 'text-sky-900', border: 'border-sky-300' },
-  'France': { bg: 'bg-blue-700', text: 'text-white', border: 'border-blue-500' },
-  'Brazil': { bg: 'bg-yellow-400', text: 'text-green-800', border: 'border-yellow-500' },
-  'England': { bg: 'bg-white', text: 'text-red-600', border: 'border-gray-300' },
-  'Germany': { bg: 'bg-white', text: 'text-black', border: 'border-gray-300' },
-  'Spain': { bg: 'bg-red-600', text: 'text-yellow-300', border: 'border-red-400' },
-  'Portugal': { bg: 'bg-red-700', text: 'text-green-400', border: 'border-red-500' },
-  'Netherlands': { bg: 'bg-orange-500', text: 'text-white', border: 'border-orange-400' },
-  'Belgium': { bg: 'bg-red-600', text: 'text-yellow-400', border: 'border-red-400' },
-  'Croatia': { bg: 'bg-red-500', text: 'text-white', border: 'border-white' },
-  'Uruguay': { bg: 'bg-sky-500', text: 'text-white', border: 'border-sky-400' },
-  'Morocco': { bg: 'bg-red-700', text: 'text-green-400', border: 'border-red-500' },
-  'Japan': { bg: 'bg-blue-800', text: 'text-white', border: 'border-blue-600' },
-  'USA': { bg: 'bg-white', text: 'text-blue-800', border: 'border-red-400' },
-  'Mexico': { bg: 'bg-green-700', text: 'text-white', border: 'border-green-500' },
-  'Colombia': { bg: 'bg-yellow-400', text: 'text-blue-800', border: 'border-yellow-500' },
-  'Senegal': { bg: 'bg-green-600', text: 'text-yellow-300', border: 'border-green-400' },
-  'South Korea': { bg: 'bg-red-600', text: 'text-white', border: 'border-red-400' },
-  'Türkiye': { bg: 'bg-red-600', text: 'text-white', border: 'border-red-400' },
-  'Egypt': { bg: 'bg-red-700', text: 'text-white', border: 'border-red-500' },
-  'Norway': { bg: 'bg-red-600', text: 'text-white', border: 'border-blue-400' },
-  'Australia': { bg: 'bg-yellow-500', text: 'text-green-800', border: 'border-yellow-400' },
-  'Sweden': { bg: 'bg-yellow-400', text: 'text-blue-800', border: 'border-yellow-500' },
-  'Switzerland': { bg: 'bg-red-600', text: 'text-white', border: 'border-red-400' },
-  'Ecuador': { bg: 'bg-yellow-400', text: 'text-blue-800', border: 'border-blue-400' },
-  'Ghana': { bg: 'bg-white', text: 'text-black', border: 'border-yellow-400' },
-  'Tunisia': { bg: 'bg-red-600', text: 'text-white', border: 'border-red-400' },
-  'IR Iran': { bg: 'bg-white', text: 'text-green-700', border: 'border-red-400' },
-  'Algeria': { bg: 'bg-white', text: 'text-green-700', border: 'border-green-400' },
-  'Saudi Arabia': { bg: 'bg-green-700', text: 'text-white', border: 'border-green-500' },
-  'Iraq': { bg: 'bg-white', text: 'text-green-700', border: 'border-green-400' },
-  'Panama': { bg: 'bg-red-600', text: 'text-white', border: 'border-blue-400' },
-  'DR Congo': { bg: 'bg-blue-600', text: 'text-yellow-400', border: 'border-blue-400' },
-  'Austria': { bg: 'bg-red-600', text: 'text-white', border: 'border-red-400' },
-  'Jordan': { bg: 'bg-white', text: 'text-red-600', border: 'border-green-400' },
-  'Uzbekistan': { bg: 'bg-white', text: 'text-blue-600', border: 'border-blue-400' },
-  'Scotland': { bg: 'bg-blue-800', text: 'text-white', border: 'border-blue-600' },
-  'Haiti': { bg: 'bg-blue-700', text: 'text-red-500', border: 'border-blue-500' },
-  'South Africa': { bg: 'bg-yellow-400', text: 'text-green-800', border: 'border-green-400' },
-  'Czechia': { bg: 'bg-white', text: 'text-red-600', border: 'border-blue-400' },
-  'Qatar': { bg: 'bg-red-800', text: 'text-white', border: 'border-red-600' },
-  "Côte d'Ivoire": { bg: 'bg-orange-500', text: 'text-green-800', border: 'border-orange-400' },
-  'Curaçao': { bg: 'bg-blue-600', text: 'text-yellow-400', border: 'border-blue-400' },
-  'New Zealand': { bg: 'bg-white', text: 'text-black', border: 'border-gray-300' },
-  'Cabo Verde': { bg: 'bg-blue-600', text: 'text-white', border: 'border-red-400' },
-  'Bosnia & Herz.': { bg: 'bg-blue-700', text: 'text-yellow-300', border: 'border-blue-500' },
-  'Paraguay': { bg: 'bg-red-500', text: 'text-white', border: 'border-blue-400' },
-  'Slovenia': { bg: 'bg-white', text: 'text-green-600', border: 'border-blue-400' },
-  'Poland': { bg: 'bg-white', text: 'text-red-600', border: 'border-red-400' },
+// Nation jersey colors — official kit colors for all 48 WC 2026 teams
+const JERSEY_COLORS: Record<string, { primary: string; secondary: string; pattern: string }> = {
+  // Group A
+  'Mexico': { primary: '#016847', secondary: '#FFFFFF', pattern: 'solid' },
+  'South Africa': { primary: '#FFF200', secondary: '#007A4D', pattern: 'solid' },
+  'South Korea': { primary: '#EA1C24', secondary: '#032A73', pattern: 'solid' },
+  'Czechia': { primary: '#FFFFFF', secondary: '#11457E', pattern: 'solid' },
+  // Group B
+  'Canada': { primary: '#DA291C', secondary: '#FFFFFF', pattern: 'solid' },
+  'Bosnia & Herz.': { primary: '#002F6C', secondary: '#FED141', pattern: 'solid' },
+  'Qatar': { primary: '#8A1538', secondary: '#FFFFFF', pattern: 'solid' },
+  'Switzerland': { primary: '#D52B1E', secondary: '#FFFFFF', pattern: 'solid' },
+  // Group C
+  'Brazil': { primary: '#FFDC02', secondary: '#009B3A', pattern: 'solid' },
+  'Morocco': { primary: '#C1272D', secondary: '#006233', pattern: 'solid' },
+  'Haiti': { primary: '#00209F', secondary: '#D21034', pattern: 'solid' },
+  'Scotland': { primary: '#002453', secondary: '#FFFFFF', pattern: 'solid' },
+  // Group D
+  'USA': { primary: '#FFFFFF', secondary: '#002868', pattern: 'solid' },
+  'Paraguay': { primary: '#D51C29', secondary: '#FFFFFF', pattern: 'stripes' },
+  'Australia': { primary: '#002B7F', secondary: '#FCD116', pattern: 'solid' },
+  'Türkiye': { primary: '#E30A17', secondary: '#FFFFFF', pattern: 'solid' },
+  // Group E
+  'Germany': { primary: '#FFFFFF', secondary: '#000000', pattern: 'solid' },
+  'Curaçao': { primary: '#002B7F', secondary: '#F9E311', pattern: 'solid' },
+  "Côte d'Ivoire": { primary: '#FF8200', secondary: '#FFFFFF', pattern: 'solid' },
+  'Ecuador': { primary: '#FFDD00', secondary: '#0033A0', pattern: 'solid' },
+  // Group F
+  'Netherlands': { primary: '#21468B', secondary: '#FF4F00', pattern: 'solid' },
+  'Japan': { primary: '#000080', secondary: '#FFFFFF', pattern: 'solid' },
+  'Tunisia': { primary: '#E70013', secondary: '#FFFFFF', pattern: 'solid' },
+  'Sweden': { primary: '#006AA7', secondary: '#FECC02', pattern: 'solid' },
+  // Group G
+  'Belgium': { primary: '#E30613', secondary: '#000000', pattern: 'solid' },
+  'Egypt': { primary: '#C8102E', secondary: '#000000', pattern: 'solid' },
+  'IR Iran': { primary: '#FFFFFF', secondary: '#239E46', pattern: 'solid' },
+  'New Zealand': { primary: '#000000', secondary: '#FFFFFF', pattern: 'solid' },
+  // Group H
+  'Spain': { primary: '#AA151B', secondary: '#F1BF00', pattern: 'solid' },
+  'Cabo Verde': { primary: '#003893', secondary: '#D21034', pattern: 'solid' },
+  'Saudi Arabia': { primary: '#006C35', secondary: '#FFFFFF', pattern: 'solid' },
+  'Uruguay': { primary: '#0081C8', secondary: '#FFFFFF', pattern: 'solid' },
+  // Group I
+  'France': { primary: '#002395', secondary: '#FFFFFF', pattern: 'solid' },
+  'Senegal': { primary: '#FFFFFF', secondary: '#11A355', pattern: 'solid' },
+  'Iraq': { primary: '#FFFFFF', secondary: '#007A3D', pattern: 'solid' },
+  'Norway': { primary: '#EF2B2D', secondary: '#002868', pattern: 'solid' },
+  // Group J
+  'Argentina': { primary: '#74ACDF', secondary: '#FFFFFF', pattern: 'stripes' },
+  'Algeria': { primary: '#FFFFFF', secondary: '#006633', pattern: 'solid' },
+  'Austria': { primary: '#ED2939', secondary: '#FFFFFF', pattern: 'solid' },
+  'Jordan': { primary: '#C1272D', secondary: '#006233', pattern: 'solid' },
+  // Group K
+  'Portugal': { primary: '#E42518', secondary: '#00662F', pattern: 'solid' },
+  'DR Congo': { primary: '#007FFF', secondary: '#CE1126', pattern: 'solid' },
+  'Uzbekistan': { primary: '#FFFFFF', secondary: '#0099B5', pattern: 'solid' },
+  'Colombia': { primary: '#FCD116', secondary: '#003893', pattern: 'solid' },
+  // Group L
+  'England': { primary: '#FFFFFF', secondary: '#CE1124', pattern: 'solid' },
+  'Croatia': { primary: '#FF0000', secondary: '#FFFFFF', pattern: 'checkers' },
+  'Ghana': { primary: '#FFFFFF', secondary: '#EF3340', pattern: 'solid' },
+  'Panama': { primary: '#DA121A', secondary: '#00205B', pattern: 'solid' },
+  // Extra nations from clubs
+  'Nigeria': { primary: '#008751', secondary: '#FFFFFF', pattern: 'solid' },
+  'Slovenia': { primary: '#FFFFFF', secondary: '#003DA5', pattern: 'solid' },
+  'Poland': { primary: '#FFFFFF', secondary: '#DC143C', pattern: 'solid' },
 };
 
-const DEFAULT_JERSEY = { bg: 'bg-gray-600', text: 'text-white', border: 'border-gray-500' };
+const DEFAULT_JERSEY = { primary: '#333333', secondary: '#666666', pattern: 'solid' };
 
 function getJersey(nation: string) {
   return JERSEY_COLORS[nation] || DEFAULT_JERSEY;
 }
 
-// Jersey SVG icon component
-function JerseyIcon({ nation, size = 'sm', number }: { nation: string; size?: 'sm' | 'md'; number?: string }) {
+// Jersey SVG component with real kit patterns
+function JerseyIcon({ nation, size = 'sm' }: { nation: string; size?: 'sm' | 'md' }) {
   const j = getJersey(nation);
-  const s = size === 'md' ? 'w-10 h-10 sm:w-11 sm:h-11 text-[10px]' : 'w-9 h-9 text-[9px]';
+  const s = size === 'md' ? 44 : 36;
+  const isLight = ['#FFFFFF', '#FFF200', '#FFDC02', '#FFDD00', '#FCD116', '#FECC02', '#74ACDF'].includes(j.primary);
+
   return (
-    <div className={cn(s, j.bg, j.text, 'rounded-lg flex items-center justify-center border', j.border, 'font-black shadow-md relative')}>
-      <span className="text-lg leading-none">👕</span>
-      {number && <span className="absolute -bottom-0.5 text-[7px] font-mono opacity-70">{number}</span>}
-    </div>
+    <svg width={s} height={s} viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Jersey body */}
+      <path d="M8 12L4 8L10 4H16L20 2L24 4H30L36 8L32 12V36H8V12Z" fill={j.primary} stroke={isLight ? '#ccc' : j.primary} strokeWidth="0.5"/>
+      {/* Sleeves */}
+      <path d="M4 8L10 4V12L8 12L4 8Z" fill={j.secondary} opacity="0.7"/>
+      <path d="M36 8L30 4V12L32 12L36 8Z" fill={j.secondary} opacity="0.7"/>
+      {/* Collar */}
+      <path d="M16 4L20 2L24 4" stroke={j.secondary} strokeWidth="1.5" fill="none"/>
+      {/* Pattern overlays */}
+      {j.pattern === 'stripes' && (
+        <>
+          <rect x="12" y="12" width="3" height="24" fill={j.secondary} opacity="0.3"/>
+          <rect x="18" y="12" width="3" height="24" fill={j.secondary} opacity="0.3"/>
+          <rect x="24" y="12" width="3" height="24" fill={j.secondary} opacity="0.3"/>
+        </>
+      )}
+      {j.pattern === 'checkers' && (
+        <>
+          <rect x="8" y="12" width="6" height="6" fill={j.secondary} opacity="0.4"/>
+          <rect x="20" y="12" width="6" height="6" fill={j.secondary} opacity="0.4"/>
+          <rect x="14" y="18" width="6" height="6" fill={j.secondary} opacity="0.4"/>
+          <rect x="26" y="18" width="6" height="6" fill={j.secondary} opacity="0.4"/>
+          <rect x="8" y="24" width="6" height="6" fill={j.secondary} opacity="0.4"/>
+          <rect x="20" y="24" width="6" height="6" fill={j.secondary} opacity="0.4"/>
+        </>
+      )}
+    </svg>
   );
 }
 const STARTING_XI: Record<string, number> = { GK: 1, DEF: 4, MID: 4, FWD: 2 };
