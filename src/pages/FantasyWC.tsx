@@ -260,6 +260,9 @@ function generatePower(pos: string, nation: string): number {
 export default function FantasyWC() {
   const { user } = useAuth();
   const [squad, setSquad] = useState<typeof PLAYER_POOL>([]);
+  const [captainId, setCaptainId] = useState<number | null>(null);
+  const [viceCaptainId, setViceCaptainId] = useState<number | null>(null);
+  const [selectedPlayer, setSelectedPlayer] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('ALL');
   const [sortBy, setSortBy] = useState<'power' | 'price-high' | 'price-low'>('power');
@@ -420,6 +423,42 @@ export default function FantasyWC() {
     if (p) toast.success(`${p.name} removed`);
   };
 
+  const autoFillRemaining = () => {
+    const newSquad = [...squad];
+    let remaining = budget;
+    const targets: Record<string, number> = { GK: 2, DEF: 5, MID: 5, FWD: 3 };
+    const nationCount: Record<string, number> = {};
+    newSquad.forEach(p => { nationCount[p.nation] = (nationCount[p.nation] || 0) + 1; });
+
+    const available = [...allPlayers]
+      .filter(p => !newSquad.some(s => s.id === p.id))
+      .sort(() => Math.random() - 0.5);
+
+    for (const pos of ['GK', 'DEF', 'MID', 'FWD']) {
+      const need = targets[pos] - newSquad.filter(s => s.pos === pos).length;
+      if (need <= 0) continue;
+      const candidates = available.filter(p => p.pos === pos).sort((a, b) => b.power - a.power);
+      let added = 0;
+      for (const p of candidates) {
+        if (added >= need || newSquad.length >= 15) break;
+        const nc = nationCount[p.nation] || 0;
+        if (nc >= 3 || remaining < p.price) continue;
+        const slotsLeft = 15 - newSquad.length - 1;
+        if (slotsLeft > 2 && remaining - p.price < slotsLeft * 3.0) continue;
+        newSquad.push(p);
+        remaining -= p.price;
+        nationCount[p.nation] = nc + 1;
+        added++;
+      }
+    }
+    setSquad(newSquad);
+    if (!captainId && newSquad.length > 0) {
+      const best = newSquad.filter(p => p.pos === 'FWD' || p.pos === 'MID').sort((a, b) => b.power - a.power)[0];
+      if (best) setCaptainId(best.id);
+    }
+    toast.success(`🤖 Filled to ${newSquad.length} players! ${remaining.toFixed(1)}M remaining`);
+  };
+
   const autoPick = () => {
     const newSquad: typeof PLAYER_POOL = [];
     let remaining = 100;
@@ -493,6 +532,16 @@ export default function FantasyWC() {
     }
 
     setSquad(newSquad);
+    // Auto-set captain
+    const bestAttacker = newSquad.filter(p => p.pos === 'FWD' || p.pos === 'MID').sort((a, b) => b.power - a.power);
+    if (bestAttacker.length > 0) {
+      const pick = bestAttacker[Math.floor(Math.random() * Math.min(3, bestAttacker.length))];
+      setCaptainId(pick.id);
+      if (bestAttacker.length > 1) {
+        const vc = bestAttacker.find(p => p.id !== pick.id);
+        if (vc) setViceCaptainId(vc.id);
+      }
+    }
     toast.success(`🤖 AI picked ${newSquad.length} players! Budget: ${remaining.toFixed(1)}M remaining`);
   };
 
@@ -535,12 +584,28 @@ export default function FantasyWC() {
           </div>
 
           <div className="flex items-center gap-2">
-            <button onClick={autoPick} className="bg-gray-800 hover:bg-gray-700 text-[10px] font-bold px-3 py-1.5 rounded-lg text-gray-200 flex items-center gap-1">
+            <button onClick={() => {
+              if (squad.length > 0 && squad.length < 15) {
+                if (confirm(`You have ${squad.length} players. Fill remaining ${15 - squad.length} slots automatically?\n\nCancel to reset and auto-pick all 15.`)) {
+                  autoFillRemaining();
+                } else {
+                  autoPick();
+                }
+              } else {
+                autoPick();
+              }
+            }} className="bg-gray-800 hover:bg-gray-700 text-[10px] font-bold px-3 py-1.5 rounded-lg text-gray-200 flex items-center gap-1">
               🤖 AI Pick
             </button>
-            <button onClick={() => { if (squad.length < 15) toast.error(`Need ${15 - squad.length} more`); else toast.success('Squad saved!'); }}
-              className="bg-[#00FF66] hover:opacity-90 text-black text-[10px] font-black px-3 py-1.5 rounded-lg uppercase tracking-wider">
-              Save
+            <button onClick={() => {
+              if (squad.length < 15) return toast.error(`Need ${15 - squad.length} more players`);
+              if (!captainId) return toast.error('Select a captain first');
+              toast.success('🟢 Squad saved for Gameweek 1!');
+            }}
+              className={cn('text-[10px] font-black px-3 py-1.5 rounded-lg uppercase tracking-wider transition-all',
+                squad.length === 15 && captainId ? 'bg-[#00FF66] hover:opacity-90 text-black' : 'bg-gray-700 text-gray-500 cursor-not-allowed',
+              )}>
+              {squad.length === 15 ? '💾 Save' : `${squad.length}/15`}
             </button>
           </div>
         </div>
@@ -557,13 +622,13 @@ export default function FantasyWC() {
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 border-2 border-[#00FF66]/10 rounded-full pointer-events-none" />
 
             {/* FWD */}
-            <PitchLine pos="FWD" squad={getByPos('FWD')} limit={3} onAdd={() => setActiveFilter('FWD')} onRemove={removePlayer} />
+            <PitchLine pos="FWD" squad={getByPos('FWD')} limit={3} onAdd={() => setActiveFilter('FWD')} onRemove={removePlayer} captainId={captainId} viceCaptainId={viceCaptainId} onSetCaptain={(id) => { setCaptainId(id); if (viceCaptainId === id) setViceCaptainId(null); }} onSetVC={(id) => { setViceCaptainId(id); if (captainId === id) setCaptainId(null); }} selectedPlayer={selectedPlayer} onSelect={setSelectedPlayer} />
             {/* MID */}
-            <PitchLine pos="MID" squad={getByPos('MID')} limit={5} onAdd={() => setActiveFilter('MID')} onRemove={removePlayer} />
+            <PitchLine pos="MID" squad={getByPos('MID')} limit={5} onAdd={() => setActiveFilter('MID')} onRemove={removePlayer} captainId={captainId} viceCaptainId={viceCaptainId} onSetCaptain={(id) => { setCaptainId(id); if (viceCaptainId === id) setViceCaptainId(null); }} onSetVC={(id) => { setViceCaptainId(id); if (captainId === id) setCaptainId(null); }} selectedPlayer={selectedPlayer} onSelect={setSelectedPlayer} />
             {/* DEF */}
-            <PitchLine pos="DEF" squad={getByPos('DEF')} limit={5} onAdd={() => setActiveFilter('DEF')} onRemove={removePlayer} />
+            <PitchLine pos="DEF" squad={getByPos('DEF')} limit={5} onAdd={() => setActiveFilter('DEF')} onRemove={removePlayer} captainId={captainId} viceCaptainId={viceCaptainId} onSetCaptain={(id) => { setCaptainId(id); if (viceCaptainId === id) setViceCaptainId(null); }} onSetVC={(id) => { setViceCaptainId(id); if (captainId === id) setCaptainId(null); }} selectedPlayer={selectedPlayer} onSelect={setSelectedPlayer} />
             {/* GK */}
-            <PitchLine pos="GK" squad={getByPos('GK')} limit={2} onAdd={() => setActiveFilter('GK')} onRemove={removePlayer} />
+            <PitchLine pos="GK" squad={getByPos('GK')} limit={2} onAdd={() => setActiveFilter('GK')} onRemove={removePlayer} captainId={captainId} viceCaptainId={viceCaptainId} onSetCaptain={(id) => { setCaptainId(id); if (viceCaptainId === id) setViceCaptainId(null); }} onSetVC={(id) => { setViceCaptainId(id); if (captainId === id) setCaptainId(null); }} selectedPlayer={selectedPlayer} onSelect={setSelectedPlayer} />
 
             {/* Bench */}
             <div className="relative z-10 mt-3 pt-2 border-t border-gray-800/60 bg-black/30 rounded-xl p-2">
@@ -662,32 +727,61 @@ export default function FantasyWC() {
 }
 
 // ─── Pitch Line Component ───────────────────────────────────────────────────
-function PitchLine({ pos, squad, limit, onAdd, onRemove }: {
+function PitchLine({ pos, squad, limit, onAdd, onRemove, captainId, viceCaptainId, onSetCaptain, onSetVC, selectedPlayer, onSelect }: {
   pos: string; squad: typeof PLAYER_POOL; limit: number;
   onAdd: () => void; onRemove: (id: number) => void;
+  captainId: number | null; viceCaptainId: number | null;
+  onSetCaptain: (id: number) => void; onSetVC: (id: number) => void;
+  selectedPlayer: number | null; onSelect: (id: number | null) => void;
 }) {
   const empty = Math.max(0, limit - squad.length);
   const gap = pos === 'GK' ? 'gap-6' : pos === 'DEF' ? 'gap-2 sm:gap-3' : 'gap-2 sm:gap-4';
 
   return (
     <div className={cn('relative z-10 flex justify-center flex-wrap my-1', gap)}>
-      {squad.map(p => (
-        <div key={p.id} onClick={() => onRemove(p.id)} className="group cursor-pointer text-center w-14 sm:w-16">
-          <div className="relative mx-auto transition shadow-lg group-hover:scale-110">
-            <JerseyIcon nation={p.nation} size="md" />
-            <span className="absolute -top-1 -right-1 bg-black text-[7px] text-white px-1 rounded font-mono border border-gray-700">{p.pos}</span>
+      {squad.map(p => {
+        const isCaptain = captainId === p.id;
+        const isVC = viceCaptainId === p.id;
+        const isSelected = selectedPlayer === p.id;
+        return (
+          <div key={p.id} className="relative text-center w-14 sm:w-16">
+            <div className="relative mx-auto cursor-pointer" onClick={() => onSelect(isSelected ? null : p.id)}>
+              <JerseyIcon nation={p.nation} size="md" />
+              {/* Captain / VC badge */}
+              {isCaptain && (
+                <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-amber-400 flex items-center justify-center shadow-lg z-10">
+                  <span className="text-[8px] font-black text-black">C</span>
+                </div>
+              )}
+              {isVC && (
+                <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-gray-300 flex items-center justify-center shadow-lg z-10">
+                  <span className="text-[8px] font-black text-gray-700">VC</span>
+                </div>
+              )}
+              {/* Selection glow */}
+              {isSelected && <div className="absolute inset-0 rounded-lg ring-2 ring-[#00FF66] ring-offset-1 ring-offset-transparent animate-pulse" />}
+            </div>
+            <p className="text-[8px] sm:text-[9px] font-bold text-white truncate mt-0.5 drop-shadow max-w-[60px] sm:max-w-[70px]">{p.name.split(' ').pop()}</p>
+            <p className="text-[7px] font-mono text-[#00FF66]">${p.price}M</p>
+
+            {/* Context menu on select */}
+            {isSelected && (
+              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-[#111] border border-[#333] rounded-lg shadow-xl z-30 overflow-hidden whitespace-nowrap">
+                <button onClick={(e) => { e.stopPropagation(); onSetCaptain(p.id); onSelect(null); }} className="block w-full px-3 py-1.5 text-[9px] font-bold text-amber-400 hover:bg-[#1a1a1a] text-left">⭐ Captain</button>
+                <button onClick={(e) => { e.stopPropagation(); onSetVC(p.id); onSelect(null); }} className="block w-full px-3 py-1.5 text-[9px] font-bold text-gray-300 hover:bg-[#1a1a1a] text-left">🥈 Vice Captain</button>
+                <button onClick={(e) => { e.stopPropagation(); onRemove(p.id); onSelect(null); }} className="block w-full px-3 py-1.5 text-[9px] font-bold text-red-400 hover:bg-[#1a1a1a] text-left">✕ Remove</button>
+              </div>
+            )}
           </div>
-          <p className="text-[9px] font-bold text-white truncate mt-0.5 drop-shadow">{p.name.split(' ').pop()}</p>
-          <p className="text-[8px] font-mono text-[#00FF66]">${p.price}M</p>
-        </div>
-      ))}
+        );
+      })}
       {Array.from({ length: empty }).map((_, i) => (
-        <div key={`e-${i}`} onClick={onAdd} className="cursor-pointer text-center w-14 sm:w-16 group">
-          <div className="mx-auto w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center border-2 border-dashed border-gray-600 group-hover:border-[#00FF66] rounded-xl transition bg-black/40">
-            <span className="text-gray-600 group-hover:text-[#00FF66] text-lg">+</span>
+        <button key={`e-${i}`} onClick={onAdd} className="text-center">
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl border-2 border-dashed border-white/10 flex items-center justify-center mx-auto hover:border-[#00FF66]/40 transition-colors">
+            <span className="text-base text-white/10 hover:text-[#00FF66]/40">+</span>
           </div>
-          <p className="text-[8px] text-gray-600 mt-0.5 uppercase tracking-wider">{pos}</p>
-        </div>
+          <p className="text-[8px] text-white/15 mt-0.5 font-bold">{pos}</p>
+        </button>
       ))}
     </div>
   );
