@@ -86,44 +86,54 @@ export default function AdminDashboard() {
     if (!form.title || !form.body) return toast.error('Title and body are required');
     setSaving(true);
 
-    const slug = generateSlug(form.title);
-    const wordCount = form.body.split(/\s+/).length;
+    const slug = editId ? undefined : generateSlug(form.title);
+    const wordCount = form.body.split(/\s+/).filter(Boolean).length;
     const readingTime = Math.max(1, Math.ceil(wordCount / 200));
-    const jsonLd = generateJsonLd(form.title, form.type, slug, form.meta_description || form.excerpt, form.featured_image);
+    const finalSlug = slug || generateSlug(form.title);
+    const jsonLd = generateJsonLd(form.title, form.type, finalSlug, form.meta_description || form.excerpt, form.featured_image);
 
-    const payload = {
+    const payload: Record<string, any> = {
       type: form.type,
       status: form.status,
       title: form.title,
-      slug,
       subtitle: form.subtitle || null,
       body: form.body,
-      excerpt: form.excerpt || form.body.substring(0, 200).replace(/[#*\n]/g, '').trim(),
+      excerpt: form.excerpt || form.body.substring(0, 200).replace(/[#*\n]/g, '').trim() || null,
       meta_title: `${form.title} | LastFootball`,
       meta_description: (form.meta_description || form.excerpt || form.title).substring(0, 155),
-      category: form.category,
+      category: form.category || 'Football',
       league: form.league || null,
       tags: form.tags ? form.tags.split(',').map(t => t.trim()).filter(Boolean) : null,
       teams: form.teams ? form.teams.split(',').map(t => t.trim()).filter(Boolean) : null,
       featured_image: form.featured_image || null,
       featured_image_alt: form.featured_image_alt || null,
       featured_image_caption: form.featured_image_caption || null,
-      author_name: form.author_name,
-      author_id: user?.id,
+      author_name: form.author_name || 'LastFootball Editorial',
       json_ld: jsonLd,
       reading_time_mins: readingTime,
-      published_at: form.status === 'published' ? new Date().toISOString() : null,
+      updated_at: new Date().toISOString(),
     };
 
-    let error;
+    // Only set these on create
+    if (!editId) {
+      payload.slug = finalSlug;
+      payload.author_id = user?.id;
+      payload.published_at = form.status === 'published' ? new Date().toISOString() : null;
+    } else if (form.status === 'published') {
+      // Update published_at if publishing a draft
+      payload.published_at = new Date().toISOString();
+    }
+
+    let result, error;
     if (editId) {
       ({ error } = await supabase.from('posts').update(payload).eq('id', editId));
     } else {
-      ({ error } = await supabase.from('posts').insert(payload));
+      ({ data: result, error } = await supabase.from('posts').insert(payload).select());
     }
 
     if (error) {
-      toast.error(error.message);
+      console.error('Publish error:', error);
+      toast.error(`Failed: ${error.message || error.code || 'Unknown error'}`);
     } else {
       toast.success(editId ? 'Article updated!' : `Article published at /news/${slug}`);
       resetForm();
