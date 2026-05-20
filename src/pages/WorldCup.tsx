@@ -213,9 +213,15 @@ export default function WorldCup() {
               <span className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-amber-400" /> USA · Canada · Mexico</span>
               <span className="flex items-center gap-1.5"><Users className="w-3.5 h-3.5 text-amber-400" /> {enrollCount} fans enrolled</span>
             </div>
-            <div className="flex justify-center mt-4">
-              <Link to="/worldcup/fixtures" className="px-5 py-2 rounded-lg bg-[#00ff87] text-black text-xs font-bold uppercase tracking-widest hover:opacity-90 transition-opacity">
-                VIEW FULL SCHEDULE & BRACKET →
+            <div className="flex flex-wrap justify-center gap-3 mt-4">
+              <Link to="/worldcup/fixtures" className="px-5 py-2.5 rounded-lg bg-[#00ff87] text-black text-xs font-bold uppercase tracking-widest hover:opacity-90 transition-opacity">
+                📅 Schedule & Bracket
+              </Link>
+              <Link to="/predict" className="px-5 py-2.5 rounded-lg bg-amber-500 text-black text-xs font-bold uppercase tracking-widest hover:opacity-90 transition-opacity">
+                🎯 Predict & Win
+              </Link>
+              <Link to="/fantasy" className="px-5 py-2.5 rounded-lg bg-purple-500 text-white text-xs font-bold uppercase tracking-widest hover:opacity-90 transition-opacity">
+                ⚽ Fantasy WC
               </Link>
             </div>
           </div>
