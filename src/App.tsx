@@ -26,6 +26,8 @@ const PredictPage = lazy(() => import("./pages/PredictPage"));
 const Leaderboard = lazy(() => import("./pages/Leaderboard"));
 const WCFixtures = lazy(() => import("./pages/WCFixtures"));
 const FantasyWC = lazy(() => import("./pages/FantasyWC"));
+const NewsList = lazy(() => import("./pages/NewsList"));
+const NewsArticle = lazy(() => import("./pages/NewsArticle"));
 const WorldCup = lazy(() => import("./pages/WorldCup"));
 const WCTeamPage = lazy(() => import("./pages/WCTeamPage"));
 const WCStadiumPage = lazy(() => import("./pages/WCStadiumPage"));
@@ -88,6 +90,8 @@ function AppRoutes() {
             <Route path="/leaderboard" element={<Leaderboard />} />
             <Route path="/worldcup/fixtures" element={<WCFixtures />} />
             <Route path="/fantasy" element={<FantasyWC />} />
+            <Route path="/news" element={<NewsList />} />
+            <Route path="/news/:slug" element={<NewsArticle />} />
             <Route path="/favorites" element={<Favorites />} />
             <Route path="/news" element={<News />} />
             <Route path="/news/:slug" element={<ArticleDetail />} />
