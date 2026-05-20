@@ -28,6 +28,7 @@ const WCFixtures = lazy(() => import("./pages/WCFixtures"));
 const FantasyWC = lazy(() => import("./pages/FantasyWC"));
 const NewsList = lazy(() => import("./pages/NewsList"));
 const NewsArticle = lazy(() => import("./pages/NewsArticle"));
+const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const WorldCup = lazy(() => import("./pages/WorldCup"));
 const WCTeamPage = lazy(() => import("./pages/WCTeamPage"));
 const WCStadiumPage = lazy(() => import("./pages/WCStadiumPage"));
@@ -92,6 +93,7 @@ function AppRoutes() {
             <Route path="/fantasy" element={<FantasyWC />} />
             <Route path="/news" element={<NewsList />} />
             <Route path="/news/:slug" element={<NewsArticle />} />
+            <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/favorites" element={<Favorites />} />
             <Route path="/news" element={<News />} />
             <Route path="/news/:slug" element={<ArticleDetail />} />
