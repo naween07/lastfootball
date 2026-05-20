@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 // Admin emails allowed to publish
-const ADMIN_EMAILS = ['naween@lastfootball.com', 'admin@lastfootball.com', 'naweenrijal7@gmail.com'];
+const ADMIN_EMAILS = ['dynamicmoney2006@gmail.com', 'admin@lastfootball.com'];
 
 type EditorMode = 'list' | 'create' | 'edit';
 
