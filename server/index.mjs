@@ -396,50 +396,7 @@ function readBody(req) {
   });
 }
 
-// Supabase REST query helper
-async function supabaseQuery(sql) {
-  return new Promise((resolve, reject) => {
-    const postData = JSON.stringify({ query: sql });
-    const options = {
-      hostname: 'ehfyctoaudhyrjxbftty.supabase.co',
-      path: '/rest/v1/rpc/exec_sql',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': SUPABASE_KEY,
-        'Authorization': `Bearer ${SUPABASE_KEY}`,
-        'Content-Length': Buffer.byteLength(postData),
-      },
-    };
-    // Use direct pg query via fetch
-    const url = `https://ehfyctoaudhyrjxbftty.supabase.co/rest/v1/rpc/`;
-    // Fallback: use the Supabase SQL via management API
-    // For now, just resolve null — articles are created via Supabase client on frontend
-    resolve(null);
-  });
-}
-
-// Generate Google-compliant JSON-LD structured data
-function generateJsonLd({ type, title, description, slug, author, image, published }) {
-  const base = {
-    '@context': 'https://schema.org',
-    '@type': type,
-    headline: title,
-    description: description,
-    url: `https://lastfootball.com/news/${slug}`,
-    datePublished: published,
-    dateModified: published,
-    author: {
-      '@type': 'Person',
-      name: author,
-      url: 'https://lastfootball.com',
-    },
-    publisher: {
-      '@type': 'Organization',
-      name: 'LastFootball',
-      url: 'https://lastfootball.com',
-      logo: {
-        '@type': 'ImageObject',
+// supabaseQuery stub removed (duplicate)
         url: 'https://lastfootball.com/logo.png',
       },
     },
