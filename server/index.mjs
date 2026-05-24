@@ -397,6 +397,27 @@ function readBody(req) {
 }
 
 // supabaseQuery stub removed (duplicate)
+// Generate Google-compliant JSON-LD structured data
+function generateJsonLd({ type, title, description, slug, author, image, published }) {
+  const base = {
+    '@context': 'https://schema.org',
+    '@type': type,
+    headline: title,
+    description: description,
+    url: `https://lastfootball.com/news/${slug}`,
+    datePublished: published,
+    dateModified: published,
+    author: {
+      '@type': 'Person',
+      name: author,
+      url: 'https://lastfootball.com',
+    },
+    publisher: {
+      '@type': 'Organization',
+      name: 'LastFootball',
+      url: 'https://lastfootball.com',
+      logo: {
+        '@type': 'ImageObject',
         url: 'https://lastfootball.com/logo.png',
       },
     },
