@@ -93,10 +93,10 @@ function AppRoutes() {
             <Route path="/fantasy" element={<FantasyWC />} />
             <Route path="/news" element={<NewsList />} />
             <Route path="/news/:slug" element={<NewsArticle />} />
+            <Route path="/reports" element={<News />} />
             <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/favorites" element={<Favorites />} />
-            <Route path="/news" element={<News />} />
-            <Route path="/news/:slug" element={<ArticleDetail />} />
+            {/* match reports moved to /reports */}
             <Route path="/stats" element={<Stats />} />
             <Route path="/worldcup" element={<WorldCup />} />
             <Route path="/worldcup/team/:code" element={<WCTeamPage />} />

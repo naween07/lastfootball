@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 // Supported league IDs for predictions
-const SUPPORTED_LEAGUES = [39, 140, 135, 78, 61, 2, 3, 848, 88, 94, 307, 45, 48, 143, 137, 253];
+const SUPPORTED_LEAGUES = [1, 39, 140, 135, 78, 61, 2, 3, 848, 88, 94, 307, 45, 48, 143, 137, 253];
 
 interface Prediction {
   match_id: number;
