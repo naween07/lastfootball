@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import SEOHead from '@/components/SEOHead';
@@ -27,13 +27,13 @@ interface ExternalNews {
 export default function News() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [externalNews, setExternalNews] = useState<NewsItem[]>([]);
+  const [sourceNews, setSourceNews] = useState<ExternalNews[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('reports');
 
   useEffect(() => {
     const load = async () => {
       try {
-        // Fetch last 3 days for plenty of content
         const today = new Date();
         const dates = [0, 1, 2].map(d => {
           const date = new Date(today);
@@ -41,15 +41,15 @@ export default function News() {
           return date.toISOString().split('T')[0];
         });
 
-        const [matchResults, news] = await Promise.allSettled([
+        const [matchResults, news, externalNewsResult] = await Promise.allSettled([
           Promise.all(dates.map(date => fetchMatchesByDate(date))),
           fetchFootballNews(),
+          supabase.from('external_news').select('*').eq('is_archived', false).order('published_at', { ascending: false }).limit(50),
         ]);
 
         if (matchResults.status === 'fulfilled') {
           const allMatches = matchResults.value.flat();
           const reports = generateDailyReports(allMatches);
-          // Sort: featured first (by importance), then by date
           reports.sort((a, b) => {
             if (a.isFeatured && !b.isFeatured) return -1;
             if (!a.isFeatured && b.isFeatured) return 1;
@@ -61,6 +61,10 @@ export default function News() {
         if (news.status === 'fulfilled') {
           setExternalNews(news.value);
         }
+
+        if (externalNewsResult.status === 'fulfilled' && externalNewsResult.value.data) {
+          setSourceNews(externalNewsResult.value.data);
+        }
       } catch {}
       setLoading(false);
     };
@@ -70,6 +74,7 @@ export default function News() {
   const tabs = [
     { id: 'reports' as Tab, label: 'Match Reports', icon: <FileText className="w-3.5 h-3.5" />, count: articles.length },
     { id: 'trending' as Tab, label: 'Trending', icon: <Flame className="w-3.5 h-3.5" />, count: externalNews.length },
+    { id: 'sources' as Tab, label: 'External Sources', icon: <Globe className="w-3.5 h-3.5" />, count: sourceNews.length },
   ];
 
   return (
@@ -81,7 +86,6 @@ export default function News() {
       />
       <Header />
 
-      {/* Header banner */}
       <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-b border-primary/20">
         <div className="container py-4 flex items-center gap-3">
           <div className="p-2 rounded-xl bg-primary/10">
@@ -94,9 +98,8 @@ export default function News() {
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="sticky top-14 z-30 bg-background/95 backdrop-blur-md border-b border-border">
-        <div className="container flex items-center gap-2 py-2">
+        <div className="container flex items-center gap-2 py-2 overflow-x-auto">
           {tabs.map(tab => (
             <button
               key={tab.id}
@@ -136,7 +139,6 @@ export default function News() {
             </div>
           ) : (
             <div className="space-y-4">
-              {/* Featured / Big Matches */}
               {articles.filter(a => a.isFeatured).length > 0 && (
                 <div>
                   <h3 className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-3 px-1 flex items-center gap-1.5">
@@ -150,7 +152,6 @@ export default function News() {
                 </div>
               )}
 
-              {/* All Reports */}
               <div>
                 <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3 px-1 flex items-center gap-1.5">
                   <FileText className="w-3.5 h-3.5" /> All Reports
@@ -163,7 +164,7 @@ export default function News() {
               </div>
             </div>
           )
-        ) : (
+        ) : activeTab === 'trending' ? (
           externalNews.length === 0 ? (
             <div className="text-center py-20 text-muted-foreground">
               <Flame className="w-12 h-12 mx-auto mb-3 opacity-30" />
@@ -176,13 +177,26 @@ export default function News() {
               ))}
             </div>
           )
+        ) : (
+          sourceNews.length === 0 ? (
+            <div className="text-center py-20 text-muted-foreground">
+              <Globe className="w-12 h-12 mx-auto mb-3 opacity-30" />
+              <p className="text-lg font-medium">No external news yet</p>
+              <p className="text-sm mt-1">News from various sources coming soon</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {sourceNews.map((item) => (
+                <SourceNewsCard key={item.id} news={item} />
+              ))}
+            </div>
+          )
         )}
       </main>
     </div>
   );
 }
 
-// Export articles for ArticleDetail to use
 export { generateDailyReports };
 
 function FeaturedReport({ article }: { article: Article }) {
@@ -191,7 +205,6 @@ function FeaturedReport({ article }: { article: Article }) {
       to={`/news/${article.slug}`}
       className="block rounded-xl overflow-hidden border border-primary/20 bg-gradient-to-br from-card to-primary/5 hover:border-primary/40 transition-all group"
     >
-      {/* Match score header */}
       <div className="flex items-center justify-between px-4 py-3 bg-primary/5 border-b border-primary/10">
         <div className="flex items-center gap-2">
           {article.homeTeam.logo && <OptimizedImage src={article.homeTeam.logo} alt="" className="w-6 h-6 object-contain" />}
@@ -233,7 +246,6 @@ function ReportCard({ article }: { article: Article }) {
       to={`/news/${article.slug}`}
       className="flex gap-3 p-3 rounded-xl border border-border bg-card hover:border-primary/30 hover:bg-card/80 transition-all group"
     >
-      {/* Team logos stacked */}
       <div className="w-12 flex flex-col items-center justify-center gap-1 flex-shrink-0">
         {article.homeTeam.logo && <OptimizedImage src={article.homeTeam.logo} alt="" className="w-6 h-6 object-contain" />}
         <span className="text-[10px] font-black text-muted-foreground">vs</span>
@@ -257,7 +269,7 @@ function ReportCard({ article }: { article: Article }) {
 
 function ExternalNewsCard({ news }: { news: NewsItem }) {
   return (
-    <a
+    
       href={news.url}
       target="_blank"
       rel="noopener noreferrer"
@@ -276,6 +288,39 @@ function ExternalNewsCard({ news }: { news: NewsItem }) {
           <span className="text-[11px] font-medium text-orange-400">{news.source}</span>
           <span className="text-muted-foreground">·</span>
           <span className="text-[11px] text-muted-foreground">{formatTimeAgo(news.publishedAt)}</span>
+        </div>
+      </div>
+      <ExternalLink className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-1 opacity-0 group-hover:opacity-100 transition-opacity" />
+    </a>
+  );
+}
+
+function SourceNewsCard({ news }: { news: ExternalNews }) {
+  return (
+    
+      href={news.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex gap-3 p-3 rounded-xl border border-border bg-card hover:border-primary/30 hover:bg-card/80 transition-all group"
+    >
+      {news.image_url && (
+        <div className="w-24 h-20 rounded-lg overflow-hidden flex-shrink-0">
+          <img src={news.image_url} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" />
+        </div>
+      )}
+      <div className="flex-1 min-w-0">
+        <h3 className="text-sm font-semibold text-foreground line-clamp-2 leading-tight group-hover:text-primary transition-colors">
+          {news.title}
+        </h3>
+        {news.description && (
+          <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{news.description}</p>
+        )}
+        <div className="flex items-center gap-2 mt-2">
+          <span className="text-[11px] font-medium text-primary">{news.source_name}</span>
+          <span className="text-muted-foreground">·</span>
+          <span className="text-[11px] text-muted-foreground">
+            {news.published_at ? formatTimeAgo(news.published_at) : formatTimeAgo(news.fetched_at)}
+          </span>
         </div>
       </div>
       <ExternalLink className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-1 opacity-0 group-hover:opacity-100 transition-opacity" />
