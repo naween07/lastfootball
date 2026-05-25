@@ -1,3 +1,3 @@
-# Welcome to your Lovable project
+# This is my LastFootball Project
 
 TODO: Document your project here
