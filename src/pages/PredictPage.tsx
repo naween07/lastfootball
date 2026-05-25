@@ -127,7 +127,7 @@ export default function PredictPage() {
           <div className="bg-card border border-border rounded-xl p-3 text-center">
             <TrendingUp className="w-5 h-5 text-emerald-400 mx-auto mb-1" />
             <p className="text-[10px] font-bold text-foreground">Earn Points</p>
-            <p className="text-[9px] text-muted-foreground">+3 exact, +1 winner</p>
+            <p className="text-[9px] text-muted-foreground">+4 exact, -2 wrong</p>
           </div>
           <div className="bg-card border border-border rounded-xl p-3 text-center">
             <Award className="w-5 h-5 text-amber-400 mx-auto mb-1" />

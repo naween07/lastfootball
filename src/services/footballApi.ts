@@ -342,7 +342,6 @@ export const TOP_LEAGUE_IDS = [1, 39, 2, 140, 135, 78, 61, 3, 94, 88, 307, 253];
 
 export const TOP_LEAGUES = [
   { id: 1, name: 'FIFA World Cup', country: 'World' },
-  { id: 1, name: 'FIFA World Cup', country: 'World' },
   { id: 39, name: 'Premier League', country: 'England' },
   { id: 2, name: 'Champions League', country: 'World' },
   { id: 140, name: 'La Liga', country: 'Spain' },

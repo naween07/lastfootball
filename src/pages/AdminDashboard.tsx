@@ -80,7 +80,7 @@ export default function AdminDashboard() {
         payload.published_at = new Date().toISOString();
       }
 
-      console.log('PAYLOAD:', JSON.stringify(payload)); let error;
+      let error;
       if (editId) { ({ error } = await supabase.from('posts').update(payload).eq('id', editId)); }
       else { ({ error } = await supabase.from('posts').insert(payload).select()); }
 

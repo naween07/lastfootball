@@ -105,11 +105,10 @@ export default function HomePage() {
                     <span className="text-xs font-semibold text-primary uppercase tracking-wider">Live Scores</span>
                   </div>
                 )}
-                <h1 className="sr-only">Live Football Scores, Fixtures, Results and Stats — LastFootball</h1>
-                <p className="text-4xl sm:text-5xl lg:text-6xl font-black text-white leading-[1.1] mb-4 drop-shadow-lg" aria-hidden="true">
+                <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-white leading-[1.1] mb-4 drop-shadow-lg">
                   EVERY KICK. EVERY STAT.<br />
                   <span className="text-primary">EVERY STORY.</span>
-                </p>
+                </h1>
                 <p className="text-base sm:text-lg text-gray-300 max-w-md mx-auto lg:mx-0 mb-8">
                   Live Scores, Stats, News and Much More. Track every match from top leagues worldwide.
                 </p>
