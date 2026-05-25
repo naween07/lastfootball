@@ -6,10 +6,23 @@ import OptimizedImage from '@/components/OptimizedImage';
 import { fetchMatchesByDate } from '@/services/footballApi';
 import { generateDailyReports, Article } from '@/services/articleGenerator';
 import { fetchFootballNews, NewsItem } from '@/services/newsApi';
-import { Flame, Clock, Loader2, Newspaper, FileText, ExternalLink } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { Flame, Clock, Loader2, Newspaper, FileText, ExternalLink, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-type Tab = 'reports' | 'trending';
+type Tab = 'reports' | 'trending' | 'sources';
+
+interface ExternalNews {
+  id: string;
+  title: string;
+  description: string | null;
+  url: string;
+  image_url: string | null;
+  source_name: string;
+  source_id: string | null;
+  published_at: string | null;
+  fetched_at: string;
+}
 
 export default function News() {
   const [articles, setArticles] = useState<Article[]>([]);
