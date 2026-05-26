@@ -269,7 +269,7 @@ function ReportCard({ article }: { article: Article }) {
 
 function ExternalNewsCard({ news }: { news: NewsItem }) {
   return (
-    
+    <a
       href={news.url}
       target="_blank"
       rel="noopener noreferrer"
@@ -297,7 +297,7 @@ function ExternalNewsCard({ news }: { news: NewsItem }) {
 
 function SourceNewsCard({ news }: { news: ExternalNews }) {
   return (
-    
+    <a
       href={news.url}
       target="_blank"
       rel="noopener noreferrer"
