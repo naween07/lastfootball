@@ -364,14 +364,41 @@ export const TOP_LEAGUES = [
 
 export const CUP_LEAGUE_IDS = [2, 3, 848, 45, 48, 143, 137, 81, 66, 1, 4, 5, 6, 9, 15, 16];
 
-export function getCurrentSeason(): number {
+const TOURNAMENT_SEASONS: Record<number, number[]> = {
+  1:  [2026, 2022, 2018, 2014, 2010],
+  4:  [2024, 2020, 2016, 2012, 2008],
+  9:  [2024, 2021, 2019, 2016, 2015],
+  5:  [2025, 2023, 2021, 2019, 2017],
+  6:  [2025, 2023, 2021, 2019, 2017],
+  15: [2023, 2019, 2015, 2011],
+  16: [2024, 2021, 2019, 2017],
+};
+
+export function isSingleYearTournament(leagueId: number): boolean {
+  return leagueId in TOURNAMENT_SEASONS;
+}
+
+export function getCurrentSeason(leagueId?: number): number {
+  if (leagueId && TOURNAMENT_SEASONS[leagueId]) {
+    return TOURNAMENT_SEASONS[leagueId][0];
+  }
   const now = new Date();
   return now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
 }
 
-export function getSeasonOptions(): number[] {
+export function getSeasonOptions(leagueId?: number): number[] {
+  if (leagueId && TOURNAMENT_SEASONS[leagueId]) {
+    return TOURNAMENT_SEASONS[leagueId];
+  }
   const current = getCurrentSeason();
   return [current, current - 1, current - 2, current - 3];
+}
+
+export function formatSeason(season: number, leagueId?: number): string {
+  if (leagueId && isSingleYearTournament(leagueId)) {
+    return String(season);
+  }
+  return season + '/' + String(season + 1).slice(-2);
 }
 
 // ---- Stats API functions ----

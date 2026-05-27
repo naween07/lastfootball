@@ -7,7 +7,7 @@ import PlayerStatsView from '@/components/stats/PlayerStatsView';
 import TeamStatsView from '@/components/stats/TeamStatsView';
 import LeagueFixturesView from '@/components/stats/LeagueFixturesView';
 import KnockoutBracket from '@/components/stats/KnockoutBracket';
-import { TOP_LEAGUES, CUP_LEAGUE_IDS, getCurrentSeason, getSeasonOptions, fetchStandings, StandingTeam } from '@/services/footballApi';
+import { TOP_LEAGUES, CUP_LEAGUE_IDS, getCurrentSeason, getSeasonOptions, formatSeason, isSingleYearTournament, fetchStandings, StandingTeam } from '@/services/footballApi';
 import LeagueSummary from '@/components/stats/LeagueSummary';
 
 const BASE_TABS = ['Tables', 'Player', 'Team', 'Fixtures'] as const;
@@ -20,7 +20,7 @@ export default function Stats() {
   const [activeLeague, setActiveLeague] = useState(
     TOP_LEAGUES.find(l => l.id === initialLeague) ? initialLeague : TOP_LEAGUES[0].id
   );
-  const [season, setSeason] = useState(getCurrentSeason());
+  const [season, setSeason] = useState(getCurrentSeason(activeLeague));
   const [activeTab, setActiveTab] = useState<Tab>('Tables');
   const [standings, setStandings] = useState<StandingTeam[]>([]);
   const [standingsLoading, setStandingsLoading] = useState(true);
@@ -31,7 +31,8 @@ export default function Stats() {
   // Reset tab if switching away from cup and on Bracket tab
   useEffect(() => {
     if (!isCup && activeTab === 'Bracket') setActiveTab('Tables');
-  }, [isCup, activeTab]);
+    setSeason(getCurrentSeason(activeLeague));
+  }, [isCup, activeTab, activeLeague]);
 
   useEffect(() => {
     if (activeTab !== 'Tables') return;
@@ -42,7 +43,7 @@ export default function Stats() {
       .finally(() => setStandingsLoading(false));
   }, [activeLeague, season, activeTab]);
 
-  const seasonOptions = getSeasonOptions();
+  const seasonOptions = getSeasonOptions(activeLeague);
 
   return (
     <div className="min-h-screen bg-background">
@@ -85,7 +86,7 @@ export default function Stats() {
               className="bg-secondary text-foreground text-sm rounded-lg px-3 py-1.5 border border-border focus:outline-none focus:ring-1 focus:ring-primary"
             >
               {seasonOptions.map(s => (
-                <option key={s} value={s}>{s}/{(s + 1).toString().slice(-2)}</option>
+                <option key={s} value={s}>{formatSeason(s, activeLeague)}</option>
               ))}
             </select>
           </div>
