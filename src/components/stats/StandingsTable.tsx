@@ -1,4 +1,4 @@
-import { StandingTeam } from '@/services/footballApi';
+import { StandingTeam, CUP_LEAGUE_IDS } from '@/services/footballApi';
 import { Link } from 'react-router-dom';
 
 interface StandingsTableProps {
@@ -52,6 +52,18 @@ export default function StandingsTable({ standings, loading, leagueId }: Standin
     );
   }
 
+  const hasGroups = standings.some(t => t.group);
+  const groupedStandings = {};
+  if (hasGroups) {
+    standings.forEach(team => {
+      const g = team.group || 'Group';
+      if (!groupedStandings[g]) groupedStandings[g] = [];
+      groupedStandings[g].push(team);
+    });
+  } else {
+    groupedStandings[''] = standings;
+  }
+  const groupKeys = Object.keys(groupedStandings).sort();
   const total = standings.length;
   const hasEuropean = leagueId && EUROPEAN_DOMESTIC.includes(leagueId);
   const hasReleg = leagueId && HAS_RELEGATION.includes(leagueId);

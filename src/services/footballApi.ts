@@ -415,6 +415,7 @@ export interface StandingTeam {
   goalsFor: number;
   goalsAgainst: number;
   form: string;
+  group?: string;
 }
 
 export async function fetchStandings(leagueId: number, season: number): Promise<StandingTeam[]> {
@@ -423,17 +424,30 @@ export async function fetchStandings(leagueId: number, season: number): Promise<
     if (!data.length) return [];
     const standings = data[0]?.league?.standings;
     if (!standings || !standings.length) return [];
-    return standings[0].map((s: any) => ({
+    const isCup = CUP_LEAGUE_IDS.includes(leagueId);
+    if (isCup && standings.length > 1) {
+      const allTeams = [];
+      standings.forEach((group, groupIdx) => {
+        group.forEach((s) => {
+          allTeams.push({
+            rank: s.rank,
+            team: { id: s.team.id, name: s.team.name, logo: s.team.logo },
+            points: s.points, goalsDiff: s.goalsDiff, played: s.all.played,
+            win: s.all.win, draw: s.all.draw, lose: s.all.lose,
+            goalsFor: s.all.goals.for, goalsAgainst: s.all.goals.against,
+            form: s.form || '',
+            group: s.group || 'Group ' + String.fromCharCode(65 + groupIdx),
+          });
+        });
+      });
+      return allTeams;
+    }
+    return standings[0].map((s) => ({
       rank: s.rank,
       team: { id: s.team.id, name: s.team.name, logo: s.team.logo },
-      points: s.points,
-      goalsDiff: s.goalsDiff,
-      played: s.all.played,
-      win: s.all.win,
-      draw: s.all.draw,
-      lose: s.all.lose,
-      goalsFor: s.all.goals.for,
-      goalsAgainst: s.all.goals.against,
+      points: s.points, goalsDiff: s.goalsDiff, played: s.all.played,
+      win: s.all.win, draw: s.all.draw, lose: s.all.lose,
+      goalsFor: s.all.goals.for, goalsAgainst: s.all.goals.against,
       form: s.form || '',
     }));
   } catch (err) {
