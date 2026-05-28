@@ -51,8 +51,25 @@ export default function StandingsTable({ standings, loading, leagueId }: Standin
           {groupKeys.map(groupName => {
             const teams = grouped[groupName];
             return (
-              <div key={groupName} className="bg-[#111] border border-[#1e1e1e] rounded-lg overflow-hidden">
-                <div className="px-3 py-2 border-b border-[#1e1e1e]"><span className="text-[10px] uppercase tracking-widest text-[#00ff87] font-bold">{groupName}</span></div>
+              <div key={groupName} className={cn("bg-[#111] border border-[#1e1e1e] rounded-lg overflow-hidden", groupName.toLowerCase().includes('third') && "sm:col-span-2")}>
+                <div className="px-3 py-2 border-b border-[#1e1e1e] flex items-center gap-2">
+                  <span className="text-[10px] uppercase tracking-widest text-[#00ff87] font-bold">{groupName}</span>
+                  {groupName.toLowerCase().includes('third') && <span className="text-[8px] bg-amber-400/10 text-amber-400 px-1.5 py-0.5 rounded-full font-bold uppercase">Live Ranking</span>}
+                </div>
+                {groupName.toLowerCase().includes('third') && (
+                  <div className="px-3 py-2.5 border-b border-[#1a1a1a] bg-[#0d0d0d]">
+                    <p className="text-[11px] text-[#888] leading-relaxed">
+                      <span className="text-[#00ff87] font-bold">How it works:</span> In the FIFA World Cup 2026, the top 2 teams from each of the 12 groups qualify automatically for the Round of 32. The remaining 8 spots go to the <span className="text-white font-semibold">best 8 out of 12 third-placed teams</span>.
+                    </p>
+                    <p className="text-[11px] text-[#666] mt-1.5 leading-relaxed">
+                      Teams are ranked by: <span className="text-[#aaa]">Points</span> {'>'} <span className="text-[#aaa]">Goal Difference</span> {'>'} <span className="text-[#aaa]">Goals Scored</span> {'>'} <span className="text-[#aaa]">Fair Play</span>
+                    </p>
+                    <p className="text-[10px] text-[#555] mt-1.5 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                      This table updates dynamically after each group stage match
+                    </p>
+                  </div>
+                )}
                 <div className="flex items-center gap-2 px-3 py-1.5 text-[9px] uppercase tracking-widest text-[#444] font-bold">
                   <span className="w-5 text-center">#</span><span className="flex-1">TEAM</span>
                   <span className="w-6 text-center">P</span><span className="w-6 text-center">W</span><span className="w-6 text-center">D</span><span className="w-6 text-center">L</span>
