@@ -214,17 +214,21 @@ function TieCard({ tie }: { tie: TieData }) {
         </div>
       )}
 
-      {/* Team 1 */}
-      <TeamRow
-        team={tie.team1} s1={tie.leg1[0]} s2={has2 ? tie.leg2![0] : null}
-        agg={tie.agg?.[0] ?? null} won={w1} lost={w2} decided={tie.decided} has2={has2}
-      />
-      <div className="h-px bg-border/20 mx-2" />
-      {/* Team 2 */}
-      <TeamRow
-        team={tie.team2} s1={tie.leg1[1]} s2={has2 ? tie.leg2![1] : null}
-        agg={tie.agg?.[1] ?? null} won={w2} lost={w1} decided={tie.decided} has2={has2}
-      />
+      {/* Winner on top */}
+      {(() => {
+        if (tie.decided && w2) {
+          return (<>
+            <TeamRow team={tie.team2} s1={tie.leg1[1]} s2={has2 ? tie.leg2![1] : null} agg={tie.agg?.[1] ?? null} won={true} lost={false} decided={true} has2={has2} />
+            <div className="h-px bg-border/20 mx-2" />
+            <TeamRow team={tie.team1} s1={tie.leg1[0]} s2={has2 ? tie.leg2![0] : null} agg={tie.agg?.[0] ?? null} won={false} lost={true} decided={true} has2={has2} />
+          </>);
+        }
+        return (<>
+          <TeamRow team={tie.team1} s1={tie.leg1[0]} s2={has2 ? tie.leg2![0] : null} agg={tie.agg?.[0] ?? null} won={w1} lost={w2} decided={tie.decided} has2={has2} />
+          <div className="h-px bg-border/20 mx-2" />
+          <TeamRow team={tie.team2} s1={tie.leg1[1]} s2={has2 ? tie.leg2![1] : null} agg={tie.agg?.[1] ?? null} won={w2} lost={w1} decided={tie.decided} has2={has2} />
+        </>);
+      })()}
 
       {/* Date for undecided ties */}
       {!tie.decided && (
@@ -301,39 +305,27 @@ function FinalCard({ tie }: { tie: TieData }) {
         </div>
       )}
 
-      {/* Team 1 */}
-      <div className={cn(
-        'flex items-center gap-3 px-4 py-3',
-        w1 && tie.decided ? 'bg-primary/[0.04]' : '',
-        !w1 && tie.decided ? 'opacity-40' : '',
-      )}>
-        <Lg src={tie.team1.logo} sz={28} />
-        <span className={cn(
-          'text-sm flex-1 truncate',
-          w1 && tie.decided ? 'font-bold text-foreground' : 'text-muted-foreground',
-        )}>{tie.team1.name}</span>
-        {tie.decided && (
-          <span className={cn('text-xl font-black tabular-nums', w1 ? 'text-foreground' : 'text-muted-foreground')}>{tie.leg1[0]}</span>
-        )}
-      </div>
-
-      <div className="h-px bg-border/20 mx-3" />
-
-      {/* Team 2 */}
-      <div className={cn(
-        'flex items-center gap-3 px-4 py-3',
-        w2 && tie.decided ? 'bg-primary/[0.04]' : '',
-        !w2 && tie.decided ? 'opacity-40' : '',
-      )}>
-        <Lg src={tie.team2.logo} sz={28} />
-        <span className={cn(
-          'text-sm flex-1 truncate',
-          w2 && tie.decided ? 'font-bold text-foreground' : 'text-muted-foreground',
-        )}>{tie.team2.name}</span>
-        {tie.decided && (
-          <span className={cn('text-xl font-black tabular-nums', w2 ? 'text-foreground' : 'text-muted-foreground')}>{tie.leg1[1]}</span>
-        )}
-      </div>
+      {/* Winner on top, loser below */}
+      {(() => {
+        const winner = w1 ? tie.team1 : w2 ? tie.team2 : tie.team1;
+        const loser = w1 ? tie.team2 : w2 ? tie.team1 : tie.team2;
+        const winnerScore = w1 ? tie.leg1[0] : w2 ? tie.leg1[1] : tie.leg1[0];
+        const loserScore = w1 ? tie.leg1[1] : w2 ? tie.leg1[0] : tie.leg1[1];
+        const hasWinner = w1 || w2;
+        return (<>
+          <div className={cn('flex items-center gap-3 px-4 py-3', hasWinner && tie.decided ? 'bg-primary/[0.04]' : '')}>
+            <Lg src={winner.logo} sz={28} />
+            <span className={cn('text-sm flex-1 truncate', hasWinner && tie.decided ? 'font-bold text-foreground' : 'text-muted-foreground')}>{winner.name}</span>
+            {tie.decided && (<span className={cn('text-xl font-black tabular-nums', hasWinner ? 'text-foreground' : 'text-muted-foreground')}>{winnerScore}</span>)}
+          </div>
+          <div className="h-px bg-border/20 mx-3" />
+          <div className={cn('flex items-center gap-3 px-4 py-3', tie.decided ? 'opacity-40' : '')}>
+            <Lg src={loser.logo} sz={28} />
+            <span className={cn('text-sm flex-1 truncate', 'text-muted-foreground')}>{loser.name}</span>
+            {tie.decided && (<span className={cn('text-xl font-black tabular-nums text-muted-foreground')}>{loserScore}</span>)}
+          </div>
+        </>);
+      })()}
 
       {/* Aggregate for two-legged */}
       {tie.agg && (
