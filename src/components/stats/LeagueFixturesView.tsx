@@ -72,7 +72,7 @@ export default function LeagueFixturesView({ leagueId, season }: LeagueFixturesV
                   selectedRound === r ? 'bg-[#00ff87] text-black' : 'bg-[#111] text-[#555] border border-[#222] hover:text-[#888]',
                 )}
               >
-                {r.replace('Group Stage - ', 'Matchday ')}
+                {r.replace('Group Stage - ', 'Group Stage ')}
               </button>
             ))}
           </div>
