@@ -104,6 +104,7 @@ type TabKey = 'fixtures' | 'standings' | 'bracket';
 export default function WCFixtures() {
   const [activeTab, setActiveTab] = useState<TabKey>('fixtures');
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+  const [selectedMatchday, setSelectedMatchday] = useState<number>(1);
   const [countdown, setCountdown] = useState({ days: 0, hours: 0, mins: 0, secs: 0 });
 
   const [apiFixtures, setApiFixtures] = useState<any[]>([]);
@@ -182,9 +183,11 @@ export default function WCFixtures() {
     return GROUPS.flatMap(g => generateGroupMatches(g, GROUP_START_DATES[g.name]));
   }, [apiFixtures]);
 
-  const filteredMatches = selectedGroup
-    ? allGroupMatches.filter(m => m.group === selectedGroup)
-    : allGroupMatches;
+  const filteredMatches = allGroupMatches.filter(m => {
+    if (selectedGroup && m.group !== selectedGroup) return false;
+    if (selectedMatchday > 0 && m.matchday !== selectedMatchday) return false;
+    return true;
+  });
 
   // Group matches by date
   const matchesByDate = useMemo(() => {
@@ -259,6 +262,29 @@ export default function WCFixtures() {
         {/* ─── FIXTURES TAB ──────────────────────────────────────────── */}
         {activeTab === 'fixtures' && (
           <div>
+            {/* Matchday filter */}
+            <div className="flex gap-1.5 mb-3 overflow-x-auto no-scrollbar pb-1">
+              {[1, 2, 3].map(md => (
+                <button
+                  key={md}
+                  onClick={() => setSelectedMatchday(md)}
+                  className={cn('px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition-all',
+                    selectedMatchday === md ? 'bg-[#00ff87] text-black' : 'bg-[#111] text-[#555] border border-[#222] hover:text-[#888]',
+                  )}
+                >
+                  Matchday {md}
+                </button>
+              ))}
+              <button
+                onClick={() => setSelectedMatchday(0)}
+                className={cn('px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition-all',
+                  selectedMatchday === 0 ? 'bg-[#00ff87] text-black' : 'bg-[#111] text-[#555] border border-[#222] hover:text-[#888]',
+                )}
+              >
+                All Matchdays
+              </button>
+            </div>
+
             {/* Group filter */}
             <div className="flex gap-1.5 mb-4 overflow-x-auto no-scrollbar pb-1">
               <button
