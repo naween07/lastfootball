@@ -53,7 +53,7 @@ const PLAYER_POOL = [
   { id: 31, name: 'Rodrigo De Paul', pos: 'MID', nation: 'Argentina', flag: '🇦🇷', club: 'Atlético', price: 6.5, power: 82 },
   { id: 95, name: 'Christian Pulisic', pos: 'MID', nation: 'USA', flag: '🇺🇸', club: 'AC Milan', price: 7.0, power: 83 },
   { id: 33, name: 'Luis Díaz', pos: 'MID', nation: 'Colombia', flag: '🇨🇴', club: 'Liverpool', price: 7.0, power: 83 },
-  { id: 29, name: 'Arda Güler', pos: 'MID', nation: 'Türkiye', flag: '🇹🇷', club: 'Real Madrid', price: 7.0, power: 83 },
+  { id: 29, name: 'Arda Güler', pos: 'MID', nation: 'Turkey', flag: '🇹🇷', club: 'Real Madrid', price: 7.0, power: 83 },
   { id: 96, name: 'Luka Modrić', pos: 'MID', nation: 'Croatia', flag: '🇭🇷', club: 'Real Madrid', price: 7.0, power: 83 },
   { id: 93, name: 'Mohammed Kudus', pos: 'MID', nation: 'Ghana', flag: '🇬🇭', club: 'West Ham', price: 6.5, power: 80 },
   { id: 30, name: 'Moisés Caicedo', pos: 'MID', nation: 'Ecuador', flag: '🇪🇨', club: 'Chelsea', price: 6.5, power: 80 },
@@ -99,7 +99,7 @@ const JERSEY_COLORS: Record<string, { primary: string; secondary: string; patter
   'Mexico': { primary: '#016847', secondary: '#FFFFFF', pattern: 'solid' },
   'South Africa': { primary: '#FFF200', secondary: '#007A4D', pattern: 'solid' },
   'South Korea': { primary: '#EA1C24', secondary: '#032A73', pattern: 'solid' },
-  'Czechia': { primary: '#FFFFFF', secondary: '#11457E', pattern: 'solid' },
+  'Czech Republic': { primary: '#FFFFFF', secondary: '#11457E', pattern: 'solid' },
   // Group B
   'Canada': { primary: '#DA291C', secondary: '#FFFFFF', pattern: 'solid' },
   'Bosnia & Herz.': { primary: '#002F6C', secondary: '#FED141', pattern: 'solid' },
@@ -114,11 +114,11 @@ const JERSEY_COLORS: Record<string, { primary: string; secondary: string; patter
   'USA': { primary: '#FFFFFF', secondary: '#002868', pattern: 'solid' },
   'Paraguay': { primary: '#D51C29', secondary: '#FFFFFF', pattern: 'stripes' },
   'Australia': { primary: '#002B7F', secondary: '#FCD116', pattern: 'solid' },
-  'Türkiye': { primary: '#E30A17', secondary: '#FFFFFF', pattern: 'solid' },
+  'Turkey': { primary: '#E30A17', secondary: '#FFFFFF', pattern: 'solid' },
   // Group E
   'Germany': { primary: '#FFFFFF', secondary: '#000000', pattern: 'solid' },
   'Curaçao': { primary: '#002B7F', secondary: '#F9E311', pattern: 'solid' },
-  "Côte d'Ivoire": { primary: '#FF8200', secondary: '#FFFFFF', pattern: 'solid' },
+  'Ivory Coast': { primary: '#FF8200', secondary: '#FFFFFF', pattern: 'solid' },
   'Ecuador': { primary: '#FFDD00', secondary: '#0033A0', pattern: 'solid' },
   // Group F
   'Netherlands': { primary: '#21468B', secondary: '#FF4F00', pattern: 'solid' },
@@ -128,7 +128,7 @@ const JERSEY_COLORS: Record<string, { primary: string; secondary: string; patter
   // Group G
   'Belgium': { primary: '#E30613', secondary: '#000000', pattern: 'solid' },
   'Egypt': { primary: '#C8102E', secondary: '#000000', pattern: 'solid' },
-  'IR Iran': { primary: '#FFFFFF', secondary: '#239E46', pattern: 'solid' },
+  'Iran': { primary: '#FFFFFF', secondary: '#239E46', pattern: 'solid' },
   'New Zealand': { primary: '#000000', secondary: '#FFFFFF', pattern: 'solid' },
   // Group H
   'Spain': { primary: '#AA151B', secondary: '#F1BF00', pattern: 'solid' },
@@ -275,13 +275,13 @@ export default function FantasyWC() {
 
   // All 48 WC nation team IDs for API
   const WC_NATION_IDS = [
-    { id: 16, name: 'Mexico', flag: '🇲🇽' }, { id: 15, name: 'South Africa', flag: '🇿🇦' }, { id: 17, name: 'South Korea', flag: '🇰🇷' }, { id: 1530, name: 'Czechia', flag: '🇨🇿' },
+    { id: 16, name: 'Mexico', flag: '🇲🇽' }, { id: 15, name: 'South Africa', flag: '🇿🇦' }, { id: 17, name: 'South Korea', flag: '🇰🇷' }, { id: 1530, name: 'Czech Republic', flag: '🇨🇿' },
     { id: 5529, name: 'Canada', flag: '🇨🇦' }, { id: 15, name: 'Switzerland', flag: '🇨🇭' }, { id: 1569, name: 'Qatar', flag: '🇶🇦' }, { id: 1105, name: 'Bosnia & Herz.', flag: '🇧🇦' },
     { id: 6, name: 'Brazil', flag: '🇧🇷' }, { id: 31, name: 'Morocco', flag: '🇲🇦' }, { id: 1108, name: 'Haiti', flag: '🇭🇹' }, { id: 1106, name: 'Scotland', flag: '🏴󠁧󠁢󠁳󠁣󠁴󠁿' },
-    { id: 2384, name: 'USA', flag: '🇺🇸' }, { id: 1580, name: 'Paraguay', flag: '🇵🇾' }, { id: 24, name: 'Australia', flag: '🇦🇺' }, { id: 135, name: 'Türkiye', flag: '🇹🇷' },
-    { id: 25, name: 'Germany', flag: '🇩🇪' }, { id: 1561, name: 'Curaçao', flag: '🇨🇼' }, { id: 21, name: "Côte d'Ivoire", flag: '🇨🇮' }, { id: 1559, name: 'Ecuador', flag: '🇪🇨' },
+    { id: 2384, name: 'USA', flag: '🇺🇸' }, { id: 1580, name: 'Paraguay', flag: '🇵🇾' }, { id: 24, name: 'Australia', flag: '🇦🇺' }, { id: 135, name: 'Turkey', flag: '🇹🇷' },
+    { id: 25, name: 'Germany', flag: '🇩🇪' }, { id: 1561, name: 'Curaçao', flag: '🇨🇼' }, { id: 21, name: 'Ivory Coast', flag: '🇨🇮' }, { id: 1559, name: 'Ecuador', flag: '🇪🇨' },
     { id: 1118, name: 'Netherlands', flag: '🇳🇱' }, { id: 12, name: 'Japan', flag: '🇯🇵' }, { id: 1106, name: 'Tunisia', flag: '🇹🇳' }, { id: 22, name: 'Sweden', flag: '🇸🇪' },
-    { id: 1, name: 'Belgium', flag: '🇧🇪' }, { id: 13, name: 'Egypt', flag: '🇪🇬' }, { id: 22, name: 'IR Iran', flag: '🇮🇷' }, { id: 1530, name: 'New Zealand', flag: '🇳🇿' },
+    { id: 1, name: 'Belgium', flag: '🇧🇪' }, { id: 13, name: 'Egypt', flag: '🇪🇬' }, { id: 22, name: 'Iran', flag: '🇮🇷' }, { id: 1530, name: 'New Zealand', flag: '🇳🇿' },
     { id: 9, name: 'Spain', flag: '🇪🇸' }, { id: 1530, name: 'Cabo Verde', flag: '🇨🇻' }, { id: 23, name: 'Saudi Arabia', flag: '🇸🇦' }, { id: 7, name: 'Uruguay', flag: '🇺🇾' },
     { id: 2, name: 'France', flag: '🇫🇷' }, { id: 20, name: 'Senegal', flag: '🇸🇳' }, { id: 1107, name: 'Norway', flag: '🇳🇴' }, { id: 1530, name: 'Iraq', flag: '🇮🇶' },
     { id: 26, name: 'Argentina', flag: '🇦🇷' }, { id: 14, name: 'Algeria', flag: '🇩🇿' }, { id: 1109, name: 'Austria', flag: '🇦🇹' }, { id: 1530, name: 'Jordan', flag: '🇯🇴' },

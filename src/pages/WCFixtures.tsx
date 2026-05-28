@@ -25,13 +25,13 @@ const GROUPS = [
 ];
 
 const TEAM_INFO: Record<string, { name: string }> = {
-  MEX: { name: 'Mexico' }, KOR: { name: 'South Korea' }, CZE: { name: 'Czechia' }, RSA: { name: 'South Africa' },
+  MEX: { name: 'Mexico' }, KOR: { name: 'South Korea' }, CZE: { name: 'Czech Republic' }, RSA: { name: 'South Africa' },
   CAN: { name: 'Canada' }, SUI: { name: 'Switzerland' }, BIH: { name: 'Bosnia & Herz.' }, QAT: { name: 'Qatar' },
   BRA: { name: 'Brazil' }, MAR: { name: 'Morocco' }, SCO: { name: 'Scotland' }, HAI: { name: 'Haiti' },
-  USA: { name: 'USA' }, TUR: { name: 'Türkiye' }, PAR: { name: 'Paraguay' }, AUS: { name: 'Australia' },
-  GER: { name: 'Germany' }, CIV: { name: "Côte d'Ivoire" }, CUW: { name: 'Curaçao' }, ECU: { name: 'Ecuador' },
+  USA: { name: 'USA' }, TUR: { name: 'Turkey' }, PAR: { name: 'Paraguay' }, AUS: { name: 'Australia' },
+  GER: { name: 'Germany' }, CIV: { name: 'Ivory Coast' }, CUW: { name: 'Curaçao' }, ECU: { name: 'Ecuador' },
   NED: { name: 'Netherlands' }, JPN: { name: 'Japan' }, SWE: { name: 'Sweden' }, TUN: { name: 'Tunisia' },
-  BEL: { name: 'Belgium' }, EGY: { name: 'Egypt' }, IRN: { name: 'IR Iran' }, NZL: { name: 'New Zealand' },
+  BEL: { name: 'Belgium' }, EGY: { name: 'Egypt' }, IRN: { name: 'Iran' }, NZL: { name: 'New Zealand' },
   ESP: { name: 'Spain' }, KSA: { name: 'Saudi Arabia' }, CPV: { name: 'Cabo Verde' }, URU: { name: 'Uruguay' },
   FRA: { name: 'France' }, SEN: { name: 'Senegal' }, NOR: { name: 'Norway' }, IRQ: { name: 'Iraq' },
   ARG: { name: 'Argentina' }, ALG: { name: 'Algeria' }, AUT: { name: 'Austria' }, JOR: { name: 'Jordan' },

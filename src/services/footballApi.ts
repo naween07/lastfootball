@@ -1,4 +1,5 @@
 import { Match, League, LeagueMatches, MatchEvent, MatchStats, TeamLineup, LineupPlayer, MatchPlayerData } from "@/types/football";
+import { normalizeTeamName } from "@/utils/teamNames";
 
 const API_BASE_URL = '/api';
 
@@ -65,8 +66,8 @@ function mapMinute(status: string, elapsed: number | null, extra: number | null)
 function mapTeam(team: any): Match["homeTeam"] {
   return {
     id: team.id,
-    name: team.name,
-    shortName: team.name.length > 3 ? team.name.substring(0, 3).toUpperCase() : team.name.toUpperCase(),
+    name: normalizeTeamName(team.name),
+    shortName: normalizeTeamName(team.name).length > 3 ? team.name.substring(0, 3).toUpperCase() : team.name.toUpperCase(),
     logo: team.logo,
   };
 }
@@ -431,7 +432,7 @@ export async function fetchStandings(leagueId: number, season: number): Promise<
         group.forEach((s) => {
           allTeams.push({
             rank: s.rank,
-            team: { id: s.team.id, name: s.team.name, logo: s.team.logo },
+            team: { id: s.team.id, name: normalizeTeamName(s.team.name), logo: s.team.logo },
             points: s.points, goalsDiff: s.goalsDiff, played: s.all.played,
             win: s.all.win, draw: s.all.draw, lose: s.all.lose,
             goalsFor: s.all.goals.for, goalsAgainst: s.all.goals.against,
@@ -444,7 +445,7 @@ export async function fetchStandings(leagueId: number, season: number): Promise<
     }
     return standings[0].map((s) => ({
       rank: s.rank,
-      team: { id: s.team.id, name: s.team.name, logo: s.team.logo },
+      team: { id: s.team.id, name: normalizeTeamName(s.team.name), logo: s.team.logo },
       points: s.points, goalsDiff: s.goalsDiff, played: s.all.played,
       win: s.all.win, draw: s.all.draw, lose: s.all.lose,
       goalsFor: s.all.goals.for, goalsAgainst: s.all.goals.against,
@@ -542,7 +543,7 @@ export async function fetchTopRedCards(leagueId: number, season: number): Promis
 export async function fetchTeamsInLeague(leagueId: number, season: number): Promise<{ id: number; name: string; logo: string }[]> {
   try {
     const data = await callApi("teams", { league: String(leagueId), season: String(season) });
-    return data.map((t: any) => ({ id: t.team.id, name: t.team.name, logo: t.team.logo }));
+    return data.map((t: any) => ({ id: t.team.id, name: normalizeTeamName(t.team.name), logo: t.team.logo }));
   } catch (err) {
     console.error("Failed to fetch teams:", err);
     return [];

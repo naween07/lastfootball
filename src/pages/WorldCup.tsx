@@ -19,7 +19,7 @@ const GROUPS: { name: string; teams: { name: string; code: string; flag: string 
     { name: 'Mexico', code: 'MEX', flag: '🇲🇽' },
     { name: 'South Africa', code: 'RSA', flag: '🇿🇦' },
     { name: 'South Korea', code: 'KOR', flag: '🇰🇷' },
-    { name: 'Czechia', code: 'CZE', flag: '🇨🇿' },
+    { name: 'Czech Republic', code: 'CZE', flag: '🇨🇿' },
   ]},
   { name: 'B', teams: [
     { name: 'Canada', code: 'CAN', flag: '🇨🇦' },
@@ -37,12 +37,12 @@ const GROUPS: { name: string; teams: { name: string; code: string; flag: string 
     { name: 'USA', code: 'USA', flag: '🇺🇸' },
     { name: 'Paraguay', code: 'PAR', flag: '🇵🇾' },
     { name: 'Australia', code: 'AUS', flag: '🇦🇺' },
-    { name: 'Türkiye', code: 'TUR', flag: '🇹🇷' },
+    { name: 'Turkey', code: 'TUR', flag: '🇹🇷' },
   ]},
   { name: 'E', teams: [
     { name: 'Germany', code: 'GER', flag: '🇩🇪' },
     { name: 'Curaçao', code: 'CUW', flag: '🇨🇼' },
-    { name: "Côte d'Ivoire", code: 'CIV', flag: '🇨🇮' },
+    { name: 'Ivory Coast', code: 'CIV', flag: '🇨🇮' },
     { name: 'Ecuador', code: 'ECU', flag: '🇪🇨' },
   ]},
   { name: 'F', teams: [
@@ -54,7 +54,7 @@ const GROUPS: { name: string; teams: { name: string; code: string; flag: string 
   { name: 'G', teams: [
     { name: 'Belgium', code: 'BEL', flag: '🇧🇪' },
     { name: 'Egypt', code: 'EGY', flag: '🇪🇬' },
-    { name: 'IR Iran', code: 'IRN', flag: '🇮🇷' },
+    { name: 'Iran', code: 'IRN', flag: '🇮🇷' },
     { name: 'New Zealand', code: 'NZL', flag: '🇳🇿' },
   ]},
   { name: 'H', teams: [
