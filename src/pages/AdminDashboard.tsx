@@ -51,10 +51,9 @@ export default function AdminDashboard() {
 
   const handleSave = async () => {
     if (!form.title || !form.body) return toast.error('Title and body required');
+    if (!user) return toast.error('You must be signed in to publish');
     setSaving(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { toast.error('Session expired. Please sign in again.'); setSaving(false); return; }
       const finalSlug = generateSlug(form.title);
       const wordCount = form.body.split(/\s+/).filter(Boolean).length;
       const readingTime = Math.max(1, Math.ceil(wordCount / 200));
@@ -85,7 +84,7 @@ export default function AdminDashboard() {
       const writePromise = editId
         ? supabase.from('posts').update(payload).eq('id', editId)
         : supabase.from('posts').insert(payload).select();
-      const timeout = new Promise((resolve) => setTimeout(() => resolve({ error: { message: 'Request timed out. Check your connection and try again.' } }), 20000));
+      const timeout = new Promise((resolve) => setTimeout(() => resolve({ error: { message: 'Request timed out after 15s - likely a server/proxy issue.' } }), 20000));
       const { error } = await Promise.race([writePromise, timeout]);
 
       if (error) { console.error('Publish error:', error); toast.error('Failed: ' + (error.message || 'Unknown error')); }
