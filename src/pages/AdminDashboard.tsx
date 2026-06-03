@@ -53,6 +53,8 @@ export default function AdminDashboard() {
     if (!form.title || !form.body) return toast.error('Title and body required');
     setSaving(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { toast.error('Session expired. Please sign in again.'); setSaving(false); return; }
       const finalSlug = generateSlug(form.title);
       const wordCount = form.body.split(/\s+/).filter(Boolean).length;
       const readingTime = Math.max(1, Math.ceil(wordCount / 200));
@@ -80,14 +82,20 @@ export default function AdminDashboard() {
         payload.published_at = new Date().toISOString();
       }
 
-      let error;
-      if (editId) { ({ error } = await supabase.from('posts').update(payload).eq('id', editId)); }
-      else { ({ error } = await supabase.from('posts').insert(payload).select()); }
+      const writePromise = editId
+        ? supabase.from('posts').update(payload).eq('id', editId)
+        : supabase.from('posts').insert(payload).select();
+      const timeout = new Promise((resolve) => setTimeout(() => resolve({ error: { message: 'Request timed out. Check your connection and try again.' } }), 20000));
+      const { error } = await Promise.race([writePromise, timeout]);
 
-      if (error) { console.error(error); toast.error('Failed: ' + (error.message || 'Unknown')); }
+      if (error) { console.error('Publish error:', error); toast.error('Failed: ' + (error.message || 'Unknown error')); }
       else { toast.success(editId ? 'Updated!' : 'Published at /news/' + finalSlug); resetForm(); setMode('list'); loadArticles(); }
-    } catch (err: any) { toast.error(err.message || 'Error'); }
-    setSaving(false);
+    } catch (err: any) {
+      console.error('Publish exception:', err);
+      toast.error(err?.message || 'Unexpected error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = async (id: string, title: string) => {
