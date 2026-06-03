@@ -38,23 +38,10 @@ export default function NotificationBell() {
     };
     load();
 
-    // Realtime — wrap in try-catch
-    let channel: any;
-    try {
-      channel = supabase
-        .channel('user-notifications')
-        .on('postgres_changes', {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${user.id}`,
-        }, (payload) => {
-          setNotifications(prev => [payload.new as Notification, ...prev]);
-        })
-        .subscribe();
-    } catch {}
+    // Poll every 60s instead of realtime (realtime WebSocket isn't proxied through nginx)
+    const pollInterval = setInterval(load, 60000);
 
-    return () => { if (channel) supabase.removeChannel(channel); };
+    return () => { clearInterval(pollInterval); };
   }, [user]);
 
   // Close on outside click
