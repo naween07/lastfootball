@@ -54,6 +54,18 @@ export default function AdminDashboard() {
     if (!user) return toast.error('You must be signed in to publish');
     setSaving(true);
     try {
+      let accessToken = '';
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('sb-') && k.endsWith('-auth-token')) {
+            const v = JSON.parse(localStorage.getItem(k) || '{}');
+            accessToken = v?.access_token || (Array.isArray(v) ? v[0] : '') || '';
+            if (accessToken) break;
+          }
+        }
+      } catch {}
+      if (!accessToken) { toast.error('Session expired - please sign out and sign in again.'); setSaving(false); return; }
       const finalSlug = generateSlug(form.title);
       const wordCount = form.body.split(/\s+/).filter(Boolean).length;
       const readingTime = Math.max(1, Math.ceil(wordCount / 200));
@@ -81,17 +93,30 @@ export default function AdminDashboard() {
         payload.published_at = new Date().toISOString();
       }
 
-      const writePromise = editId
-        ? supabase.from('posts').update(payload).eq('id', editId)
-        : supabase.from('posts').insert(payload).select();
-      const timeout = new Promise((resolve) => setTimeout(() => resolve({ error: { message: 'Request timed out after 15s - likely a server/proxy issue.' } }), 20000));
-      const { error } = await Promise.race([writePromise, timeout]);
-
-      if (error) { console.error('Publish error:', error); toast.error('Failed: ' + (error.message || 'Unknown error')); }
-      else { toast.success(editId ? 'Updated!' : 'Published at /news/' + finalSlug); resetForm(); setMode('list'); loadArticles(); }
+      const BASE = import.meta.env.VITE_SUPABASE_URL;
+      const KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const url = editId ? BASE + '/rest/v1/posts?id=eq.' + editId : BASE + '/rest/v1/posts';
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
+      const res = await fetch(url, {
+        method: editId ? 'PATCH' : 'POST',
+        headers: { apikey: KEY, Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        console.error('Publish error:', res.status, errText);
+        toast.error('Failed (' + res.status + '): ' + (errText.substring(0, 160) || res.statusText));
+      } else {
+        toast.success(editId ? 'Updated!' : 'Published at /news/' + finalSlug);
+        resetForm(); setMode('list'); loadArticles();
+      }
     } catch (err: any) {
       console.error('Publish exception:', err);
-      toast.error(err?.message || 'Unexpected error');
+      if (err?.name === 'AbortError') toast.error('Request timed out after 20s. Try again.');
+      else toast.error(err?.message || 'Unexpected error');
     } finally {
       setSaving(false);
     }
