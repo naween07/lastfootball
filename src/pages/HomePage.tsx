@@ -228,25 +228,19 @@ export default function HomePage() {
             >
               {news.length > 0 ? (
                 <div className="space-y-3">
-                  {news.map((n, i) => (
-                    <a
-                      key={i}
-                      href={n.link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block group"
-                    >
-                      <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors leading-snug line-clamp-2">
-                        {n.title}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[10px] text-muted-foreground">{n.source}</span>
-                        <span className="text-muted-foreground/30">·</span>
-                        <span className="text-[10px] text-muted-foreground">
-                          {timeAgo(n.pubDate)}
-                        </span>
+                  {news.map((n) => (
+                    <Link key={n.id} to={"/news/" + n.slug} className="flex gap-3 group">
+                      {n.featured_image && (
+                        <img src={n.featured_image} alt={n.featured_image_alt || n.title} className="w-16 h-14 object-cover rounded-lg flex-shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors leading-snug line-clamp-2">{n.title}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          {n.category && <span className="text-[10px] text-primary">{n.category}</span>}
+                          <span className="text-[10px] text-muted-foreground">{timeAgo(n.published_at)}</span>
+                        </div>
                       </div>
-                    </a>
+                    </Link>
                   ))}
                 </div>
               ) : (
