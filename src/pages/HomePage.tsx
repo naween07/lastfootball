@@ -4,18 +4,20 @@ import Header from '@/components/Header';
 import SEOHead, { buildWebsiteJsonLd } from '@/components/SEOHead';
 import OptimizedImage from '@/components/OptimizedImage';
 import { fetchHomepageData, PlayerStat } from '@/services/footballApi';
-import { fetchFootballNews } from '@/services/newsApi';
+import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Match } from '@/types/football';
 import { ArrowRight, Zap, Calendar, Trophy, Newspaper, ChevronRight, Target } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface NewsItem {
+  id: string;
   title: string;
-  link: string;
-  pubDate: string;
-  source: string;
-  snippet?: string;
+  slug: string;
+  featured_image?: string;
+  featured_image_alt?: string;
+  category?: string;
+  published_at: string;
 }
 
 export default function HomePage() {
@@ -32,7 +34,11 @@ export default function HomePage() {
       try {
         const [homeData, newsData] = await Promise.allSettled([
           fetchHomepageData(),
-          fetchFootballNews(),
+          supabase.from('posts')
+            .select('id, title, slug, featured_image, featured_image_alt, category, published_at')
+            .eq('status', 'published')
+            .order('published_at', { ascending: false })
+            .limit(4),
         ]);
 
         if (homeData.status === 'fulfilled') {
@@ -42,7 +48,7 @@ export default function HomePage() {
           setStandingsData(homeData.value.standings);
         }
 
-        if (newsData.status === 'fulfilled') setNews(newsData.value.slice(0, 4));
+        if (newsData.status === 'fulfilled' && newsData.value.data) setNews(newsData.value.data);
       } catch {}
       setLoading(false);
     };
