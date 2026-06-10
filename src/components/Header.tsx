@@ -47,12 +47,12 @@ export default function Header() {
           {/* Logo */}
           <Link to="/" className="flex items-center shrink-0">
             <img 
-              src="/logo.png" 
+              src="/logo.png?v=2" 
               alt="LastFootball" 
               className="h-9 object-contain hidden dark:block" 
             />
             <img 
-              src="/logo-light.png" 
+              src="/logo-light.png?v=2" 
               alt="LastFootball" 
               className="h-9 object-contain block dark:hidden" 
             />
