@@ -49,13 +49,12 @@ export default function Header() {
             <img 
               src="/logo.png" 
               alt="LastFootball" 
-              className="h-10 object-contain hidden dark:block" 
-              style={{ mixBlendMode: 'screen' }} 
+              className="h-9 object-contain hidden dark:block" 
             />
             <img 
               src="/logo-light.png" 
               alt="LastFootball" 
-              className="h-10 object-contain block dark:hidden" 
+              className="h-9 object-contain block dark:hidden" 
             />
           </Link>
 
