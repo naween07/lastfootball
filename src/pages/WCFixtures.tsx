@@ -200,20 +200,20 @@ export default function WCFixtures() {
   }, [filteredMatches]);
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a]">
+    <div className="min-h-screen bg-background">
       <SEOHead title="FIFA World Cup 2026 Fixtures — Schedule, Groups & Bracket | LastFootball" description="Complete FIFA World Cup 2026 match schedule, group stage fixtures, knockout bracket, stadiums, and kick-off times." path="/worldcup/fixtures" />
       <Header />
 
       {/* Hero with countdown */}
-      <section className="relative overflow-hidden border-b border-[#1a1a1a]">
+      <section className="relative overflow-hidden border-b border-border/50">
         <div className="absolute inset-0 bg-gradient-to-br from-[#00ff87]/5 via-transparent to-amber-500/5" />
         <div className="container max-w-5xl py-6 relative">
           <div className="flex items-center gap-2 mb-3">
-            <Trophy className="w-5 h-5 text-[#00ff87]" />
-            <span className="text-[10px] uppercase tracking-[0.2em] text-[#00ff87] font-bold">FIFA WORLD CUP 2026</span>
+            <Trophy className="w-5 h-5 text-primary" />
+            <span className="text-[10px] uppercase tracking-[0.2em] text-primary font-bold">FIFA WORLD CUP 2026</span>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-black text-white mb-2">Match Schedule</h1>
-          <p className="text-sm text-[#666]">June 11 – July 19, 2026 · USA · Mexico · Canada</p>
+          <h1 className="text-3xl sm:text-4xl font-black text-foreground mb-2">Match Schedule</h1>
+          <p className="text-sm text-muted-foreground">June 11 – July 19, 2026 · USA · Mexico · Canada</p>
 
           {/* Countdown */}
           <div className="mt-4 flex gap-3">
@@ -223,9 +223,9 @@ export default function WCFixtures() {
               { val: countdown.mins, label: 'MIN' },
               { val: countdown.secs, label: 'SEC' },
             ].map(({ val, label }) => (
-              <div key={label} className="bg-[#111] border border-[#222] rounded-lg px-3 py-2 text-center min-w-[56px]">
-                <p className="text-xl font-black text-white tabular-nums">{String(val).padStart(2, '0')}</p>
-                <p className="text-[8px] tracking-widest text-[#555] uppercase">{label}</p>
+              <div key={label} className="bg-card border border-border rounded-lg px-3 py-2 text-center min-w-[56px]">
+                <p className="text-xl font-black text-foreground tabular-nums">{String(val).padStart(2, '0')}</p>
+                <p className="text-[8px] tracking-widest text-muted-foreground/80 uppercase">{label}</p>
               </div>
             ))}
           </div>
@@ -233,7 +233,7 @@ export default function WCFixtures() {
       </section>
 
       {/* Tabs */}
-      <div className="sticky top-14 z-30 bg-[#0a0a0a] border-b border-[#1a1a1a]">
+      <div className="sticky top-14 z-30 bg-background border-b border-border/50">
         <div className="container max-w-5xl flex gap-1 py-2 overflow-x-auto no-scrollbar">
           {([
             { key: 'fixtures' as TabKey, label: 'FIXTURES', icon: Calendar },
@@ -246,8 +246,8 @@ export default function WCFixtures() {
               className={cn(
                 'flex items-center gap-1.5 px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest whitespace-nowrap transition-all',
                 activeTab === tab.key
-                  ? 'bg-[#00ff87]/10 text-[#00ff87] border border-[#00ff87]/20'
-                  : 'text-[#555] hover:text-[#888] hover:bg-[#111]',
+                  ? 'bg-primary/10 text-primary border border-primary/20'
+                  : 'text-muted-foreground/80 hover:text-foreground hover:bg-card',
               )}
             >
               <tab.icon className="w-3.5 h-3.5" />
@@ -269,7 +269,7 @@ export default function WCFixtures() {
                   key={md}
                   onClick={() => setSelectedMatchday(md)}
                   className={cn('px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition-all',
-                    selectedMatchday === md ? 'bg-[#00ff87] text-black' : 'bg-[#111] text-[#555] border border-[#222] hover:text-[#888]',
+                    selectedMatchday === md ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground/80 border border-border hover:text-foreground',
                   )}
                 >
                   Matchday {md}
@@ -278,7 +278,7 @@ export default function WCFixtures() {
               <button
                 onClick={() => setSelectedMatchday(0)}
                 className={cn('px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition-all',
-                  selectedMatchday === 0 ? 'bg-[#00ff87] text-black' : 'bg-[#111] text-[#555] border border-[#222] hover:text-[#888]',
+                  selectedMatchday === 0 ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground/80 border border-border hover:text-foreground',
                 )}
               >
                 All Matchdays
@@ -290,7 +290,7 @@ export default function WCFixtures() {
               <button
                 onClick={() => setSelectedGroup(null)}
                 className={cn('px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-all',
-                  !selectedGroup ? 'bg-[#00ff87] text-black' : 'bg-[#111] text-[#555] border border-[#222] hover:text-[#888]',
+                  !selectedGroup ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground/80 border border-border hover:text-foreground',
                 )}
               >
                 ALL GROUPS
@@ -300,7 +300,7 @@ export default function WCFixtures() {
                   key={g.name}
                   onClick={() => setSelectedGroup(g.name === selectedGroup ? null : g.name)}
                   className={cn('px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-all',
-                    selectedGroup === g.name ? 'bg-[#00ff87] text-black' : 'bg-[#111] text-[#555] border border-[#222] hover:text-[#888]',
+                    selectedGroup === g.name ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground/80 border border-border hover:text-foreground',
                   )}
                 >
                   GRP {g.name}
@@ -312,8 +312,8 @@ export default function WCFixtures() {
             {matchesByDate.map(([date, matches]) => (
               <div key={date} className="mb-4">
                 <div className="flex items-center gap-2 mb-2 px-1">
-                  <Calendar className="w-3.5 h-3.5 text-[#444]" />
-                  <span className="text-[11px] uppercase tracking-widest text-[#555] font-bold">
+                  <Calendar className="w-3.5 h-3.5 text-muted-foreground/60" />
+                  <span className="text-[11px] uppercase tracking-widest text-muted-foreground/80 font-bold">
                     {new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                   </span>
                 </div>
@@ -327,30 +327,30 @@ export default function WCFixtures() {
 
             {/* Knockout rounds */}
             <div className="mt-8">
-              <h2 className="text-lg font-black text-white mb-4 flex items-center gap-2">
-                <Zap className="w-5 h-5 text-[#00ff87]" /> KNOCKOUT STAGE
+              <h2 className="text-lg font-black text-foreground mb-4 flex items-center gap-2">
+                <Zap className="w-5 h-5 text-primary" /> KNOCKOUT STAGE
               </h2>
               {KNOCKOUT_ROUNDS.map(round => (
                 <div key={round.name} className="mb-4">
                   <div className="flex items-center gap-2 mb-2">
                     <div className="w-2 h-2 rounded-full" style={{ backgroundColor: round.color }} />
                     <span className="text-[11px] uppercase tracking-widest font-bold" style={{ color: round.color }}>{round.name}</span>
-                    <span className="text-[10px] text-[#444]">· {round.startDate}</span>
+                    <span className="text-[10px] text-muted-foreground/60">· {round.startDate}</span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                     {Array.from({ length: round.matches }).map((_, i) => (
-                      <div key={i} className="bg-[#111] border border-[#1e1e1e] rounded-lg p-3 flex items-center justify-between">
+                      <div key={i} className="bg-card border border-border rounded-lg p-3 flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center">
-                            <span className="text-[8px] text-[#444]">?</span>
+                          <div className="w-6 h-6 rounded-full bg-secondary border border-border flex items-center justify-center">
+                            <span className="text-[8px] text-muted-foreground/60">?</span>
                           </div>
-                          <span className="text-xs text-[#555]">TBD</span>
+                          <span className="text-xs text-muted-foreground/80">TBD</span>
                         </div>
-                        <span className="text-[10px] font-bold text-[#333]">vs</span>
+                        <span className="text-[10px] font-bold text-muted-foreground/40">vs</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-[#555]">TBD</span>
-                          <div className="w-6 h-6 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center">
-                            <span className="text-[8px] text-[#444]">?</span>
+                          <span className="text-xs text-muted-foreground/80">TBD</span>
+                          <div className="w-6 h-6 rounded-full bg-secondary border border-border flex items-center justify-center">
+                            <span className="text-[8px] text-muted-foreground/60">?</span>
                           </div>
                         </div>
                       </div>
@@ -373,11 +373,11 @@ export default function WCFixtures() {
               });
 
               return (
-                <div key={g.name} className="bg-[#111] border border-[#1e1e1e] rounded-lg overflow-hidden">
-                  <div className="px-3 py-2 border-b border-[#1e1e1e] flex items-center gap-2">
-                    <span className="text-[10px] uppercase tracking-widest text-[#00ff87] font-bold">GROUP {g.name}</span>
+                <div key={g.name} className="bg-card border border-border rounded-lg overflow-hidden">
+                  <div className="px-3 py-2 border-b border-border flex items-center gap-2">
+                    <span className="text-[10px] uppercase tracking-widest text-primary font-bold">GROUP {g.name}</span>
                   </div>
-                  <div className="flex items-center gap-2 px-3 py-1.5 text-[9px] uppercase tracking-widest text-[#444] font-bold">
+                  <div className="flex items-center gap-2 px-3 py-1.5 text-[9px] uppercase tracking-widest text-muted-foreground/60 font-bold">
                     <span className="w-5 text-center">#</span>
                     <span className="flex-1">TEAM</span>
                     <span className="w-6 text-center">P</span>
@@ -410,25 +410,25 @@ export default function WCFixtures() {
                         key={code}
                         to={`/worldcup/team/${code}`}
                         className={cn(
-                          'flex items-center gap-2 px-3 py-2 border-t border-[#1a1a1a] hover:bg-[#1a1a1a] transition-colors',
-                          rank <= 2 && 'border-l-2 border-l-[#00ff87]/30',
+                          'flex items-center gap-2 px-3 py-2 border-t border-border/50 hover:bg-secondary transition-colors',
+                          rank <= 2 && 'border-l-2 border-l-primary/30',
                         )}
                       >
-                        <span className="w-5 text-center text-[11px] font-bold text-[#555]">{rank}</span>
+                        <span className="w-5 text-center text-[11px] font-bold text-muted-foreground/80">{rank}</span>
                         <div className="flex items-center gap-2 flex-1 min-w-0">
                           {entry.team?.logo ? (
                             <img src={entry.team.logo} alt="" className="w-5 h-4 object-contain" />
                           ) : (
                             <Flag code={code} className="w-5 h-3.5" />
                           )}
-                          <span className="text-xs font-semibold text-[#ccc] truncate">{TEAM_INFO[code]?.name || teamName}</span>
+                          <span className="text-xs font-semibold text-foreground/90 truncate">{TEAM_INFO[code]?.name || teamName}</span>
                         </div>
-                        <span className="w-6 text-center text-[11px] text-[#555] tabular-nums">{played}</span>
-                        <span className="w-6 text-center text-[11px] text-[#555] tabular-nums">{won}</span>
-                        <span className="w-6 text-center text-[11px] text-[#555] tabular-nums">{drawn}</span>
-                        <span className="w-6 text-center text-[11px] text-[#555] tabular-nums">{lost}</span>
-                        <span className={cn('w-8 text-center text-[11px] tabular-nums', gd > 0 ? 'text-[#00ff87]' : gd < 0 ? 'text-red-400' : 'text-[#555]')}>{gd > 0 ? '+' : ''}{gd}</span>
-                        <span className="w-8 text-center text-[11px] font-bold text-white tabular-nums">{pts}</span>
+                        <span className="w-6 text-center text-[11px] text-muted-foreground/80 tabular-nums">{played}</span>
+                        <span className="w-6 text-center text-[11px] text-muted-foreground/80 tabular-nums">{won}</span>
+                        <span className="w-6 text-center text-[11px] text-muted-foreground/80 tabular-nums">{drawn}</span>
+                        <span className="w-6 text-center text-[11px] text-muted-foreground/80 tabular-nums">{lost}</span>
+                        <span className={cn('w-8 text-center text-[11px] tabular-nums', gd > 0 ? 'text-primary' : gd < 0 ? 'text-red-400' : 'text-muted-foreground/80')}>{gd > 0 ? '+' : ''}{gd}</span>
+                        <span className="w-8 text-center text-[11px] font-bold text-foreground tabular-nums">{pts}</span>
                       </Link>
                     );
                   })}
@@ -441,7 +441,7 @@ export default function WCFixtures() {
         {/* ─── BRACKET TAB ───────────────────────────────────────────── */}
         {activeTab === 'bracket' && (
           <div>
-            <p className="text-xs text-[#555] mb-4">The knockout bracket will be populated after the group stage concludes.</p>
+            <p className="text-xs text-muted-foreground/80 mb-4">The knockout bracket will be populated after the group stage concludes.</p>
             <div className="flex gap-3 overflow-x-auto no-scrollbar pb-4">
               {KNOCKOUT_ROUNDS.map((round, ri) => (
                 <div key={round.name} className="flex-shrink-0" style={{ width: ri === 4 ? '180px' : '160px' }}>
@@ -452,18 +452,18 @@ export default function WCFixtures() {
                     {Array.from({ length: round.matches }).map((_, i) => (
                       <div
                         key={i}
-                        className="bg-[#111] border border-[#1e1e1e] rounded-lg p-2"
+                        className="bg-card border border-border rounded-lg p-2"
                         style={{ marginBottom: `${ri * 16}px` }}
                       >
-                        <div className="flex items-center gap-1.5 py-1 border-b border-[#1a1a1a]">
-                          <div className="w-4 h-4 rounded-full bg-[#1a1a1a]" />
-                          <span className="text-[10px] text-[#555] flex-1">TBD</span>
-                          <span className="text-[10px] font-bold text-[#333]">-</span>
+                        <div className="flex items-center gap-1.5 py-1 border-b border-border/50">
+                          <div className="w-4 h-4 rounded-full bg-secondary" />
+                          <span className="text-[10px] text-muted-foreground/80 flex-1">TBD</span>
+                          <span className="text-[10px] font-bold text-muted-foreground/40">-</span>
                         </div>
                         <div className="flex items-center gap-1.5 py-1">
-                          <div className="w-4 h-4 rounded-full bg-[#1a1a1a]" />
-                          <span className="text-[10px] text-[#555] flex-1">TBD</span>
-                          <span className="text-[10px] font-bold text-[#333]">-</span>
+                          <div className="w-4 h-4 rounded-full bg-secondary" />
+                          <span className="text-[10px] text-muted-foreground/80 flex-1">TBD</span>
+                          <span className="text-[10px] font-bold text-muted-foreground/40">-</span>
                         </div>
                       </div>
                     ))}
@@ -473,13 +473,13 @@ export default function WCFixtures() {
             </div>
 
             {/* Final venue highlight */}
-            <div className="mt-6 bg-gradient-to-r from-[#00ff87]/5 to-amber-500/5 border border-[#00ff87]/20 rounded-xl p-5 text-center">
-              <Trophy className="w-8 h-8 text-[#00ff87] mx-auto mb-2" />
-              <h3 className="text-lg font-black text-white">THE FINAL</h3>
-              <p className="text-sm text-[#888]">July 19, 2026</p>
+            <div className="mt-6 bg-gradient-to-r from-[#00ff87]/5 to-amber-500/5 border border-primary/20 rounded-xl p-5 text-center">
+              <Trophy className="w-8 h-8 text-primary mx-auto mb-2" />
+              <h3 className="text-lg font-black text-foreground">THE FINAL</h3>
+              <p className="text-sm text-muted-foreground">July 19, 2026</p>
               <div className="flex items-center justify-center gap-1.5 mt-1">
-                <MapPin className="w-3.5 h-3.5 text-[#555]" />
-                <span className="text-xs text-[#555]">MetLife Stadium, New Jersey</span>
+                <MapPin className="w-3.5 h-3.5 text-muted-foreground/80" />
+                <span className="text-xs text-muted-foreground/80">MetLife Stadium, New Jersey</span>
               </div>
             </div>
           </div>
@@ -504,24 +504,24 @@ function WCMatchCard({ match, stadium }: { match: any; stadium: string }) {
 
   return (
     <div className={cn(
-      'bg-[#111] border rounded-lg overflow-hidden hover:border-[#2a2a2a] transition-colors',
-      isLive ? 'border-[#00ff87]/40 shadow-[0_0_10px_rgba(0,255,135,0.1)]' : 'border-[#1e1e1e]',
+      'bg-card border rounded-lg overflow-hidden hover:border-border transition-colors',
+      isLive ? 'border-primary/40 shadow-[0_0_10px_rgba(0,255,135,0.1)]' : 'border-border',
     )}>
       {/* Top bar */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#1a1a1a]">
-        <span className="text-[9px] uppercase tracking-widest text-[#00ff87] font-bold">GROUP {match.group} · MD{match.matchday}</span>
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/50">
+        <span className="text-[9px] uppercase tracking-widest text-primary font-bold">GROUP {match.group} · MD{match.matchday}</span>
         <div className="flex items-center gap-2">
           {isLive && (
             <div className="flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#00ff87] animate-pulse" />
-              <span className="text-[10px] font-bold text-[#00ff87]">{match.minute}'</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+              <span className="text-[10px] font-bold text-primary">{match.minute}'</span>
             </div>
           )}
-          {isFinished && <span className="text-[10px] font-bold text-[#444] uppercase tracking-widest">{match.status}</span>}
-          {!isLive && !isFinished && match.time && <span className="text-[10px] font-semibold text-[#555]">{match.time}</span>}
+          {isFinished && <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest">{match.status}</span>}
+          {!isLive && !isFinished && match.time && <span className="text-[10px] font-semibold text-muted-foreground/80">{match.time}</span>}
           <div className="flex items-center gap-1">
-            <MapPin className="w-3 h-3 text-[#333]" />
-            <span className="text-[9px] text-[#444] truncate max-w-[120px]">{venue}</span>
+            <MapPin className="w-3 h-3 text-muted-foreground/40" />
+            <span className="text-[9px] text-muted-foreground/60 truncate max-w-[120px]">{venue}</span>
           </div>
         </div>
       </div>
@@ -536,9 +536,9 @@ function WCMatchCard({ match, stadium }: { match: any; stadium: string }) {
           )}
           <Link to={`/worldcup/team/${homeCode}`} className={cn(
             'text-sm font-semibold truncate transition-colors',
-            hasScore && match.homeScore > match.awayScore ? 'text-white font-bold' :
-            hasScore && match.homeScore < match.awayScore && isFinished ? 'text-[#555]' :
-            'text-[#ccc] hover:text-white',
+            hasScore && match.homeScore > match.awayScore ? 'text-foreground font-bold' :
+            hasScore && match.homeScore < match.awayScore && isFinished ? 'text-muted-foreground/80' :
+            'text-foreground/90 hover:text-foreground',
           )}>
             {homeName}
           </Link>
@@ -548,21 +548,21 @@ function WCMatchCard({ match, stadium }: { match: any; stadium: string }) {
         <div className="px-3 text-center min-w-[60px]">
           {hasScore ? (
             <div>
-              <span className={cn('text-xl font-black tabular-nums', isLive ? 'text-[#00ff87]' : 'text-white')}>
+              <span className={cn('text-xl font-black tabular-nums', isLive ? 'text-primary' : 'text-foreground')}>
                 {match.homeScore} - {match.awayScore}
               </span>
             </div>
           ) : (
-            <span className="text-xs font-bold text-[#333] tracking-widest">VS</span>
+            <span className="text-xs font-bold text-muted-foreground/40 tracking-widest">VS</span>
           )}
         </div>
 
         <div className="flex items-center gap-2.5 flex-1 min-w-0 justify-end">
           <Link to={`/worldcup/team/${awayCode}`} className={cn(
             'text-sm font-semibold truncate transition-colors text-right',
-            hasScore && match.awayScore > match.homeScore ? 'text-white font-bold' :
-            hasScore && match.awayScore < match.homeScore && isFinished ? 'text-[#555]' :
-            'text-[#ccc] hover:text-white',
+            hasScore && match.awayScore > match.homeScore ? 'text-foreground font-bold' :
+            hasScore && match.awayScore < match.homeScore && isFinished ? 'text-muted-foreground/80' :
+            'text-foreground/90 hover:text-foreground',
           )}>
             {awayName}
           </Link>

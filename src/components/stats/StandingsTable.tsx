@@ -53,43 +53,43 @@ export default function StandingsTable({ standings, loading, leagueId }: Standin
           {groupKeys.map(groupName => {
             const teams = grouped[groupName];
             return (
-              <div key={groupName} className={cn("bg-[#111] border border-[#1e1e1e] rounded-lg overflow-hidden", groupName.toLowerCase().includes('third') && "sm:col-span-2")}>
-                <div className="px-3 py-2 border-b border-[#1e1e1e] flex items-center gap-2">
-                  <span className="text-[10px] uppercase tracking-widest text-[#00ff87] font-bold">{groupName}</span>
+              <div key={groupName} className={cn("bg-card border border-border rounded-lg overflow-hidden", groupName.toLowerCase().includes('third') && "sm:col-span-2")}>
+                <div className="px-3 py-2 border-b border-border flex items-center gap-2">
+                  <span className="text-[10px] uppercase tracking-widest text-primary font-bold">{groupName}</span>
                   {groupName.toLowerCase().includes('third') && <span className="text-[8px] bg-amber-400/10 text-amber-400 px-1.5 py-0.5 rounded-full font-bold uppercase">Live Ranking</span>}
                 </div>
                 {groupName.toLowerCase().includes('third') && (
-                  <div className="px-3 py-2.5 border-b border-[#1a1a1a] bg-[#0d0d0d]">
-                    <p className="text-[11px] text-[#888] leading-relaxed">
-                      <span className="text-[#00ff87] font-bold">How it works:</span> In the FIFA World Cup 2026, the top 2 teams from each of the 12 groups qualify automatically for the Round of 32. The remaining 8 spots go to the <span className="text-white font-semibold">best 8 out of 12 third-placed teams</span>.
+                  <div className="px-3 py-2.5 border-b border-border/50 bg-secondary/50">
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      <span className="text-primary font-bold">How it works:</span> In the FIFA World Cup 2026, the top 2 teams from each of the 12 groups qualify automatically for the Round of 32. The remaining 8 spots go to the <span className="text-foreground font-semibold">best 8 out of 12 third-placed teams</span>.
                     </p>
-                    <p className="text-[11px] text-[#666] mt-1.5 leading-relaxed">
-                      Teams are ranked by: <span className="text-[#aaa]">Points</span> {'>'} <span className="text-[#aaa]">Goal Difference</span> {'>'} <span className="text-[#aaa]">Goals Scored</span> {'>'} <span className="text-[#aaa]">Fair Play</span>
+                    <p className="text-[11px] text-muted-foreground mt-1.5 leading-relaxed">
+                      Teams are ranked by: <span className="text-foreground/70">Points</span> {'>'} <span className="text-foreground/70">Goal Difference</span> {'>'} <span className="text-foreground/70">Goals Scored</span> {'>'} <span className="text-foreground/70">Fair Play</span>
                     </p>
-                    <p className="text-[10px] text-[#555] mt-1.5 flex items-center gap-1">
+                    <p className="text-[10px] text-muted-foreground/80 mt-1.5 flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
                       This table updates dynamically after each group stage match
                     </p>
                   </div>
                 )}
-                <div className="flex items-center gap-2 px-3 py-1.5 text-[9px] uppercase tracking-widest text-[#444] font-bold">
+                <div className="flex items-center gap-2 px-3 py-1.5 text-[9px] uppercase tracking-widest text-muted-foreground/60 font-bold">
                   <span className="w-5 text-center">#</span><span className="flex-1">TEAM</span>
                   <span className="w-6 text-center">P</span><span className="w-6 text-center">W</span><span className="w-6 text-center">D</span><span className="w-6 text-center">L</span>
                   <span className="w-8 text-center">GD</span><span className="w-8 text-center">PTS</span>
                 </div>
                 {teams.map((team) => (
-                  <Link key={team.team.id} to={'/team/' + team.team.id} className={cn('flex items-center gap-2 px-3 py-2 border-t border-[#1a1a1a] hover:bg-[#1a1a1a] transition-colors', team.rank <= 2 && 'border-l-2 border-l-[#00ff87]/30')}>
-                    <span className={cn('w-5 text-center text-[11px] font-bold', team.rank <= 2 ? 'text-emerald-400' : 'text-[#555]')}>{team.rank}</span>
+                  <Link key={team.team.id} to={'/team/' + team.team.id} className={cn('flex items-center gap-2 px-3 py-2 border-t border-border/50 hover:bg-secondary transition-colors', team.rank <= 2 && 'border-l-2 border-l-primary/30')}>
+                    <span className={cn('w-5 text-center text-[11px] font-bold', team.rank <= 2 ? 'text-emerald-400' : 'text-muted-foreground/80')}>{team.rank}</span>
                     <div className="flex items-center gap-2 flex-1 min-w-0">
-                      {team.team.logo ? <img src={team.team.logo} alt="" className="w-5 h-4 object-contain" /> : <div className="w-5 h-4 rounded bg-[#222] flex items-center justify-center"><span className="text-[6px] font-bold text-[#555]">{team.team.name.substring(0,3).toUpperCase()}</span></div>}
-                      <span className="text-xs font-semibold text-[#ccc] truncate">{team.team.name}</span>
+                      {team.team.logo ? <img src={team.team.logo} alt="" className="w-5 h-4 object-contain" /> : <div className="w-5 h-4 rounded bg-secondary flex items-center justify-center"><span className="text-[6px] font-bold text-muted-foreground/80">{team.team.name.substring(0,3).toUpperCase()}</span></div>}
+                      <span className="text-xs font-semibold text-foreground/90 truncate">{team.team.name}</span>
                     </div>
-                    <span className="w-6 text-center text-[11px] text-[#555] tabular-nums">{team.played}</span>
-                    <span className="w-6 text-center text-[11px] text-[#555] tabular-nums">{team.win}</span>
-                    <span className="w-6 text-center text-[11px] text-[#555] tabular-nums">{team.draw}</span>
-                    <span className="w-6 text-center text-[11px] text-[#555] tabular-nums">{team.lose}</span>
-                    <span className={cn('w-8 text-center text-[11px] tabular-nums', team.goalsDiff > 0 ? 'text-[#00ff87]' : team.goalsDiff < 0 ? 'text-red-400' : 'text-[#555]')}>{team.goalsDiff > 0 ? '+' : ''}{team.goalsDiff}</span>
-                    <span className="w-8 text-center text-[11px] font-bold text-white tabular-nums">{team.points}</span>
+                    <span className="w-6 text-center text-[11px] text-muted-foreground/80 tabular-nums">{team.played}</span>
+                    <span className="w-6 text-center text-[11px] text-muted-foreground/80 tabular-nums">{team.win}</span>
+                    <span className="w-6 text-center text-[11px] text-muted-foreground/80 tabular-nums">{team.draw}</span>
+                    <span className="w-6 text-center text-[11px] text-muted-foreground/80 tabular-nums">{team.lose}</span>
+                    <span className={cn('w-8 text-center text-[11px] tabular-nums', team.goalsDiff > 0 ? 'text-primary' : team.goalsDiff < 0 ? 'text-red-400' : 'text-muted-foreground/80')}>{team.goalsDiff > 0 ? '+' : ''}{team.goalsDiff}</span>
+                    <span className="w-8 text-center text-[11px] font-bold text-foreground tabular-nums">{team.points}</span>
                   </Link>
                 ))}
               </div>
@@ -98,41 +98,41 @@ export default function StandingsTable({ standings, loading, leagueId }: Standin
         </div>
 
         {thirdPlaceTeams && thirdPlaceTeams.length > 0 && (
-          <div className="mt-4 bg-[#111] border border-[#1e1e1e] rounded-lg overflow-hidden">
-            <div className="px-3 py-2 border-b border-[#1e1e1e] flex items-center gap-2">
+          <div className="mt-4 bg-card border border-border rounded-lg overflow-hidden">
+            <div className="px-3 py-2 border-b border-border flex items-center gap-2">
               <span className="text-[10px] uppercase tracking-widest text-amber-400 font-bold">Ranking of Third-Placed Teams</span>
               <span className="text-[8px] bg-amber-400/10 text-amber-400 px-1.5 py-0.5 rounded-full font-bold uppercase">Live Ranking</span>
             </div>
-            <div className="px-3 py-2.5 border-b border-[#1a1a1a] bg-[#0d0d0d]">
-              <p className="text-[11px] text-[#888] leading-relaxed">
-                <span className="text-[#00ff87] font-bold">How it works:</span> Top 2 from each group qualify automatically (24 teams). The <span className="text-white font-semibold">best 8 of 12 third-placed teams</span> fill the remaining Round of 32 spots.
+            <div className="px-3 py-2.5 border-b border-border/50 bg-secondary/50">
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                <span className="text-primary font-bold">How it works:</span> Top 2 from each group qualify automatically (24 teams). The <span className="text-foreground font-semibold">best 8 of 12 third-placed teams</span> fill the remaining Round of 32 spots.
               </p>
-              <p className="text-[11px] text-[#666] mt-1">Ranked by: Points {'>'} Goal Difference {'>'} Goals Scored {'>'} Fair Play</p>
-              <p className="text-[10px] text-[#555] mt-1 flex items-center gap-1">
+              <p className="text-[11px] text-muted-foreground mt-1">Ranked by: Points {'>'} Goal Difference {'>'} Goals Scored {'>'} Fair Play</p>
+              <p className="text-[10px] text-muted-foreground/80 mt-1 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
                 Updates dynamically after each group stage match
               </p>
             </div>
-            <div className="flex items-center gap-2 px-3 py-1.5 text-[9px] uppercase tracking-widest text-[#444] font-bold">
+            <div className="flex items-center gap-2 px-3 py-1.5 text-[9px] uppercase tracking-widest text-muted-foreground/60 font-bold">
               <span className="w-5 text-center">#</span><span className="flex-1">TEAM</span>
               <span className="w-10 text-center">GROUP</span>
               <span className="w-6 text-center">P</span><span className="w-6 text-center">W</span><span className="w-6 text-center">D</span><span className="w-6 text-center">L</span>
               <span className="w-8 text-center">GD</span><span className="w-8 text-center">PTS</span>
             </div>
             {thirdPlaceTeams.map((team, i) => (
-              <Link key={team.team.id} to={'/team/' + team.team.id} className={cn('flex items-center gap-2 px-3 py-2 border-t border-[#1a1a1a] hover:bg-[#1a1a1a] transition-colors', i < 8 && 'border-l-2 border-l-[#00ff87]/30')}>
+              <Link key={team.team.id} to={'/team/' + team.team.id} className={cn('flex items-center gap-2 px-3 py-2 border-t border-border/50 hover:bg-secondary transition-colors', i < 8 && 'border-l-2 border-l-primary/30')}>
                 <span className={cn('w-5 text-center text-[11px] font-bold', i < 8 ? 'text-emerald-400' : 'text-red-400')}>{i + 1}</span>
                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                  {team.team.logo ? <img src={team.team.logo} alt="" className="w-5 h-4 object-contain" /> : <div className="w-5 h-4 rounded bg-[#222] flex items-center justify-center"><span className="text-[6px] font-bold text-[#555]">{team.team.name.substring(0,3).toUpperCase()}</span></div>}
-                  <span className="text-xs font-semibold text-[#ccc] truncate">{team.team.name}</span>
+                  {team.team.logo ? <img src={team.team.logo} alt="" className="w-5 h-4 object-contain" /> : <div className="w-5 h-4 rounded bg-secondary flex items-center justify-center"><span className="text-[6px] font-bold text-muted-foreground/80">{team.team.name.substring(0,3).toUpperCase()}</span></div>}
+                  <span className="text-xs font-semibold text-foreground/90 truncate">{team.team.name}</span>
                 </div>
-                <span className="w-10 text-center text-[10px] text-[#555]">{team.group || '-'}</span>
-                <span className="w-6 text-center text-[11px] text-[#555] tabular-nums">{team.played}</span>
-                <span className="w-6 text-center text-[11px] text-[#555] tabular-nums">{team.win}</span>
-                <span className="w-6 text-center text-[11px] text-[#555] tabular-nums">{team.draw}</span>
-                <span className="w-6 text-center text-[11px] text-[#555] tabular-nums">{team.lose}</span>
-                <span className={cn('w-8 text-center text-[11px] tabular-nums', team.goalsDiff > 0 ? 'text-[#00ff87]' : team.goalsDiff < 0 ? 'text-red-400' : 'text-[#555]')}>{team.goalsDiff > 0 ? '+' : ''}{team.goalsDiff}</span>
-                <span className="w-8 text-center text-[11px] font-bold text-white tabular-nums">{team.points}</span>
+                <span className="w-10 text-center text-[10px] text-muted-foreground/80">{team.group || '-'}</span>
+                <span className="w-6 text-center text-[11px] text-muted-foreground/80 tabular-nums">{team.played}</span>
+                <span className="w-6 text-center text-[11px] text-muted-foreground/80 tabular-nums">{team.win}</span>
+                <span className="w-6 text-center text-[11px] text-muted-foreground/80 tabular-nums">{team.draw}</span>
+                <span className="w-6 text-center text-[11px] text-muted-foreground/80 tabular-nums">{team.lose}</span>
+                <span className={cn('w-8 text-center text-[11px] tabular-nums', team.goalsDiff > 0 ? 'text-primary' : team.goalsDiff < 0 ? 'text-red-400' : 'text-muted-foreground/80')}>{team.goalsDiff > 0 ? '+' : ''}{team.goalsDiff}</span>
+                <span className="w-8 text-center text-[11px] font-bold text-foreground tabular-nums">{team.points}</span>
               </Link>
             ))}
           </div>

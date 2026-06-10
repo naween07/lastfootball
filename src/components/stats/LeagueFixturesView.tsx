@@ -69,7 +69,7 @@ export default function LeagueFixturesView({ leagueId, season }: LeagueFixturesV
                 key={r}
                 onClick={() => setSelectedRound(r)}
                 className={cn('px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition-all',
-                  selectedRound === r ? 'bg-[#00ff87] text-black' : 'bg-[#111] text-[#555] border border-[#222] hover:text-[#888]',
+                  selectedRound === r ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground/80 border border-border hover:text-foreground',
                 )}
               >
                 {r.replace('Group Stage - ', 'Group Stage ')}
@@ -83,7 +83,7 @@ export default function LeagueFixturesView({ leagueId, season }: LeagueFixturesV
                   key={r}
                   onClick={() => setSelectedRound(r)}
                   className={cn('px-3 py-1.5 rounded-lg text-[10px] font-bold whitespace-nowrap transition-all',
-                    selectedRound === r ? 'bg-amber-400 text-black' : 'bg-[#111] text-[#555] border border-[#222] hover:text-[#888]',
+                    selectedRound === r ? 'bg-amber-400 text-black' : 'bg-card text-muted-foreground/80 border border-border hover:text-foreground',
                   )}
                 >
                   {r}
