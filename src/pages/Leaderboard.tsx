@@ -4,8 +4,9 @@ import Header from '@/components/Header';
 import SEOHead from '@/components/SEOHead';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { Trophy, Target, TrendingUp, Medal, Flame, User, Crown } from 'lucide-react';
+import { Trophy, Target, TrendingUp, Medal, Flame, User, Crown, Pencil, Check, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 interface LeaderboardEntry {
   user_id: string;
@@ -24,28 +25,75 @@ export default function Leaderboard() {
   const [myStats, setMyStats] = useState<LeaderboardEntry | null>(null);
   const [myRank, setMyRank] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState('');
+  const [savingName, setSavingName] = useState(false);
 
-  useEffect(() => {
-    const load = async () => {
-      const { data } = await supabase
-        .from('prediction_leaderboard')
-        .select('*')
-        .order('total_points', { ascending: false })
-        .limit(50);
-      if (data) {
-        setEntries(data);
-        if (user) {
-          const idx = data.findIndex(e => e.user_id === user.id);
-          if (idx >= 0) {
-            setMyStats(data[idx]);
-            setMyRank(idx + 1);
-          }
+  const load = async () => {
+    const { data } = await supabase
+      .from('prediction_stats')
+      .select('*')
+      .order('total_points', { ascending: false })
+      .limit(50);
+    if (data) {
+      // view doesn't have streak columns; default them
+      const normalized = data.map((d: any) => ({
+        ...d,
+        current_streak: d.current_streak ?? 0,
+        best_streak: d.best_streak ?? 0,
+      }));
+      setEntries(normalized);
+      if (user) {
+        const idx = normalized.findIndex((e: LeaderboardEntry) => e.user_id === user.id);
+        if (idx >= 0) {
+          setMyStats(normalized[idx]);
+          setMyRank(idx + 1);
+          setNameInput(normalized[idx].username || '');
         }
       }
-      setLoading(false);
-    };
-    load();
-  }, [user]);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, [user]);
+
+  const saveName = async () => {
+    const name = nameInput.trim();
+    if (name.length < 2) return toast.error('Name must be at least 2 characters');
+    if (name.length > 24) return toast.error('Name must be 24 characters or less');
+    if (!user) return;
+    setSavingName(true);
+    try {
+      let accessToken = '';
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('sb-') && k.endsWith('-auth-token')) {
+          const v = JSON.parse(localStorage.getItem(k) || '{}');
+          accessToken = v?.access_token || (Array.isArray(v) ? v[0] : '') || '';
+          if (accessToken) break;
+        }
+      }
+      if (!accessToken) { toast.error('Please sign in again'); setSavingName(false); return; }
+      const BASE = import.meta.env.VITE_SUPABASE_URL;
+      const KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const res = await fetch(`${BASE}/rest/v1/profiles?user_id=eq.${user.id}`, {
+        method: 'PATCH',
+        headers: { apikey: KEY, Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({ display_name: name }),
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => '');
+        toast.error('Failed: ' + (t.substring(0, 100) || res.statusText));
+      } else {
+        toast.success('Name updated!');
+        setEditingName(false);
+        load();
+      }
+    } catch (e: any) {
+      toast.error(e?.message || 'Error');
+    }
+    setSavingName(false);
+  };
 
   const accuracy = (entry: LeaderboardEntry) =>
     entry.total_predictions > 0
@@ -80,10 +128,30 @@ export default function Leaderboard() {
               <div className="p-2 rounded-full bg-primary/20">
                 <User className="w-4 h-4 text-primary" />
               </div>
-              <div>
+              <div className="flex-1">
                 <p className="text-sm font-bold text-foreground">Your Stats</p>
                 <p className="text-xs text-muted-foreground">Rank #{myRank}</p>
               </div>
+              {!editingName ? (
+                <button onClick={() => setEditingName(true)} className="flex items-center gap-1 text-xs text-primary hover:underline">
+                  <Pencil className="w-3 h-3" /> {myStats.username}
+                </button>
+              ) : (
+                <div className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    value={nameInput}
+                    onChange={(e) => setNameInput(e.target.value)}
+                    maxLength={24}
+                    placeholder="Your name"
+                    className="w-28 px-2 py-1 bg-secondary border border-border rounded-md text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    autoFocus
+                  />
+                  <button onClick={saveName} disabled={savingName} className="p-1.5 rounded-md bg-primary text-primary-foreground">
+                    {savingName ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                  </button>
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-4 gap-2">
               <div className="text-center">
@@ -160,7 +228,6 @@ export default function Leaderboard() {
                     isMe && 'bg-primary/5',
                   )}
                 >
-                  {/* Rank */}
                   <span className={cn(
                     'w-8 text-center font-black text-sm tabular-nums',
                     rank === 1 ? 'text-amber-400' : rank === 2 ? 'text-gray-400' : rank === 3 ? 'text-orange-400' : 'text-muted-foreground',
@@ -168,14 +235,12 @@ export default function Leaderboard() {
                     {rank <= 3 ? ['🥇', '🥈', '🥉'][rank - 1] : rank}
                   </span>
 
-                  {/* Username */}
                   <div className="flex-1 min-w-0">
                     <span className={cn('text-sm font-semibold truncate', isMe ? 'text-primary' : 'text-foreground')}>
                       {entry.username} {isMe && '(You)'}
                     </span>
                   </div>
 
-                  {/* Points */}
                   <span className={cn(
                     'w-14 text-center text-sm font-black tabular-nums',
                     entry.total_points >= 30 ? 'text-amber-400' : entry.total_points > 0 ? 'text-primary' : 'text-muted-foreground',
@@ -183,22 +248,18 @@ export default function Leaderboard() {
                     {entry.total_points}
                   </span>
 
-                  {/* Predictions count */}
                   <span className="w-14 text-center text-xs text-muted-foreground tabular-nums hidden sm:block">
                     {entry.total_predictions}
                   </span>
 
-                  {/* Exact scores */}
                   <span className="w-14 text-center text-xs text-emerald-400 font-semibold tabular-nums">
                     {entry.correct_scores}
                   </span>
 
-                  {/* Accuracy */}
                   <span className="w-14 text-center text-xs text-foreground font-semibold tabular-nums">
                     {accuracy(entry)}%
                   </span>
 
-                  {/* Streak */}
                   <span className="w-14 text-center text-xs tabular-nums hidden sm:flex items-center justify-center gap-0.5">
                     {entry.current_streak >= 3 && <Flame className="w-3 h-3 text-orange-400" />}
                     <span className={entry.current_streak >= 3 ? 'text-orange-400 font-bold' : 'text-muted-foreground'}>
@@ -206,7 +267,6 @@ export default function Leaderboard() {
                     </span>
                   </span>
 
-                  {/* Eligibility */}
                   <span className={cn(
                     'w-16 text-center text-[9px] font-bold rounded-full px-1.5 py-0.5',
                     eligible ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400',
