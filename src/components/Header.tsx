@@ -49,12 +49,12 @@ export default function Header() {
             <img 
               src="/logo.png?v=2" 
               alt="LastFootball" 
-              className="h-9 object-contain hidden dark:block" 
+              className="h-7 object-contain hidden dark:block" 
             />
             <img 
               src="/logo-light.png?v=2" 
               alt="LastFootball" 
-              className="h-9 object-contain block dark:hidden" 
+              className="h-7 object-contain block dark:hidden" 
             />
           </Link>
 
