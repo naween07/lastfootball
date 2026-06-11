@@ -117,7 +117,7 @@ export default function WCFixtures() {
       try {
         const { callApi } = await import('@/services/footballApi');
         const [fixtures, standings] = await Promise.allSettled([
-          callApi('fixtures', { league: '1', season: '2026' }),
+          callApi('fixtures', { league: '1', season: '2026', timezone: 'America/New_York' }),
           callApi('standings', { league: '1', season: '2026' }),
         ]);
         if (fixtures.status === 'fulfilled' && fixtures.value?.length > 0) {
@@ -163,6 +163,8 @@ export default function WCFixtures() {
             home: getTeamCode(f.teams?.home?.name || ''),
             away: getTeamCode(f.teams?.away?.name || ''),
             date: f.fixture?.date?.split('T')[0] || '',
+            localDate: f.fixture?.date ? new Date(f.fixture.date).toLocaleDateString('en-CA') : '',
+            localDay: f.fixture?.date ? new Date(f.fixture.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '',
             time: f.fixture?.date ? new Date(f.fixture.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
             group: groupLetter,
             matchday,
@@ -518,7 +520,7 @@ function WCMatchCard({ match, stadium }: { match: any; stadium: string }) {
             </div>
           )}
           {isFinished && <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest">{match.status}</span>}
-          {!isLive && !isFinished && match.time && <span className="text-[10px] font-semibold text-muted-foreground/80">{match.time}</span>}
+          {!isLive && !isFinished && match.time && <span className="text-[10px] font-semibold text-muted-foreground/80">{match.time}{(match as any).localDate && (match as any).localDate !== match.date ? ' \u00b7 ' + (match as any).localDay : ''}</span>}
           <div className="flex items-center gap-1">
             <MapPin className="w-3 h-3 text-muted-foreground/40" />
             <span className="text-[9px] text-muted-foreground/60 truncate max-w-[120px]">{venue}</span>
