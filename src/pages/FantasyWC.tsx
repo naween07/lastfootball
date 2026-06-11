@@ -269,6 +269,31 @@ function generatePower(pos: string, nation: string): number {
   return Math.min(79, Math.max(60, base)); // Cap at 79 — anything higher is a star in PLAYER_POOL
 }
 
+
+// Nation name -> ISO code for image flags (emoji flags don't render on Windows)
+const NATION_ISO: Record<string, string> = {
+  'Mexico': 'mx', 'South Africa': 'za', 'South Korea': 'kr', 'Czech Republic': 'cz',
+  'Canada': 'ca', 'Switzerland': 'ch', 'Qatar': 'qa', 'Bosnia & Herz.': 'ba', 'Bosnia and Herzegovina': 'ba',
+  'Brazil': 'br', 'Morocco': 'ma', 'Haiti': 'ht', 'Scotland': 'gb-sct',
+  'USA': 'us', 'Paraguay': 'py', 'Australia': 'au', 'Turkey': 'tr',
+  'Germany': 'de', 'Cura\u00e7ao': 'cw', 'Curacao': 'cw', 'Ivory Coast': 'ci', 'Ecuador': 'ec',
+  'Netherlands': 'nl', 'Japan': 'jp', 'Tunisia': 'tn', 'Sweden': 'se',
+  'Belgium': 'be', 'Egypt': 'eg', 'Iran': 'ir', 'New Zealand': 'nz',
+  'Spain': 'es', 'Cape Verde': 'cv', 'Saudi Arabia': 'sa', 'Uruguay': 'uy',
+  'France': 'fr', 'Senegal': 'sn', 'Norway': 'no', 'Iraq': 'iq',
+  'Argentina': 'ar', 'Algeria': 'dz', 'Austria': 'at', 'Jordan': 'jo',
+  'Portugal': 'pt', 'Uzbekistan': 'uz', 'Colombia': 'co', 'DR Congo': 'cd',
+  'England': 'gb-eng', 'Croatia': 'hr', 'Ghana': 'gh', 'Panama': 'pa',
+};
+function NFlag({ nation, fallback, size = 18 }: { nation: string; fallback?: string; size?: number }) {
+  const iso = NATION_ISO[nation];
+  if (!iso) return <span style={{ fontSize: size * 0.8 }}>{fallback || ''}</span>;
+  return (
+    <img src={`https://flagcdn.com/w40/${iso}.png`} width={size} height={Math.round(size * 0.75)}
+      alt={nation} loading="lazy" className="inline-block rounded-[2px] object-contain flex-shrink-0" />
+  );
+}
+
 export default function FantasyWC() {
   const { user } = useAuth();
   const [apiPlayers, setApiPlayers] = useState<typeof PLAYER_POOL>([]);
@@ -710,7 +735,7 @@ export default function FantasyWC() {
         <span className="absolute top-1 left-1.5 w-1.5 h-1.5 rounded-full bg-[#00FF66] shadow-[0_0_6px_#00FF66]" title="Fit" />
         {captainId === p.id && <span className="absolute -top-1.5 -right-1.5 bg-amber-400 text-black text-[9px] font-black px-1.5 py-0.5 rounded-md shadow">C</span>}
         {viceId === p.id && <span className="absolute -top-1.5 -right-1.5 bg-slate-300 text-black text-[9px] font-black px-1 py-0.5 rounded-md shadow">VC</span>}
-        <p className="text-[11px] sm:text-xs font-bold text-white truncate leading-tight">{p.flag} {surname(p.name)}</p>
+        <p className="text-[11px] sm:text-xs font-bold text-white leading-tight flex items-center justify-center gap-1"><NFlag nation={p.nation} fallback={p.flag} size={13} /><span className="truncate">{surname(p.name)}</span></p>
         <p className="text-[9px] sm:text-[10px] font-mono text-slate-400 mt-0.5">${p.price.toFixed(1)}M</p>
         <p className="text-[8px] uppercase tracking-widest text-slate-500">{p.pos}</p>
       </motion.div>
@@ -915,7 +940,7 @@ export default function FantasyWC() {
                 const added = inSquad(p.id);
                 return (
                   <div key={p.id} className="flex items-center gap-2.5 py-2 group">
-                    <span className="text-base w-6 text-center">{p.flag || '🏳️'}</span>
+                    <span className="w-6 flex justify-center"><NFlag nation={p.nation} fallback={p.flag} size={20} /></span>
                     <div className="flex-1 min-w-0">
                       <p className="text-[13px] font-semibold text-white truncate">{p.name}</p>
                       <p className="text-[10px] text-slate-500 truncate">{p.nation} · {p.pos}{p.club ? ` · ${p.club}` : ''}</p>
