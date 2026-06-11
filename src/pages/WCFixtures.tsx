@@ -162,7 +162,7 @@ export default function WCFixtures() {
           return {
             home: getTeamCode(f.teams?.home?.name || ''),
             away: getTeamCode(f.teams?.away?.name || ''),
-            date: f.fixture?.date?.split('T')[0] || '',
+            date: f.fixture?.date ? new Date(f.fixture.date).toLocaleDateString('en-CA') : '',
             time: f.fixture?.date ? new Date(f.fixture.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
             group: groupLetter,
             matchday,
