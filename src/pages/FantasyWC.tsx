@@ -5,6 +5,7 @@ import SEOHead from '@/components/SEOHead';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { callApi } from '@/services/footballApi';
+import { lookupPrice } from '@/data/fantasyPrices';
 import { normalizeTeamName } from '@/utils/teamNames';
 import { Trophy, Search, X, Loader2, Shield, Crown, Coins } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -90,6 +91,15 @@ const PLAYER_POOL = [
   { id: 89, name: 'Ederson', pos: 'GK', nation: 'Brazil', flag: '🇧🇷', club: 'Man City', price: 5.0, power: 87 },
   { id: 90, name: 'Jan Oblak', pos: 'GK', nation: 'Slovenia', flag: '🇸🇮', club: 'Atlético', price: 4.5, power: 85 },
 ];
+
+// Apply curated WC2026 prices to the hardcoded stars (overrides old guesses)
+for (const p of PLAYER_POOL) {
+  const _ov = lookupPrice(p.name);
+  if (_ov !== undefined) {
+    p.price = _ov;
+    p.power = Math.min(99, Math.max(55, Math.round(50 + _ov * 4)));
+  }
+}
 
 
 const POS_LIMITS: Record<string, number> = { GK: 2, DEF: 5, MID: 5, FWD: 3 };
@@ -313,11 +323,12 @@ export default function FantasyWC() {
             const { t, players } = s.value;
             for (const p of players) {
               const pos = posMap(p.position);
-              const power = generatePower(pos, t.name);
+              const ov = lookupPrice(p.name);
+              const power = ov !== undefined ? Math.min(99, Math.max(55, Math.round(50 + ov * 4))) : generatePower(pos, t.name);
               results.push({
                 id: p.id, name: p.name, pos, nation: t.name,
                 flag: FLAGS[t.name] || '\u{1F3F3}\u{FE0F}', club: '',
-                price: getPrice(pos, t.name, power), power,
+                price: ov !== undefined ? ov : getPrice(pos, t.name, power), power,
               });
             }
           }
@@ -330,18 +341,27 @@ export default function FantasyWC() {
     loadNations();
   }, [nationsLoaded]);
 
-  // Combined player list: hardcoded pool + API results, strict dedup by name
+  // Combined list: once official squads load, exclude any hardcoded star NOT found in a squad
   const allPlayers = useMemo(() => {
+    const normN = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\./g, '').trim();
+    const squadsLoaded = apiPlayers.length >= 400;
+    const apiNameParts = new Set<string>();
+    for (const p of apiPlayers) {
+      for (const part of normN(p.name).split(/\s+/)) apiNameParts.add(part);
+    }
+    const inSquads = (name: string) => {
+      if (!squadsLoaded) return true;
+      const parts = normN(name).split(/\s+/);
+      return apiNameParts.has(parts[parts.length - 1]) || apiNameParts.has(parts[0]);
+    };
     const seen = new Map<string, typeof PLAYER_POOL[0]>();
-    // Hardcoded stars take priority (accurate pricing)
     for (const p of PLAYER_POOL) {
-      const key = p.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (!inSquads(p.name)) continue;
+      const key = normN(p.name);
       seen.set(key, p);
     }
-    // Add API players only if name not already present
     for (const p of apiPlayers) {
-      const key = p.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      // Check exact match and partial match (e.g. "Vinicius Junior" vs "Vinícius Júnior")
+      const key = normN(p.name);
       const lastName = key.split(' ').pop() || key;
       const firstName = key.split(' ')[0] || '';
       let isDupe = seen.has(key);
