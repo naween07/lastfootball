@@ -156,13 +156,18 @@ export async function fetchLiveMatches(): Promise<Match[]> {
 
 export async function fetchMatchesByDate(date: string): Promise<Match[]> {
   try {
-    // Ask the API for fixtures in the viewer's local timezone so date
-    // filtering matches what the user sees (API-Football supports IANA tz)
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-    const data = await callApi("fixtures", { date, timezone: tz });
-    let matches = data.map(mapFixtureToMatch);
-    // Safety net: keep only matches whose local date equals the requested date
-    matches = matches.filter((m: Match) => m.date === date);
+    const [data, wcData] = await Promise.all([
+      // All leagues, in the viewer's local timezone
+      callApi("fixtures", { date, timezone: tz }),
+      // World Cup: also fetch the OFFICIAL (US Eastern) slate for this date so
+      // the full matchday is always visible regardless of viewer timezone
+      callApi("fixtures", { date, league: "1", season: "2026", timezone: "America/New_York" }).catch(() => []),
+    ]);
+    let matches = data.map(mapFixtureToMatch).filter((m: Match) => m.date === date);
+    const wcOfficial = (wcData || []).map(mapFixtureToMatch);
+    const ids = new Set(matches.map((m: Match) => m.id));
+    matches = [...matches, ...wcOfficial.filter((m: Match) => !ids.has(m.id))];
     return matches;
   } catch (err) {
     console.error("Failed to fetch matches by date:", err);
