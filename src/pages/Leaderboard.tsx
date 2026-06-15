@@ -79,7 +79,7 @@ export default function Leaderboard() {
       const res = await fetch(`${BASE}/rest/v1/profiles?user_id=eq.${user.id}`, {
         method: 'PATCH',
         headers: { apikey: KEY, Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-        body: JSON.stringify({ display_name: name }),
+        body: JSON.stringify({ display_name: name, username_set: true }),
       });
       if (!res.ok) {
         const t = await res.text().catch(() => '');

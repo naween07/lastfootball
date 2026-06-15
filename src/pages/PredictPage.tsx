@@ -26,6 +26,65 @@ export default function PredictPage() {
   const [predictions, setPredictions] = useState<Map<number, Prediction>>(new Map());
   const [existingPredictions, setExistingPredictions] = useState<Set<number>>(new Set());
   const [submitting, setSubmitting] = useState<number | null>(null);
+  const [usernameSet, setUsernameSet] = useState<boolean | null>(null); // null = loading
+  const [displayName, setDisplayName] = useState('');
+  const [showNameModal, setShowNameModal] = useState(false);
+  const [nameInput, setNameInput] = useState('');
+  const [savingName, setSavingName] = useState(false);
+
+  // Load the user's profile to know if they've chosen a username
+  useEffect(() => {
+    if (!user) { setUsernameSet(null); return; }
+    (async () => {
+      try {
+        const { data } = await supabase.from('profiles').select('display_name, username_set').eq('user_id', user.id).maybeSingle();
+        setUsernameSet(!!data?.username_set);
+        setDisplayName(data?.display_name || '');
+        setNameInput(data?.username_set ? (data?.display_name || '') : '');
+      } catch {
+        setUsernameSet(false);
+      }
+    })();
+  }, [user]);
+
+  const saveUsername = async () => {
+    const name = nameInput.trim();
+    if (name.length < 3) return toast.error('Username must be at least 3 characters');
+    if (name.length > 20) return toast.error('Username must be 20 characters or less');
+    if (!user) return;
+    setSavingName(true);
+    try {
+      let token = '';
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('sb-') && k.endsWith('-auth-token')) {
+          const v = JSON.parse(localStorage.getItem(k) || '{}');
+          token = v?.access_token || (Array.isArray(v) ? v[0] : '') || '';
+          if (token) break;
+        }
+      }
+      if (!token) { toast.error('Please sign in again'); setSavingName(false); return; }
+      const BASE = import.meta.env.VITE_SUPABASE_URL;
+      const KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const res = await fetch(`${BASE}/rest/v1/profiles?user_id=eq.${user.id}`, {
+        method: 'PATCH',
+        headers: { apikey: KEY, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({ display_name: name, username_set: true }),
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => '');
+        toast.error('Failed: ' + (t.substring(0, 100) || res.statusText));
+      } else {
+        setUsernameSet(true);
+        setDisplayName(name);
+        setShowNameModal(false);
+        toast.success('Username set! You can now predict.');
+      }
+    } catch (e: any) {
+      toast.error(e?.message || 'Error');
+    }
+    setSavingName(false);
+  };
 
   // Fetch upcoming World Cup matches (next several days, official schedule)
   useEffect(() => {
@@ -78,6 +137,7 @@ export default function PredictPage() {
 
   const submitPrediction = async (match: Match) => {
     if (!user) return toast.error('Please sign in to predict');
+    if (!usernameSet) { setShowNameModal(true); return toast.error('Set your username before predicting'); }
     const pred = predictions.get(match.id);
     if (!pred) return toast.error('Enter your prediction first');
 
@@ -182,6 +242,29 @@ export default function PredictPage() {
               Sign In / Sign Up
             </Link>
           </div>
+        </div>
+      )}
+
+      {/* Username required prompt */}
+      {user && usernameSet === false && (
+        <div className="container max-w-4xl px-4 pb-4">
+          <div className="bg-primary/10 border border-primary/20 rounded-xl p-4 flex flex-col sm:flex-row items-center gap-3">
+            <Star className="w-5 h-5 text-primary flex-shrink-0" />
+            <div className="flex-1 text-center sm:text-left">
+              <p className="text-sm font-bold text-foreground">Set your username to predict</p>
+              <p className="text-xs text-muted-foreground">Choose a name that will appear on the leaderboard.</p>
+            </div>
+            <button onClick={() => setShowNameModal(true)} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:opacity-90 transition-opacity flex-shrink-0">
+              Set Username
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Logged-in greeting with set username */}
+      {user && usernameSet && displayName && (
+        <div className="container max-w-4xl px-4 pb-2">
+          <p className="text-xs text-muted-foreground">Predicting as <span className="text-primary font-bold">{displayName}</span> · <button onClick={() => { setNameInput(displayName); setShowNameModal(true); }} className="text-primary/70 hover:underline">change</button></p>
         </div>
       )}
 
@@ -295,11 +378,41 @@ export default function PredictPage() {
           </div>
         </div>
       </main>
+
+      {/* Username modal */}
+      {showNameModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" onClick={() => setShowNameModal(false)}>
+          <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-1">
+              <Star className="w-5 h-5 text-primary" />
+              <h3 className="text-base font-black text-foreground">Choose your username</h3>
+            </div>
+            <p className="text-xs text-muted-foreground mb-4">This name appears on the Predict & Win leaderboard. Pick something you're happy to be known by.</p>
+            <input
+              type="text"
+              value={nameInput}
+              onChange={e => setNameInput(e.target.value)}
+              maxLength={20}
+              placeholder="e.g. NaweenFC"
+              autoFocus
+              onKeyDown={e => { if (e.key === 'Enter') saveUsername(); }}
+              className="w-full px-3 py-2.5 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary mb-1"
+            />
+            <p className="text-[10px] text-muted-foreground mb-4">3–20 characters</p>
+            <div className="flex gap-2">
+              <button onClick={() => setShowNameModal(false)} className="flex-1 px-4 py-2.5 rounded-lg bg-secondary text-muted-foreground text-xs font-bold hover:text-foreground transition-colors">
+                Cancel
+              </button>
+              <button onClick={saveUsername} disabled={savingName || nameInput.trim().length < 3} className="flex-1 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:opacity-90 transition-opacity disabled:opacity-40 flex items-center justify-center gap-1.5">
+                {savingName ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Star className="w-3.5 h-3.5" />} Save & Predict
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
-// ─── Full Leaderboard Component ─────────────────────────────────────────────
 function FullLeaderboard({ userId }: { userId?: string }) {
   const [entries, setEntries] = useState<{ user_id: string; username: string; total_points: number; total_predictions: number; scored_predictions: number; pending_predictions: number; correct_scores: number; correct_winners: number; wrong_predictions: number }[]>([]);
   const [loading, setLoading] = useState(true);
