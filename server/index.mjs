@@ -50,17 +50,17 @@ function getTtl(endpoint, params) {
     return { fresh: 60, stale: 120 };
   }
   
-  // Team statistics — changes once per day at most
-  if (endpoint === 'teams/statistics') return { fresh: 21600, stale: 43200 }; // 6h fresh, 12h stale
+  // Team statistics — refresh fast during the tournament
+  if (endpoint === 'teams/statistics') return { fresh: 600, stale: 3600 }; // 10min fresh, 1h stale
   
   // Squad data — rarely changes (transfers only)
   if (endpoint === 'players/squads') return { fresh: 86400, stale: 172800 }; // 24h fresh, 48h stale
   
-  // Standings — update every hour
-  if (endpoint === 'standings') return { fresh: 3600, stale: 21600 };
+  // Standings — refresh fast during the tournament (live group-stage swings)
+  if (endpoint === 'standings') return { fresh: 180, stale: 900 }; // 3min fresh, 15min stale
   
-  // Player stats (top scorers etc.) — hourly
-  if (endpoint.startsWith('players/')) return { fresh: 3600, stale: 21600 };
+  // Player stats (top scorers etc.) — refresh fast during the tournament
+  if (endpoint.startsWith('players/')) return { fresh: 180, stale: 900 };
   
   // Team info — very stable
   if (endpoint === 'teams') {
@@ -474,19 +474,20 @@ const server = http.createServer(async (req, res) => {
 
       const today = new Date().toLocaleDateString('en-CA');
       const leagues = [
-        { id: 39, name: 'Premier League' },
-        { id: 140, name: 'La Liga' },
-        { id: 135, name: 'Serie A' },
-        { id: 78, name: 'Bundesliga' },
-        { id: 61, name: 'Ligue 1' },
+        { id: 1, name: 'World Cup', season: '2026' },
+        { id: 39, name: 'Premier League', season: '2025' },
+        { id: 140, name: 'La Liga', season: '2025' },
+        { id: 135, name: 'Serie A', season: '2025' },
+        { id: 78, name: 'Bundesliga', season: '2025' },
+        { id: 61, name: 'Ligue 1', season: '2025' },
       ];
 
       try {
         const [live, todayMatches, ...rest] = await Promise.allSettled([
           fetchUpstream('fixtures', { live: 'all' }),
           fetchUpstream('fixtures', { date: today }),
-          ...leagues.map(l => fetchUpstream('players/topscorers', { league: String(l.id), season: '2025' })),
-          ...leagues.map(l => fetchUpstream('standings', { league: String(l.id), season: '2025' })),
+          ...leagues.map(l => fetchUpstream('players/topscorers', { league: String(l.id), season: l.season })),
+          ...leagues.map(l => fetchUpstream('standings', { league: String(l.id), season: l.season })),
         ]);
 
         const result = {
@@ -494,6 +495,7 @@ const server = http.createServer(async (req, res) => {
           today: todayMatches.status === 'fulfilled' ? todayMatches.value : [],
           scorers: {},
           standings: {},
+          worldCupActive: false,
         };
 
         leagues.forEach((l, i) => {
@@ -502,6 +504,11 @@ const server = http.createServer(async (req, res) => {
           if (scorerRes?.status === 'fulfilled') result.scorers[l.id] = scorerRes.value;
           if (standRes?.status === 'fulfilled') result.standings[l.id] = standRes.value;
         });
+
+        // Flag whether the World Cup has live/recent data so the client can prioritize it
+        const wcStand = result.standings[1]?.response?.[0]?.league?.standings;
+        const wcScorers = result.scorers[1]?.response;
+        result.worldCupActive = !!((wcStand && wcStand.length) || (wcScorers && wcScorers.length));
 
         cacheSet(cacheKey, result, { fresh: 60, stale: 120 });
         return json(req, res, result);
