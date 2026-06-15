@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import SEOHead from '@/components/SEOHead';
 import OptimizedImage from '@/components/OptimizedImage';
-import { fetchMatchesByDate } from '@/services/footballApi';
+import { fetchMatchesByDate, fetchRecentWorldCupMatches } from '@/services/footballApi';
 import { generateDailyReports, Article } from '@/services/articleGenerator';
 import { fetchFootballNews, NewsItem } from '@/services/newsApi';
 import { supabase } from '@/integrations/supabase/client';
@@ -41,15 +41,20 @@ export default function News() {
           return date.toISOString().split('T')[0];
         });
 
-        const [matchResults, news, externalNewsResult] = await Promise.allSettled([
+        const [matchResults, wcMatches, news, externalNewsResult] = await Promise.allSettled([
           Promise.all(dates.map(date => fetchMatchesByDate(date))),
+          fetchRecentWorldCupMatches(),
           fetchFootballNews(),
           supabase.from('external_news').select('*').eq('is_archived', false).order('published_at', { ascending: false }).limit(50),
         ]);
 
         if (matchResults.status === 'fulfilled') {
           const allMatches = matchResults.value.flat();
-          const reports = generateDailyReports(allMatches);
+          // Merge in recent World Cup matches (dedupe by id) so WC reports always generate
+          const wc = wcMatches.status === 'fulfilled' ? wcMatches.value : [];
+          const ids = new Set(allMatches.map((m: any) => m.id));
+          const merged = [...allMatches, ...wc.filter((m: any) => !ids.has(m.id))];
+          const reports = generateDailyReports(merged);
           reports.sort((a, b) => {
             if (a.isFeatured && !b.isFeatured) return -1;
             if (!a.isFeatured && b.isFeatured) return 1;

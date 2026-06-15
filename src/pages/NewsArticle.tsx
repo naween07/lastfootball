@@ -76,7 +76,7 @@ export default function NewsArticle() {
         {/* Article body */}
         <div className="prose prose-invert prose-sm max-w-none 
           prose-headings:text-white prose-headings:font-bold
-          prose-p:text-[#ccc] prose-p:leading-relaxed
+          prose-p:text-[#ccc] prose-p:leading-relaxed prose-p:text-justify
           prose-a:text-[#00ff87] prose-a:no-underline hover:prose-a:underline
           prose-strong:text-white
           prose-blockquote:border-[#00ff87] prose-blockquote:text-[#888]

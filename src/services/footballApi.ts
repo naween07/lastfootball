@@ -175,6 +175,17 @@ export async function fetchMatchesByDate(date: string): Promise<Match[]> {
   }
 }
 
+// All recent World Cup matches (for match reports — independent of timezone date drift)
+export async function fetchRecentWorldCupMatches(): Promise<Match[]> {
+  try {
+    const data = await callApi("fixtures", { league: "1", season: "2026", timezone: "America/New_York" });
+    return (Array.isArray(data) ? data : []).map(mapFixtureToMatch);
+  } catch (err) {
+    console.error("Failed to fetch WC matches:", err);
+    return [];
+  }
+}
+
 export async function fetchMatchDetails(fixtureId: number): Promise<Match | null> {
   try {
     const [fixtures, events, stats, lineups] = await Promise.all([
@@ -416,9 +427,24 @@ export async function fetchStandings(leagueId: number, season: number): Promise<
     if (!standings || !standings.length) return [];
     const isCup = CUP_LEAGUE_IDS.includes(leagueId);
     if (isCup && standings.length > 1) {
-      const allTeams = [];
+      const seen = new Set<number>();
+      const allTeams: StandingTeam[] = [];
       standings.forEach((group, groupIdx) => {
+        // Determine this block's group label
+        const rawLabel = (group[0]?.group || '').trim();
+        const lower = rawLabel.toLowerCase();
+        // Skip aggregate / ranking blocks that re-list teams already in their groups
+        // (e.g. "3rd Placed Teams", "Best third", "Ranking of ..."). These cause
+        // duplicate teams + phantom extra "groups".
+        const isAggregateBlock = !rawLabel ||
+          lower.includes('third') || lower.includes('3rd') ||
+          lower.includes('rank') || lower.includes('best') ||
+          lower.includes('place') || !/group\s+[a-l]\b/i.test(lower);
+        if (isAggregateBlock) return; // ignore — only keep real Group A–L blocks
+        const label = rawLabel;
         group.forEach((s) => {
+          if (seen.has(s.team.id)) return; // never list a team twice
+          seen.add(s.team.id);
           allTeams.push({
             rank: s.rank,
             team: { id: s.team.id, name: normalizeTeamName(s.team.name), logo: s.team.logo },
@@ -426,7 +452,7 @@ export async function fetchStandings(leagueId: number, season: number): Promise<
             win: s.all.win, draw: s.all.draw, lose: s.all.lose,
             goalsFor: s.all.goals.for, goalsAgainst: s.all.goals.against,
             form: s.form || '',
-            group: s.group || 'Group ' + String.fromCharCode(65 + groupIdx),
+            group: label,
           });
         });
       });
@@ -868,7 +894,7 @@ export interface HomepageData {
   standings: { league: string; teams: { rank: number; name: string; logo: string; pts: number; played: number; gd: number }[] }[];
 }
 
-const LEAGUE_NAMES: Record<number, string> = { 39: 'Premier League', 140: 'La Liga', 135: 'Serie A', 78: 'Bundesliga', 61: 'Ligue 1' };
+const LEAGUE_NAMES: Record<number, string> = { 1: 'World Cup 2026', 39: 'Premier League', 140: 'La Liga', 135: 'Serie A', 78: 'Bundesliga', 61: 'Ligue 1' };
 
 export async function fetchHomepageData(): Promise<HomepageData> {
   try {
@@ -877,6 +903,8 @@ export async function fetchHomepageData(): Promise<HomepageData> {
 
     const liveMatches = (data.live?.response || []).map(mapFixtureToMatch);
     const todayMatches = (data.today?.response || []).map(mapFixtureToMatch);
+    // During the World Cup, show it first
+    const wcActive = !!data.worldCupActive;
 
     const scorers: HomepageData['scorers'] = [];
     for (const [idStr, val] of Object.entries(data.scorers || {})) {
@@ -898,7 +926,15 @@ export async function fetchHomepageData(): Promise<HomepageData> {
     const standings: HomepageData['standings'] = [];
     for (const [idStr, val] of Object.entries(data.standings || {})) {
       const id = parseInt(idStr);
-      const resp = (val as any)?.response?.[0]?.league?.standings?.[0] || [];
+      const blocks = (val as any)?.response?.[0]?.league?.standings || [];
+      // For cups (WC) the API returns many group blocks — flatten, then take the
+      // overall leaders by points for the homepage mini-table.
+      let resp: any[] = [];
+      if (blocks.length > 1) {
+        resp = blocks.flat().sort((a: any, b: any) => (b.points - a.points) || (b.goalsDiff - a.goalsDiff));
+      } else {
+        resp = blocks[0] || [];
+      }
       if (resp.length > 0) {
         standings.push({
           league: LEAGUE_NAMES[id] || `League ${id}`,
@@ -912,6 +948,13 @@ export async function fetchHomepageData(): Promise<HomepageData> {
           })),
         });
       }
+    }
+
+    // Put World Cup first when active
+    if (wcActive) {
+      const wcName = LEAGUE_NAMES[1];
+      scorers.sort((a, b) => (a.league === wcName ? -1 : b.league === wcName ? 1 : 0));
+      standings.sort((a, b) => (a.league === wcName ? -1 : b.league === wcName ? 1 : 0));
     }
 
     return { liveMatches, todayMatches, scorers, standings };

@@ -40,9 +40,13 @@ export default function StandingsTable({ standings, loading, leagueId }: Standin
   if (hasGroups) {
     const grouped: Record<string, StandingTeam[]> = {};
     standings.forEach(team => { const g = team.group || 'Group'; if (!grouped[g]) grouped[g] = []; grouped[g].push(team); });
-    const thirdPlaceKey = Object.keys(grouped).find(k => k.toLowerCase().includes('third') || k.toLowerCase().includes('3rd'));
-    const thirdPlaceTeams = thirdPlaceKey ? grouped[thirdPlaceKey] : null;
-    const groupKeys = Object.keys(grouped).filter(k => !k.toLowerCase().includes('third') && !k.toLowerCase().includes('3rd')).sort();
+    const groupKeys = Object.keys(grouped).sort();
+    // Compute the ranking of third-placed teams directly from the real groups
+    // (FIFA tiebreak: Points > GD > Goals For). No reliance on API aggregate blocks.
+    const thirdPlaceTeams = groupKeys
+      .map(k => [...grouped[k]].sort((a, b) => a.rank - b.rank)[2])
+      .filter(Boolean)
+      .sort((a, b) => b.points - a.points || b.goalsDiff - a.goalsDiff || b.goalsFor - a.goalsFor);
     return (
       <div>
         <div className="flex items-center gap-4 px-3 py-2 mb-2">
@@ -51,27 +55,12 @@ export default function StandingsTable({ standings, loading, leagueId }: Standin
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {groupKeys.map(groupName => {
-            const teams = grouped[groupName];
+            const teams = [...grouped[groupName]].sort((a, b) => a.rank - b.rank);
             return (
-              <div key={groupName} className={cn("bg-card border border-border rounded-lg overflow-hidden", groupName.toLowerCase().includes('third') && "sm:col-span-2")}>
+              <div key={groupName} className="bg-card border border-border rounded-lg overflow-hidden">
                 <div className="px-3 py-2 border-b border-border flex items-center gap-2">
                   <span className="text-[10px] uppercase tracking-widest text-primary font-bold">{groupName}</span>
-                  {groupName.toLowerCase().includes('third') && <span className="text-[8px] bg-amber-400/10 text-amber-400 px-1.5 py-0.5 rounded-full font-bold uppercase">Live Ranking</span>}
                 </div>
-                {groupName.toLowerCase().includes('third') && (
-                  <div className="px-3 py-2.5 border-b border-border/50 bg-secondary/50">
-                    <p className="text-[11px] text-muted-foreground leading-relaxed">
-                      <span className="text-primary font-bold">How it works:</span> In the FIFA World Cup 2026, the top 2 teams from each of the 12 groups qualify automatically for the Round of 32. The remaining 8 spots go to the <span className="text-foreground font-semibold">best 8 out of 12 third-placed teams</span>.
-                    </p>
-                    <p className="text-[11px] text-muted-foreground mt-1.5 leading-relaxed">
-                      Teams are ranked by: <span className="text-foreground/70">Points</span> {'>'} <span className="text-foreground/70">Goal Difference</span> {'>'} <span className="text-foreground/70">Goals Scored</span> {'>'} <span className="text-foreground/70">Fair Play</span>
-                    </p>
-                    <p className="text-[10px] text-muted-foreground/80 mt-1.5 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
-                      This table updates dynamically after each group stage match
-                    </p>
-                  </div>
-                )}
                 <div className="flex items-center gap-2 px-3 py-1.5 text-[9px] uppercase tracking-widest text-muted-foreground/60 font-bold">
                   <span className="w-5 text-center">#</span><span className="flex-1">TEAM</span>
                   <span className="w-6 text-center">P</span><span className="w-6 text-center">W</span><span className="w-6 text-center">D</span><span className="w-6 text-center">L</span>
