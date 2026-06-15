@@ -778,6 +778,11 @@ const server = http.createServer(async (req, res) => {
       return json(req, res, { success: true, slug, id: result?.[0]?.id, url: `/news/${slug}` });
     }
 
+    if (url.pathname === '/api/fantasy/rescore') {
+      scoreFantasy();
+      return json(req, res, { started: true, note: 'Fantasy scoring run started in background' });
+    }
+
     error(req, res, 404, 'Not found');
   } catch (err) {
     console.error('Request error:', err);
@@ -791,7 +796,97 @@ server.listen(PORT, '127.0.0.1', () => {
   // Start prediction scoring job
   scorePredictions();
   setInterval(scorePredictions, 5 * 60 * 1000); // Every 5 minutes
+  // Fantasy points job
+  setTimeout(scoreFantasy, 20 * 1000);
+  setInterval(scoreFantasy, 30 * 60 * 1000); // Every 30 minutes
 });
+
+// ─── Fantasy Points Engine (FPL-style) ──────────────────────────────────────
+// Scores finished WC fixtures from real player stats, applies to fantasy squads.
+async function scoreFantasy() {
+  try {
+    const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+
+    // 1. All finished WC 2026 fixtures
+    const fx = await fetchUpstream('fixtures', { league: '1', season: '2026', status: 'FT-AET-PEN' });
+    const finished = fx?.response || [];
+    if (!finished.length) return;
+
+    // 2. Skip already-scored fixtures
+    const done = await supabaseQueryWithKey('fantasy_scored_fixtures', 'select=fixture_id', 'GET', null, SVC);
+    const doneSet = new Set((Array.isArray(done) ? done : []).map(r => r.fixture_id));
+    const todo = finished.filter(f => f.fixture?.id && !doneSet.has(f.fixture.id)).slice(0, 8); // cap per run (API quota)
+    if (!todo.length) return;
+
+    for (const f of todo) {
+      const fid = f.fixture.id;
+      try {
+        const stats = await fetchUpstream('fixtures/players', { fixture: String(fid) });
+        const teams = stats?.response || [];
+        if (teams.length < 2) continue;
+
+        const goals = { [f.teams.home.id]: f.goals?.home ?? 0, [f.teams.away.id]: f.goals?.away ?? 0 };
+        const pointsByPlayer = {};
+
+        for (const t of teams) {
+          const teamId = t.team.id;
+          const oppGoals = Object.entries(goals).find(([id]) => Number(id) !== teamId)?.[1] ?? 0;
+          for (const pl of t.players || []) {
+            const s = pl.statistics?.[0];
+            if (!s) continue;
+            const mins = s.games?.minutes || 0;
+            if (mins <= 0) continue;
+            const posRaw = (s.games?.position || 'M').toUpperCase();
+            const pos = posRaw.startsWith('G') ? 'GK' : posRaw.startsWith('D') ? 'DEF' : posRaw.startsWith('M') ? 'MID' : 'FWD';
+
+            let pts = mins >= 60 ? 2 : 1;                                              // appearance
+            const g = s.goals?.total || 0;
+            pts += g * (pos === 'GK' ? 10 : pos === 'DEF' ? 6 : pos === 'MID' ? 5 : 4); // goals
+            pts += (s.goals?.assists || 0) * 3;                                          // assists
+            if (mins >= 60 && oppGoals === 0 && (pos === 'GK' || pos === 'DEF')) pts += 4; // clean sheet
+            if (mins >= 60 && oppGoals === 0 && pos === 'MID') pts += 1;
+            if (pos === 'GK' || pos === 'DEF') pts -= Math.floor(oppGoals / 2);          // goals conceded
+            pts -= (s.cards?.yellow || 0);                                               // yellow -1
+            pts -= (s.cards?.red || 0) * 3;                                              // red -3
+            if (pos === 'GK') pts += Math.floor((s.goals?.saves || 0) / 3);              // saves
+            pts -= (s.penalty?.missed || 0) * 2;                                         // pen miss
+
+            pointsByPlayer[pl.player.id] = (pointsByPlayer[pl.player.id] || 0) + pts;
+          }
+        }
+
+        // 3. Apply to every fantasy squad holding these players (captain = x2)
+        let applied = 0;
+        for (const pid of Object.keys(pointsByPlayer)) {
+          const rows = await supabaseQueryWithKey('fantasy_squad', `player_id=eq.${pid}&select=id,points,is_captain`, 'GET', null, SVC);
+          for (const r of (Array.isArray(rows) ? rows : [])) {
+            const mult = r.is_captain ? 2 : 1;
+            await supabaseQueryWithKey('fantasy_squad', `id=eq.${r.id}`, 'PATCH', { points: (r.points || 0) + pointsByPlayer[pid] * mult }, SVC);
+            applied++;
+          }
+        }
+
+        // 4. Mark fixture scored
+        await supabaseQueryWithKey('fantasy_scored_fixtures', '', 'POST', { fixture_id: fid }, SVC);
+        console.log(`[FANTASY] Scored fixture ${fid} (${f.teams.home.name} ${f.goals?.home}-${f.goals?.away} ${f.teams.away.name}): ${Object.keys(pointsByPlayer).length} players, ${applied} squad rows`);
+      } catch (e) {
+        console.error(`[FANTASY] fixture ${fid} failed:`, e.message);
+      }
+    }
+
+    // 5. Recompute team totals (starters only)
+    const all = await supabaseQueryWithKey('fantasy_squad', 'select=team_id,points,is_starting', 'GET', null, SVC);
+    const byTeam = {};
+    for (const r of (Array.isArray(all) ? all : [])) {
+      if (r.is_starting && r.team_id) byTeam[r.team_id] = (byTeam[r.team_id] || 0) + (r.points || 0);
+    }
+    for (const [tid, pts] of Object.entries(byTeam)) {
+      await supabaseQueryWithKey('fantasy_teams', `id=eq.${tid}`, 'PATCH', { total_points: pts, updated_at: new Date().toISOString() }, SVC);
+    }
+  } catch (e) {
+    console.error('[FANTASY] scoring error:', e.message);
+  }
+}
 
 // ─── Supabase HTTP helpers ──────────────────────────────────────────────────
 

@@ -269,6 +269,31 @@ function generatePower(pos: string, nation: string): number {
   return Math.min(79, Math.max(60, base)); // Cap at 79 — anything higher is a star in PLAYER_POOL
 }
 
+
+// Nation name -> ISO code for image flags (emoji flags don't render on Windows)
+const NATION_ISO: Record<string, string> = {
+  'Mexico': 'mx', 'South Africa': 'za', 'South Korea': 'kr', 'Czech Republic': 'cz',
+  'Canada': 'ca', 'Switzerland': 'ch', 'Qatar': 'qa', 'Bosnia & Herz.': 'ba', 'Bosnia and Herzegovina': 'ba',
+  'Brazil': 'br', 'Morocco': 'ma', 'Haiti': 'ht', 'Scotland': 'gb-sct',
+  'USA': 'us', 'Paraguay': 'py', 'Australia': 'au', 'Turkey': 'tr',
+  'Germany': 'de', 'Cura\u00e7ao': 'cw', 'Curacao': 'cw', 'Ivory Coast': 'ci', 'Ecuador': 'ec',
+  'Netherlands': 'nl', 'Japan': 'jp', 'Tunisia': 'tn', 'Sweden': 'se',
+  'Belgium': 'be', 'Egypt': 'eg', 'Iran': 'ir', 'New Zealand': 'nz',
+  'Spain': 'es', 'Cape Verde': 'cv', 'Saudi Arabia': 'sa', 'Uruguay': 'uy',
+  'France': 'fr', 'Senegal': 'sn', 'Norway': 'no', 'Iraq': 'iq',
+  'Argentina': 'ar', 'Algeria': 'dz', 'Austria': 'at', 'Jordan': 'jo',
+  'Portugal': 'pt', 'Uzbekistan': 'uz', 'Colombia': 'co', 'DR Congo': 'cd',
+  'England': 'gb-eng', 'Croatia': 'hr', 'Ghana': 'gh', 'Panama': 'pa',
+};
+function NFlag({ nation, fallback, size = 18 }: { nation: string; fallback?: string; size?: number }) {
+  const iso = NATION_ISO[nation];
+  if (!iso) return <span style={{ fontSize: size * 0.8 }}>{fallback || ''}</span>;
+  return (
+    <img src={`https://flagcdn.com/w40/${iso}.png`} width={size} height={Math.round(size * 0.75)}
+      alt={nation} loading="lazy" className="inline-block rounded-[2px] object-contain flex-shrink-0" />
+  );
+}
+
 export default function FantasyWC() {
   const { user } = useAuth();
   const [apiPlayers, setApiPlayers] = useState<typeof PLAYER_POOL>([]);
@@ -385,6 +410,60 @@ export default function FantasyWC() {
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'success'>('idle');
   const [teamName, setTeamName] = useState('My Fantasy XI');
   const dragData = useRef<{ id: number; source: 'pitch' | 'bench'; benchIdx?: number } | null>(null);
+  const [savedLoaded, setSavedLoaded] = useState(false);
+  const [view, setView] = useState<'builder' | 'table'>('builder');
+  const [lbRows, setLbRows] = useState<any[]>([]);
+  const [lbLoading, setLbLoading] = useState(false);
+
+  // Load previously saved squad on mount (public SELECT via anon key — reliable raw fetch)
+  useEffect(() => {
+    if (!user || savedLoaded) return;
+    (async () => {
+      try {
+        const BASE = import.meta.env.VITE_SUPABASE_URL;
+        const KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+        const H: Record<string, string> = { apikey: KEY, Authorization: `Bearer ${KEY}` };
+        const [teamRes, rowsRes] = await Promise.all([
+          fetch(`${BASE}/rest/v1/fantasy_teams?user_id=eq.${user.id}&select=*`, { headers: H }).then(r => r.json()),
+          fetch(`${BASE}/rest/v1/fantasy_squad?user_id=eq.${user.id}&select=*`, { headers: H }).then(r => r.json()),
+        ]);
+        const team = Array.isArray(teamRes) ? teamRes[0] : null;
+        const rows = Array.isArray(rowsRes) ? rowsRes : [];
+        if (team?.team_name) setTeamName(team.team_name);
+        if (rows.length > 0) {
+          const toP = (r: any) => ({ id: r.player_id, name: r.player_name, pos: r.position, nation: r.nation || '', flag: r.nation_flag || '', club: '', price: Number(r.price) || 4, power: 70 });
+          const st = rows.filter((r: any) => r.is_starting).map(toP);
+          const bn = rows.filter((r: any) => !r.is_starting).map(toP);
+          const gk = bn.find((p: any) => p.pos === 'GK') || null;
+          const rest = bn.filter((p: any) => p !== gk).slice(0, 3);
+          setStarters(st as any);
+          setBench([gk, rest[0] || null, rest[1] || null, rest[2] || null] as any);
+          const d = st.filter((p: any) => p.pos === 'DEF').length, m = st.filter((p: any) => p.pos === 'MID').length, fw = st.filter((p: any) => p.pos === 'FWD').length;
+          if (d && m && fw) setFormation(`${d}-${m}-${fw}`);
+          const cap = rows.find((r: any) => r.is_captain); if (cap) setCaptainId(cap.player_id);
+          const vc = rows.find((r: any) => r.is_vice_captain); if (vc) setViceId(vc.player_id);
+        }
+      } catch {}
+      setSavedLoaded(true);
+    })();
+  }, [user, savedLoaded]);
+
+  // Fantasy league table
+  useEffect(() => {
+    if (view !== 'table') return;
+    setLbLoading(true);
+    (async () => {
+      try {
+        const BASE = import.meta.env.VITE_SUPABASE_URL;
+        const KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+        const r = await fetch(`${BASE}/rest/v1/fantasy_teams?select=user_id,team_name,total_points,updated_at&order=total_points.desc,updated_at.asc&limit=100`,
+          { headers: { apikey: KEY, Authorization: `Bearer ${KEY}` } });
+        const d = await r.json();
+        if (Array.isArray(d)) setLbRows(d);
+      } catch {}
+      setLbLoading(false);
+    })();
+  }, [view]);
 
   const caps = FORMATIONS[formation] || [4, 3, 3];
   const capFor = (pos: string) => pos === 'GK' ? 1 : pos === 'DEF' ? caps[0] : pos === 'MID' ? caps[1] : caps[2];
@@ -710,7 +789,7 @@ export default function FantasyWC() {
         <span className="absolute top-1 left-1.5 w-1.5 h-1.5 rounded-full bg-[#00FF66] shadow-[0_0_6px_#00FF66]" title="Fit" />
         {captainId === p.id && <span className="absolute -top-1.5 -right-1.5 bg-amber-400 text-black text-[9px] font-black px-1.5 py-0.5 rounded-md shadow">C</span>}
         {viceId === p.id && <span className="absolute -top-1.5 -right-1.5 bg-slate-300 text-black text-[9px] font-black px-1 py-0.5 rounded-md shadow">VC</span>}
-        <p className="text-[11px] sm:text-xs font-bold text-white truncate leading-tight">{p.flag} {surname(p.name)}</p>
+        <p className="text-[11px] sm:text-xs font-bold text-white leading-tight flex items-center justify-center gap-1"><NFlag nation={p.nation} fallback={p.flag} size={13} /><span className="truncate">{surname(p.name)}</span></p>
         <p className="text-[9px] sm:text-[10px] font-mono text-slate-400 mt-0.5">${p.price.toFixed(1)}M</p>
         <p className="text-[8px] uppercase tracking-widest text-slate-500">{p.pos}</p>
       </motion.div>
@@ -813,6 +892,17 @@ export default function FantasyWC() {
           </div>
         )}
 
+        {/* ─── View tabs ─── */}
+        <div className="flex gap-2">
+          {([['builder', 'Squad Builder'], ['table', 'League Table']] as const).map(([k, label]) => (
+            <button key={k} onClick={() => setView(k)}
+              className={cn('text-xs font-black rounded-xl px-4 py-2 transition-colors',
+                view === k ? 'bg-[#00FF66] text-black' : 'bg-white/5 text-slate-400 border border-white/10 hover:text-white')}>
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* ─── Swap helper banner ─── */}
         <AnimatePresence>
           {selectedPlayer && (
@@ -836,7 +926,43 @@ export default function FantasyWC() {
         </AnimatePresence>
 
         {/* ─── Main grid ─── */}
-        <div className="grid lg:grid-cols-[55fr_45fr] gap-4 items-start">
+        {view === 'table' && (
+          <div className="bg-[#1e293b]/50 backdrop-blur-xl border border-white/5 rounded-2xl p-5 shadow-lg shadow-black/30">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-[11px] font-black uppercase tracking-[0.25em] text-slate-400">Fantasy League Table</p>
+              <span className="text-[10px] text-slate-500">Points update automatically after every World Cup match</span>
+            </div>
+            <div className="flex items-center gap-2 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 bg-white/5 rounded-lg mb-1">
+              <span className="w-8 text-center">#</span>
+              <span className="flex-1">Team</span>
+              <span className="w-16 text-right">Points</span>
+            </div>
+            {lbLoading ? (
+              <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-[#00FF66]" /></div>
+            ) : lbRows.length === 0 ? (
+              <p className="text-center text-xs text-slate-500 py-10">No teams yet — save a squad to join the league!</p>
+            ) : (
+              lbRows.map((row, i) => {
+                const isMe = user?.id === row.user_id;
+                return (
+                  <div key={row.user_id} className={cn('flex items-center gap-2 px-3 py-2.5 rounded-lg border-b border-white/5 last:border-0',
+                    isMe && 'bg-[#00FF66]/5 border border-[#00FF66]/20')}>
+                    <span className={cn('w-8 text-center text-sm font-black tabular-nums',
+                      i === 0 ? 'text-amber-400' : i === 1 ? 'text-slate-300' : i === 2 ? 'text-orange-400' : 'text-slate-500')}>
+                      {i === 0 ? <Crown className="w-4 h-4 mx-auto" /> : i + 1}
+                    </span>
+                    <span className={cn('flex-1 text-sm font-semibold truncate', isMe ? 'text-[#00FF66]' : 'text-white')}>
+                      {row.team_name || 'Unnamed XI'} {isMe && '(You)'}
+                    </span>
+                    <span className="w-16 text-right text-sm font-mono font-black text-[#00FF66] tabular-nums">{row.total_points || 0}</span>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+
+        <div className={cn('grid lg:grid-cols-[55fr_45fr] gap-4 items-start', view !== 'builder' && 'hidden')}>
 
           {/* LEFT — Pitch + Dugout */}
           <div className="space-y-4">
@@ -915,7 +1041,7 @@ export default function FantasyWC() {
                 const added = inSquad(p.id);
                 return (
                   <div key={p.id} className="flex items-center gap-2.5 py-2 group">
-                    <span className="text-base w-6 text-center">{p.flag || '🏳️'}</span>
+                    <span className="w-6 flex justify-center"><NFlag nation={p.nation} fallback={p.flag} size={20} /></span>
                     <div className="flex-1 min-w-0">
                       <p className="text-[13px] font-semibold text-white truncate">{p.name}</p>
                       <p className="text-[10px] text-slate-500 truncate">{p.nation} · {p.pos}{p.club ? ` · ${p.club}` : ''}</p>
