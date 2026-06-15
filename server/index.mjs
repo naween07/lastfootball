@@ -803,84 +803,164 @@ server.listen(PORT, '127.0.0.1', () => {
 
 // ─── Fantasy Points Engine (FPL-style) ──────────────────────────────────────
 // Scores finished WC fixtures from real player stats, applies to fantasy squads.
+// ─── Gameweek mapping ───
+function roundToGW(r) {
+  if (!r) return 0;
+  if (r.startsWith('Group Stage')) { const n = parseInt(r.replace(/\D+/g, '')); return (n >= 1 && n <= 3) ? n : 0; }
+  const lo = r.toLowerCase();
+  if (lo.includes('32')) return 4;
+  if (lo.includes('16')) return 5;
+  if (lo.includes('quarter')) return 6;
+  if (lo.includes('semi')) return 7;
+  if (lo.includes('final')) return 8;
+  return 0;
+}
+const GW_LABELS = { 1: 'Group Stage 1', 2: 'Group Stage 2', 3: 'Group Stage 3', 4: 'Round of 32', 5: 'Round of 16', 6: 'Quarter-finals', 7: 'Semi-finals', 8: 'Final' };
+
+// Build per-GW deadlines + fixture lists from real fixtures; persist to fantasy_gameweeks
+async function syncGameweeks() {
+  const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+  const fx = await fetchUpstream('fixtures', { league: '1', season: '2026', timezone: 'America/New_York' });
+  const list = fx?.response || [];
+  const gwFirst = {}, gwFixtures = {};
+  for (const f of list) {
+    const gw = roundToGW(f.league?.round);
+    if (!gw) continue;
+    const t = new Date(f.fixture?.date).getTime();
+    if (!gwFirst[gw] || t < gwFirst[gw]) gwFirst[gw] = t;
+    (gwFixtures[gw] = gwFixtures[gw] || []).push(f);
+  }
+  for (let g = 1; g <= 8; g++) {
+    if (!gwFirst[g]) continue;
+    const existing = await supabaseQueryWithKey('fantasy_gameweeks', `gameweek=eq.${g}&select=gameweek`, 'GET', null, SVC);
+    const row = { gameweek: g, round_label: GW_LABELS[g], deadline: new Date(gwFirst[g]).toISOString() };
+    if (Array.isArray(existing) && existing.length) {
+      await supabaseQueryWithKey('fantasy_gameweeks', `gameweek=eq.${g}`, 'PATCH', row, SVC);
+    } else {
+      await supabaseQueryWithKey('fantasy_gameweeks', '', 'POST', row, SVC);
+    }
+  }
+  return { gwFirst, gwFixtures };
+}
+
+// Snapshot every team's current live squad into fantasy_gw_squads when a GW deadline passes
+async function snapshotGameweek(gw) {
+  const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+  const gwRow = await supabaseQueryWithKey('fantasy_gameweeks', `gameweek=eq.${gw}&select=*`, 'GET', null, SVC);
+  if (Array.isArray(gwRow) && gwRow[0]?.snapshotted) return; // already done
+
+  const live = await supabaseQueryWithKey('fantasy_squad', 'select=*', 'GET', null, SVC);
+  const rows = (Array.isArray(live) ? live : []).map(r => ({
+    team_id: r.team_id, user_id: r.user_id, gameweek: gw,
+    player_id: r.player_id, player_name: r.player_name, player_photo: r.player_photo || null,
+    nation: r.nation, nation_flag: r.nation_flag, position: r.position, price: r.price,
+    is_starting: r.is_starting, is_captain: r.is_captain, is_vice_captain: r.is_vice_captain, points: 0,
+  }));
+  // Insert in batches (idempotent via UNIQUE(team_id,gameweek,player_id) — ignore dupes)
+  for (let i = 0; i < rows.length; i += 100) {
+    await supabaseQueryWithKey('fantasy_gw_squads', '', 'POST', rows.slice(i, i + 100), SVC);
+  }
+  await supabaseQueryWithKey('fantasy_gameweeks', `gameweek=eq.${gw}`, 'PATCH', { snapshotted: true }, SVC);
+  console.log(`[FANTASY] Snapshotted GW${gw}: ${rows.length} squad rows`);
+}
+
+// FPL-style player scoring from a fixtures/players stat block
+function scorePlayerStat(s, oppGoals) {
+  const mins = s.games?.minutes || 0;
+  if (mins <= 0) return null;
+  const posRaw = (s.games?.position || 'M').toUpperCase();
+  const pos = posRaw.startsWith('G') ? 'GK' : posRaw.startsWith('D') ? 'DEF' : posRaw.startsWith('M') ? 'MID' : 'FWD';
+  let pts = mins >= 60 ? 2 : 1;
+  pts += (s.goals?.total || 0) * (pos === 'GK' ? 10 : pos === 'DEF' ? 6 : pos === 'MID' ? 5 : 4);
+  pts += (s.goals?.assists || 0) * 3;
+  if (mins >= 60 && oppGoals === 0 && (pos === 'GK' || pos === 'DEF')) pts += 4;
+  if (mins >= 60 && oppGoals === 0 && pos === 'MID') pts += 1;
+  if (pos === 'GK' || pos === 'DEF') pts -= Math.floor(oppGoals / 2);
+  pts -= (s.cards?.yellow || 0);
+  pts -= (s.cards?.red || 0) * 3;
+  if (pos === 'GK') pts += Math.floor((s.goals?.saves || 0) / 3);
+  pts -= (s.penalty?.missed || 0) * 2;
+  return pts;
+}
+
+// Main gameweek-aware scoring engine
 async function scoreFantasy() {
   try {
     const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+    const { gwFirst, gwFixtures } = await syncGameweeks();
+    const now = Date.now();
 
-    // 1. All finished WC 2026 fixtures
-    const fx = await fetchUpstream('fixtures', { league: '1', season: '2026', status: 'FT-AET-PEN' });
-    const finished = fx?.response || [];
-    if (!finished.length) return;
+    // Snapshot any GW whose deadline has passed
+    for (let g = 1; g <= 8; g++) {
+      if (gwFirst[g] && gwFirst[g] <= now) await snapshotGameweek(g);
+    }
 
-    // 2. Skip already-scored fixtures
+    // Score finished fixtures, crediting the snapshot squad for that GW
     const done = await supabaseQueryWithKey('fantasy_scored_fixtures', 'select=fixture_id', 'GET', null, SVC);
     const doneSet = new Set((Array.isArray(done) ? done : []).map(r => r.fixture_id));
-    const todo = finished.filter(f => f.fixture?.id && !doneSet.has(f.fixture.id)).slice(0, 8); // cap per run (API quota)
-    if (!todo.length) return;
 
-    for (const f of todo) {
+    const finished = [];
+    for (let g = 1; g <= 8; g++) {
+      for (const f of (gwFixtures[g] || [])) {
+        const st = f.fixture?.status?.short;
+        if (['FT', 'AET', 'PEN'].includes(st) && !doneSet.has(f.fixture.id)) finished.push({ gw: g, f });
+      }
+    }
+    const todo = finished.slice(0, 8); // API quota cap per run
+
+    for (const { gw, f } of todo) {
       const fid = f.fixture.id;
       try {
         const stats = await fetchUpstream('fixtures/players', { fixture: String(fid) });
         const teams = stats?.response || [];
         if (teams.length < 2) continue;
-
         const goals = { [f.teams.home.id]: f.goals?.home ?? 0, [f.teams.away.id]: f.goals?.away ?? 0 };
-        const pointsByPlayer = {};
-
+        const ptsByPlayer = {};
         for (const t of teams) {
-          const teamId = t.team.id;
-          const oppGoals = Object.entries(goals).find(([id]) => Number(id) !== teamId)?.[1] ?? 0;
+          const oppGoals = Object.entries(goals).find(([id]) => Number(id) !== t.team.id)?.[1] ?? 0;
           for (const pl of t.players || []) {
-            const s = pl.statistics?.[0];
-            if (!s) continue;
-            const mins = s.games?.minutes || 0;
-            if (mins <= 0) continue;
-            const posRaw = (s.games?.position || 'M').toUpperCase();
-            const pos = posRaw.startsWith('G') ? 'GK' : posRaw.startsWith('D') ? 'DEF' : posRaw.startsWith('M') ? 'MID' : 'FWD';
-
-            let pts = mins >= 60 ? 2 : 1;                                              // appearance
-            const g = s.goals?.total || 0;
-            pts += g * (pos === 'GK' ? 10 : pos === 'DEF' ? 6 : pos === 'MID' ? 5 : 4); // goals
-            pts += (s.goals?.assists || 0) * 3;                                          // assists
-            if (mins >= 60 && oppGoals === 0 && (pos === 'GK' || pos === 'DEF')) pts += 4; // clean sheet
-            if (mins >= 60 && oppGoals === 0 && pos === 'MID') pts += 1;
-            if (pos === 'GK' || pos === 'DEF') pts -= Math.floor(oppGoals / 2);          // goals conceded
-            pts -= (s.cards?.yellow || 0);                                               // yellow -1
-            pts -= (s.cards?.red || 0) * 3;                                              // red -3
-            if (pos === 'GK') pts += Math.floor((s.goals?.saves || 0) / 3);              // saves
-            pts -= (s.penalty?.missed || 0) * 2;                                         // pen miss
-
-            pointsByPlayer[pl.player.id] = (pointsByPlayer[pl.player.id] || 0) + pts;
+            const p = scorePlayerStat(pl.statistics?.[0] || {}, oppGoals);
+            if (p !== null) ptsByPlayer[pl.player.id] = (ptsByPlayer[pl.player.id] || 0) + p;
           }
         }
-
-        // 3. Apply to every fantasy squad holding these players (captain = x2)
+        // Credit this GW's snapshot squads (captain x2)
         let applied = 0;
-        for (const pid of Object.keys(pointsByPlayer)) {
-          const rows = await supabaseQueryWithKey('fantasy_squad', `player_id=eq.${pid}&select=id,points,is_captain`, 'GET', null, SVC);
+        for (const pid of Object.keys(ptsByPlayer)) {
+          const rows = await supabaseQueryWithKey('fantasy_gw_squads', `player_id=eq.${pid}&gameweek=eq.${gw}&select=id,points,is_captain`, 'GET', null, SVC);
           for (const r of (Array.isArray(rows) ? rows : [])) {
             const mult = r.is_captain ? 2 : 1;
-            await supabaseQueryWithKey('fantasy_squad', `id=eq.${r.id}`, 'PATCH', { points: (r.points || 0) + pointsByPlayer[pid] * mult }, SVC);
+            await supabaseQueryWithKey('fantasy_gw_squads', `id=eq.${r.id}`, 'PATCH', { points: (r.points || 0) + ptsByPlayer[pid] * mult }, SVC);
             applied++;
           }
         }
-
-        // 4. Mark fixture scored
         await supabaseQueryWithKey('fantasy_scored_fixtures', '', 'POST', { fixture_id: fid }, SVC);
-        console.log(`[FANTASY] Scored fixture ${fid} (${f.teams.home.name} ${f.goals?.home}-${f.goals?.away} ${f.teams.away.name}): ${Object.keys(pointsByPlayer).length} players, ${applied} squad rows`);
+        console.log(`[FANTASY] GW${gw} fixture ${fid} (${f.teams.home.name} ${f.goals?.home}-${f.goals?.away} ${f.teams.away.name}): ${applied} squad rows`);
       } catch (e) {
         console.error(`[FANTASY] fixture ${fid} failed:`, e.message);
       }
     }
 
-    // 5. Recompute team totals (starters only)
-    const all = await supabaseQueryWithKey('fantasy_squad', 'select=team_id,points,is_starting', 'GET', null, SVC);
-    const byTeam = {};
-    for (const r of (Array.isArray(all) ? all : [])) {
-      if (r.is_starting && r.team_id) byTeam[r.team_id] = (byTeam[r.team_id] || 0) + (r.points || 0);
+    // Recompute per-GW banked points (starters only) + cumulative team totals
+    const snaps = await supabaseQueryWithKey('fantasy_gw_squads', 'select=team_id,user_id,gameweek,points,is_starting', 'GET', null, SVC);
+    const byTeamGw = {}; // team|gw -> {user_id, points}
+    for (const r of (Array.isArray(snaps) ? snaps : [])) {
+      if (!r.is_starting || !r.team_id) continue;
+      const k = r.team_id + '|' + r.gameweek;
+      if (!byTeamGw[k]) byTeamGw[k] = { team_id: r.team_id, user_id: r.user_id, gameweek: r.gameweek, points: 0 };
+      byTeamGw[k].points += (r.points || 0);
     }
-    for (const [tid, pts] of Object.entries(byTeam)) {
+    const totals = {}; // team -> cumulative
+    for (const k of Object.keys(byTeamGw)) {
+      const e = byTeamGw[k];
+      const ex = await supabaseQueryWithKey('fantasy_gw_points', `team_id=eq.${e.team_id}&gameweek=eq.${e.gameweek}&select=id`, 'GET', null, SVC);
+      if (Array.isArray(ex) && ex.length) {
+        await supabaseQueryWithKey('fantasy_gw_points', `id=eq.${ex[0].id}`, 'PATCH', { points: e.points }, SVC);
+      } else {
+        await supabaseQueryWithKey('fantasy_gw_points', '', 'POST', { team_id: e.team_id, user_id: e.user_id, gameweek: e.gameweek, points: e.points }, SVC);
+      }
+      totals[e.team_id] = (totals[e.team_id] || 0) + e.points;
+    }
+    for (const [tid, pts] of Object.entries(totals)) {
       await supabaseQueryWithKey('fantasy_teams', `id=eq.${tid}`, 'PATCH', { total_points: pts, updated_at: new Date().toISOString() }, SVC);
     }
   } catch (e) {

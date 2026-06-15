@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 // ─── Player Pool (Top WC players with prices) ──────────────────────────────
-const PLAYER_POOL = [
+const PLAYER_POOL: { id: number; name: string; pos: string; nation: string; flag: string; club: string; price: number; power: number; photo?: string }[] = [
   // FWD - Elite Heavyweights (12.0-13.5M)
   { id: 1, name: 'Kylian Mbappé', pos: 'FWD', nation: 'France', flag: '🇫🇷', club: 'Real Madrid', price: 13.0, power: 98 },
   { id: 3, name: 'Vinícius Júnior', pos: 'FWD', nation: 'Brazil', flag: '🇧🇷', club: 'Real Madrid', price: 13.0, power: 97 },
@@ -270,6 +270,21 @@ function generatePower(pos: string, nation: string): number {
 }
 
 
+// ─── Gameweek mapping (round label -> GW) ───
+function roundToGW(r: string | undefined): number {
+  if (!r) return 0;
+  if (r.startsWith('Group Stage')) { const n = parseInt(r.replace(/\D+/g, '')); return n >= 1 && n <= 3 ? n : 0; }
+  const lo = r.toLowerCase();
+  if (lo.includes('32')) return 4;
+  if (lo.includes('16')) return 5;
+  if (lo.includes('quarter')) return 6;
+  if (lo.includes('semi')) return 7;
+  if (lo.includes('final')) return 8;
+  return 0;
+}
+const GW_LABEL: Record<number, string> = { 1: 'Group Stage 1', 2: 'Group Stage 2', 3: 'Group Stage 3', 4: 'Round of 32', 5: 'Round of 16', 6: 'Quarter-finals', 7: 'Semi-finals', 8: 'Final' };
+const GW_NATION_CAP: Record<number, number> = { 1: 3, 2: 3, 3: 3, 4: 3, 5: 3, 6: 5, 7: 6, 8: 8 };
+
 // Nation name -> ISO code for image flags (emoji flags don't render on Windows)
 const NATION_ISO: Record<string, string> = {
   'Mexico': 'mx', 'South Africa': 'za', 'South Korea': 'kr', 'Czech Republic': 'cz',
@@ -342,6 +357,7 @@ export default function FantasyWC() {
               const ov = lookupPrice(p.name);
               const power = ov !== undefined ? Math.min(99, Math.max(55, Math.round(50 + ov * 4))) : generatePower(pos, t.name);
               results.push({
+                photo: p.photo || '',
                 id: p.id, name: p.name, pos, nation: t.name,
                 flag: FLAGS[t.name] || '\u{1F3F3}\u{FE0F}', club: '',
                 price: ov !== undefined ? ov : getPrice(pos, t.name, power), power,
@@ -357,37 +373,27 @@ export default function FantasyWC() {
     loadNations();
   }, [nationsLoaded]);
 
-  // Combined list: once official squads load, exclude any hardcoded star NOT found in a squad
+  // Combined list: official-squad players take priority (real IDs, photos, curated prices).
+  // Hardcoded stars only shown while squads are still loading.
   const allPlayers = useMemo(() => {
     const normN = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\./g, '').trim();
     const squadsLoaded = apiPlayers.length >= 400;
-    const apiNameParts = new Set<string>();
-    for (const p of apiPlayers) {
-      for (const part of normN(p.name).split(/\s+/)) apiNameParts.add(part);
-    }
-    const inSquads = (name: string) => {
-      if (!squadsLoaded) return true;
-      const parts = normN(name).split(/\s+/);
-      return apiNameParts.has(parts[parts.length - 1]) || apiNameParts.has(parts[0]);
-    };
     const seen = new Map<string, typeof PLAYER_POOL[0]>();
-    for (const p of PLAYER_POOL) {
-      if (!inSquads(p.name)) continue;
-      const key = normN(p.name);
-      seen.set(key, p);
-    }
-    for (const p of apiPlayers) {
-      const key = normN(p.name);
-      const lastName = key.split(' ').pop() || key;
-      const firstName = key.split(' ')[0] || '';
-      let isDupe = seen.has(key);
-      if (!isDupe) {
-        for (const [existingKey] of seen) {
-          if (existingKey.includes(lastName) && existingKey.includes(firstName)) { isDupe = true; break; }
-          if (lastName.length > 4 && existingKey.includes(lastName)) { isDupe = true; break; }
+    for (const p of apiPlayers) seen.set(normN(p.name), p);
+    if (!squadsLoaded) {
+      for (const p of PLAYER_POOL) {
+        const key = normN(p.name);
+        const lastName = key.split(' ').pop() || key;
+        const firstName = key.split(' ')[0] || '';
+        let dupe = seen.has(key);
+        if (!dupe) {
+          for (const [ek] of seen) {
+            if (ek.includes(lastName) && ek.includes(firstName)) { dupe = true; break; }
+            if (lastName.length > 4 && ek.includes(lastName)) { dupe = true; break; }
+          }
         }
+        if (!dupe) seen.set(key, p);
       }
-      if (!isDupe) seen.set(key, p);
     }
     return Array.from(seen.values());
   }, [apiPlayers]);
@@ -410,10 +416,47 @@ export default function FantasyWC() {
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'success'>('idle');
   const [teamName, setTeamName] = useState('My Fantasy XI');
   const dragData = useRef<{ id: number; source: 'pitch' | 'bench'; benchIdx?: number } | null>(null);
+  const [gwInfo, setGwInfo] = useState<{ targetGW: number; deadline: string | null; aliveNations: string[] | null }>({ targetGW: 1, deadline: null, aliveNations: null });
+  const nationCap = GW_NATION_CAP[gwInfo.targetGW] || 3;
+  const reconciledRef = useRef(false);
+
+  // Determine current gameweek + deadline + alive teams from real fixtures
+  useEffect(() => {
+    (async () => {
+      try {
+        const fx = await callApi('fixtures', { league: '1', season: '2026', timezone: 'America/New_York' });
+        const list = Array.isArray(fx) ? fx : [];
+        if (!list.length) return;
+        const gwFirst: Record<number, number> = {};
+        const gwTeams: Record<number, Set<string>> = {};
+        for (const f of list) {
+          const gw = roundToGW(f.league?.round);
+          if (!gw) continue;
+          const t = new Date(f.fixture?.date).getTime();
+          if (!gwFirst[gw] || t < gwFirst[gw]) gwFirst[gw] = t;
+          if (!gwTeams[gw]) gwTeams[gw] = new Set();
+          const hn = f.teams?.home?.name, an = f.teams?.away?.name;
+          if (hn) gwTeams[gw].add(normalizeTeamName(hn));
+          if (an) gwTeams[gw].add(normalizeTeamName(an));
+        }
+        const now = Date.now();
+        let target = 8;
+        for (let g = 1; g <= 8; g++) { if (gwFirst[g] && gwFirst[g] > now) { target = g; break; } }
+        let alive: string[] | null = null;
+        if (target >= 4 && gwTeams[target] && gwTeams[target].size >= 2) {
+          const names = Array.from(gwTeams[target]).filter(n => n && !/tbd|winner|loser|runner/i.test(n));
+          if (names.length >= 2) alive = names;
+        }
+        setGwInfo({ targetGW: target, deadline: gwFirst[target] ? new Date(gwFirst[target]).toISOString() : null, aliveNations: alive });
+      } catch {}
+    })();
+  }, []);
+
   const [savedLoaded, setSavedLoaded] = useState(false);
   const [view, setView] = useState<'builder' | 'table'>('builder');
   const [lbRows, setLbRows] = useState<any[]>([]);
   const [lbLoading, setLbLoading] = useState(false);
+  const [myGw, setMyGw] = useState<any[]>([]);
 
   // Load previously saved squad on mount (public SELECT via anon key — reliable raw fetch)
   useEffect(() => {
@@ -431,7 +474,7 @@ export default function FantasyWC() {
         const rows = Array.isArray(rowsRes) ? rowsRes : [];
         if (team?.team_name) setTeamName(team.team_name);
         if (rows.length > 0) {
-          const toP = (r: any) => ({ id: r.player_id, name: r.player_name, pos: r.position, nation: r.nation || '', flag: r.nation_flag || '', club: '', price: Number(r.price) || 4, power: 70 });
+          const toP = (r: any) => ({ id: r.player_id, name: r.player_name, pos: r.position, nation: r.nation || '', flag: r.nation_flag || '', club: '', price: Number(r.price) || 4, power: 70, photo: r.player_photo || '' });
           const st = rows.filter((r: any) => r.is_starting).map(toP);
           const bn = rows.filter((r: any) => !r.is_starting).map(toP);
           const gk = bn.find((p: any) => p.pos === 'GK') || null;
@@ -448,6 +491,32 @@ export default function FantasyWC() {
     })();
   }, [user, savedLoaded]);
 
+  // Reconcile saved squad with the live pool (real player IDs + photos + current prices)
+  useEffect(() => {
+    if (!savedLoaded || apiPlayers.length < 400 || reconciledRef.current) return;
+    reconciledRef.current = true;
+    const normN = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\./g, '').trim();
+    const idx = new Map<string, typeof PLAYER_POOL[0]>();
+    for (const p of allPlayers) {
+      const k = normN(p.name); idx.set(k, p);
+      const parts = k.split(' ');
+      if (parts.length >= 2) {
+        idx.set(parts[0][0] + '|' + parts[parts.length - 1], p);
+        idx.set(parts[parts.length - 1][0] + '|' + parts[0], p);
+      }
+    }
+    const remap = (p: typeof PLAYER_POOL[0]) => {
+      const k = normN(p.name); const parts = k.split(' ');
+      return idx.get(k) || (parts.length >= 2 ? (idx.get(parts[0][0] + '|' + parts[parts.length - 1]) || idx.get(parts[parts.length - 1][0] + '|' + parts[0])) : undefined) || p;
+    };
+    const oldCap = [...starters, ...(bench.filter(Boolean) as typeof PLAYER_POOL)].find(p => p.id === captainId);
+    const oldVice = [...starters, ...(bench.filter(Boolean) as typeof PLAYER_POOL)].find(p => p.id === viceId);
+    setStarters(s => s.map(remap));
+    setBench(b => b.map(p => (p ? remap(p) : p)));
+    if (oldCap) setCaptainId(remap(oldCap).id);
+    if (oldVice) setViceId(remap(oldVice).id);
+  }, [savedLoaded, apiPlayers.length]);
+
   // Fantasy league table
   useEffect(() => {
     if (view !== 'table') return;
@@ -460,6 +529,11 @@ export default function FantasyWC() {
           { headers: { apikey: KEY, Authorization: `Bearer ${KEY}` } });
         const d = await r.json();
         if (Array.isArray(d)) setLbRows(d);
+        if (user) {
+          const g = await fetch(`${BASE}/rest/v1/fantasy_gw_points?user_id=eq.${user.id}&select=gameweek,points&order=gameweek.asc`,
+            { headers: { apikey: KEY, Authorization: `Bearer ${KEY}` } }).then(x => x.json()).catch(() => []);
+          if (Array.isArray(g)) setMyGw(g);
+        }
       } catch {}
       setLbLoading(false);
     })();
@@ -479,16 +553,17 @@ export default function FantasyWC() {
     return allPlayers.filter(p => {
       const matchSearch = !q || p.name.toLowerCase().includes(q) || p.nation.toLowerCase().includes(q) || (p.club || '').toLowerCase().includes(q);
       const matchPos = activeFilter === 'ALL' || p.pos === activeFilter;
-      return matchSearch && matchPos;
+      const aliveOk = !gwInfo.aliveNations || gwInfo.aliveNations.includes(p.nation);
+      return matchSearch && matchPos && aliveOk;
     }).sort((a, b) => sortBy === 'power' ? b.power - a.power : sortBy === 'price-high' ? b.price - a.price : a.price - b.price);
-  }, [searchQuery, activeFilter, sortBy, allPlayers]);
+  }, [searchQuery, activeFilter, sortBy, allPlayers, gwInfo.aliveNations]);
 
   // ───────────────────────── Roster mutations ─────────────────────────
   const addPlayer = (p: P) => {
     if (inSquad(p.id)) return removePlayer(p.id);
     if (squadAll.length >= 15) return toast.error('Squad full (15 max)');
     if (budget - p.price < 0) return toast.error('Insufficient budget');
-    if (nationCount(p.nation) >= 3) return toast.error(`Max 3 players from ${p.nation}`);
+    if (nationCount(p.nation) >= nationCap) return toast.error(`Max ${nationCap} players from ${p.nation} this gameweek`);
     if (line(p.pos).length < capFor(p.pos)) {
       setStarters(s => [...s, p]);
       toast.success(`${p.name} → starting XI`);
@@ -651,7 +726,8 @@ export default function FantasyWC() {
         const cands = allPlayers.filter(p =>
           p.pos === slots[i].pos &&
           !picked.some(x => x.id === p.id) &&
-          (nations[p.nation] || 0) < 3 &&
+          (nations[p.nation] || 0) < nationCap &&
+          (!gwInfo.aliveNations || gwInfo.aliveNations.includes(p.nation)) &&
           p.price <= left - MIN * remaining
         );
         if (cands.length === 0) { ok = false; break; }
@@ -693,8 +769,8 @@ export default function FantasyWC() {
     if (budget < 0) errs.push(`Over budget by $${Math.abs(budget).toFixed(1)}M`);
     const nc: Record<string, number> = {};
     for (const p of squadAll) nc[p.nation] = (nc[p.nation] || 0) + 1;
-    const over = Object.entries(nc).find(([, n]) => n > 3);
-    if (over) errs.push(`Max 3 per nation (${over[0]}: ${over[1]})`);
+    const over = Object.entries(nc).find(([, n]) => n > nationCap);
+    if (over) errs.push(`Max ${nationCap} per nation (${over[0]}: ${over[1]})`);
     if (line('GK').length !== 1) errs.push('Need exactly 1 starting GK');
     if (line('DEF').length < 3) errs.push('Minimum 3 defenders');
     if (line('MID').length < 3) errs.push('Minimum 3 midfielders');
@@ -702,7 +778,7 @@ export default function FantasyWC() {
     if (bench[0] && bench[0]!.pos !== 'GK') errs.push('Bench slot 1 must be a GK');
     if (total === 15 && !bench[0]) errs.push('Bench needs a GK');
     return errs;
-  }, [starters, bench, budget, squadAll]);
+  }, [starters, bench, budget, squadAll, nationCap]);
 
   // ───────────────────────── Save (raw fetch — reliable path) ─────────────────────────
   const saveSquad = async () => {
@@ -745,7 +821,7 @@ export default function FantasyWC() {
         ...starters.map(p => ({ row: p, st: true })),
         ...(bench.filter(Boolean) as P[]).map(p => ({ row: p, st: false })),
       ].map(({ row: p, st }) => ({
-        team_id: teamId, user_id: user.id, player_id: p.id, player_name: p.name,
+        team_id: teamId, user_id: user.id, player_id: p.id, player_name: p.name, player_photo: (p as any).photo || null,
         nation: p.nation, nation_flag: p.flag, position: p.pos, price: p.price,
         is_starting: st, is_captain: p.id === captainId, is_vice_captain: p.id === viceId,
       }));
@@ -789,7 +865,17 @@ export default function FantasyWC() {
         <span className="absolute top-1 left-1.5 w-1.5 h-1.5 rounded-full bg-[#00FF66] shadow-[0_0_6px_#00FF66]" title="Fit" />
         {captainId === p.id && <span className="absolute -top-1.5 -right-1.5 bg-amber-400 text-black text-[9px] font-black px-1.5 py-0.5 rounded-md shadow">C</span>}
         {viceId === p.id && <span className="absolute -top-1.5 -right-1.5 bg-slate-300 text-black text-[9px] font-black px-1 py-0.5 rounded-md shadow">VC</span>}
-        <p className="text-[11px] sm:text-xs font-bold text-white leading-tight flex items-center justify-center gap-1"><NFlag nation={p.nation} fallback={p.flag} size={13} /><span className="truncate">{surname(p.name)}</span></p>
+        <div className="relative w-9 h-9 mx-auto mb-1">
+          <div className="w-9 h-9 rounded-full bg-white/10 border border-white/10 overflow-hidden flex items-center justify-center">
+            {(p as any).photo ? (
+              <img src={(p as any).photo} alt="" loading="lazy" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+            ) : (
+              <span className="text-[10px] font-black text-slate-400">{surname(p.name).slice(0, 2).toUpperCase()}</span>
+            )}
+          </div>
+          <span className="absolute -bottom-0.5 -right-1"><NFlag nation={p.nation} fallback={p.flag} size={12} /></span>
+        </div>
+        <p className="text-[11px] sm:text-xs font-bold text-white truncate leading-tight">{surname(p.name)}</p>
         <p className="text-[9px] sm:text-[10px] font-mono text-slate-400 mt-0.5">${p.price.toFixed(1)}M</p>
         <p className="text-[8px] uppercase tracking-widest text-slate-500">{p.pos}</p>
       </motion.div>
@@ -883,6 +969,19 @@ export default function FantasyWC() {
           </button>
         </div>
 
+        {/* ─── Gameweek banner ─── */}
+        <div className="bg-[#1e293b]/40 backdrop-blur border border-white/5 rounded-2xl px-4 py-2.5 flex flex-wrap items-center gap-3">
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Gameweek {gwInfo.targetGW}</span>
+          <span className="text-xs font-bold text-white">{GW_LABEL[gwInfo.targetGW]}</span>
+          {gwInfo.deadline && (
+            <span className="text-[10px] text-slate-400">Deadline: <span className="text-amber-300 font-bold">{new Date(gwInfo.deadline).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span></span>
+          )}
+          {gwInfo.targetGW >= 4 && (
+            <span className="text-[9px] font-black bg-[#00FF66]/10 text-[#00FF66] border border-[#00FF66]/30 rounded-full px-2.5 py-0.5 uppercase tracking-widest">Wildcard — free full reset</span>
+          )}
+          <span className="text-[10px] text-slate-500 ml-auto">Max {nationCap} per nation{gwInfo.aliveNations ? ` · ${gwInfo.aliveNations.length} teams alive` : ''}</span>
+        </div>
+
         {/* Validation errors strip */}
         {errors.length > 0 && squadAll.length > 0 && (
           <div className="flex flex-wrap gap-2">
@@ -937,6 +1036,15 @@ export default function FantasyWC() {
               <span className="flex-1">Team</span>
               <span className="w-16 text-right">Points</span>
             </div>
+            {myGw.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {myGw.map((g: any) => (
+                  <span key={g.gameweek} className="text-[10px] font-bold bg-white/5 border border-white/10 rounded-full px-2.5 py-1 text-slate-300">
+                    GW{g.gameweek}: <span className="text-[#00FF66] font-mono">{g.points}</span>
+                  </span>
+                ))}
+              </div>
+            )}
             {lbLoading ? (
               <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-[#00FF66]" /></div>
             ) : lbRows.length === 0 ? (
@@ -1041,7 +1149,16 @@ export default function FantasyWC() {
                 const added = inSquad(p.id);
                 return (
                   <div key={p.id} className="flex items-center gap-2.5 py-2 group">
-                    <span className="w-6 flex justify-center"><NFlag nation={p.nation} fallback={p.flag} size={20} /></span>
+                    <div className="relative w-8 h-8 flex-shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-white/10 border border-white/10 overflow-hidden flex items-center justify-center">
+                        {(p as any).photo ? (
+                          <img src={(p as any).photo} alt="" loading="lazy" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                        ) : (
+                          <span className="text-[8px] font-black text-slate-500">{p.pos}</span>
+                        )}
+                      </div>
+                      <span className="absolute -bottom-0.5 -right-1"><NFlag nation={p.nation} fallback={p.flag} size={11} /></span>
+                    </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-[13px] font-semibold text-white truncate">{p.name}</p>
                       <p className="text-[10px] text-slate-500 truncate">{p.nation} · {p.pos}{p.club ? ` · ${p.club}` : ''}</p>
