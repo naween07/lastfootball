@@ -268,10 +268,13 @@ export default function HomePage() {
                 <Target className="w-6 h-6 text-white" />
               </div>
               <div className="flex-1 min-w-0">
-                <h2 className="text-lg sm:text-xl font-black text-foreground">Predict & Win NPR 30,000</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">Predict match scores before kickoff. +3 for exact scores, +1 for correct winners.</p>
+                <h2 className="text-lg sm:text-xl font-black text-foreground">Predict the World Cup & Win NPR 50,000</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Predict World Cup 2026 scores before kickoff. +3 exact, +1 correct winner. Score 100+ for NPR 30,000 — champion wins NPR 50,000.</p>
               </div>
-              <ChevronRight className="w-5 h-5 text-amber-400 flex-shrink-0" />
+              <span className="hidden sm:inline-flex items-center gap-1.5 bg-amber-500 text-white text-sm font-black rounded-lg px-4 py-2.5 flex-shrink-0">
+                Predict Now <ChevronRight className="w-4 h-4" />
+              </span>
+              <ChevronRight className="w-5 h-5 text-amber-400 flex-shrink-0 sm:hidden" />
             </div>
           </Link>
         </section>

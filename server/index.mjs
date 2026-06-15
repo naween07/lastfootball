@@ -966,21 +966,21 @@ async function scorePredictions() {
           const predHome = pred.home_score;
           const predAway = pred.away_score;
 
-          // Exact score
+          // Exact score (winner + score both correct)
           if (predHome === actualHome && predAway === actualAway) {
-            points = 4; // exact score + correct team
+            points = 3;
           }
-          // Correct winner but wrong score
+          // Correct winner/draw but wrong score
           else if (
             (predHome > predAway && actualHome > actualAway) ||
             (predHome < predAway && actualHome < actualAway) ||
             (predHome === predAway && actualHome === actualAway)
           ) {
-            points = 0; // correct team, wrong score
+            points = 1;
           }
           // Wrong winner
           else {
-            points = -2; // wrong team + wrong score
+            points = -1;
           }
 
           // Update prediction with points

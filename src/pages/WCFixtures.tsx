@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import SEOHead from '@/components/SEOHead';
 import Flag from '@/components/Flag';
-import { Trophy, Calendar, MapPin, Clock, ChevronRight, Zap } from 'lucide-react';
+import { Trophy, Calendar, MapPin, Clock, ChevronRight, Zap, Target } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ─── Tournament Data ────────────────────────────────────────────────────────
@@ -575,6 +575,13 @@ function WCMatchCard({ match, stadium }: { match: any; stadium: string }) {
           )}
         </div>
       </div>
+
+      {/* Predict CTA — only for upcoming matches */}
+      {!isLive && !isFinished && (
+        <Link to="/predict" className="flex items-center justify-center gap-1.5 py-2 border-t border-border/50 bg-amber-500/5 hover:bg-amber-500/10 text-amber-400 text-[11px] font-bold uppercase tracking-widest transition-colors">
+          <Target className="w-3.5 h-3.5" /> Predict & Win
+        </Link>
+      )}
     </div>
   );
 }

@@ -5,13 +5,13 @@ import SEOHead from '@/components/SEOHead';
 import OptimizedImage from '@/components/OptimizedImage';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { fetchMatchesByDate, getToday, getTomorrow, Match } from '@/services/footballApi';
+import { fetchMatchesByDate, Match } from '@/services/footballApi';
 import { Trophy, Target, Lock, Loader2, ChevronRight, TrendingUp, Award, Star, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
-// Supported league IDs for predictions
-const SUPPORTED_LEAGUES = [1, 39, 140, 135, 78, 61, 2, 3, 848, 88, 94, 307, 45, 48, 143, 137, 253];
+// World Cup 2026 only — predictions are locked to the tournament
+const SUPPORTED_LEAGUES = [1];
 
 interface Prediction {
   match_id: number;
@@ -26,20 +26,30 @@ export default function PredictPage() {
   const [predictions, setPredictions] = useState<Map<number, Prediction>>(new Map());
   const [existingPredictions, setExistingPredictions] = useState<Set<number>>(new Set());
   const [submitting, setSubmitting] = useState<number | null>(null);
-  const [activeDay, setActiveDay] = useState<'today' | 'tomorrow'>('today');
 
-  // Fetch matches
+  // Fetch upcoming World Cup matches (next several days, official schedule)
   useEffect(() => {
-    const date = activeDay === 'today' ? getToday() : getTomorrow();
     setLoading(true);
-    fetchMatchesByDate(date).then(data => {
-      const supported = data.filter(m =>
-        SUPPORTED_LEAGUES.includes(m.league.id) && (m.status === 'NS' || m.status === 'TBD')
-      );
+    const today = new Date();
+    const dates = Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(today);
+      d.setDate(d.getDate() + i);
+      return d.toLocaleDateString('en-CA');
+    });
+    Promise.all(dates.map(date => fetchMatchesByDate(date))).then(results => {
+      const all = results.flat();
+      const seen = new Set<number>();
+      const supported = all.filter(m => {
+        if (!SUPPORTED_LEAGUES.includes(m.league.id)) return false;
+        if (!(m.status === 'NS' || m.status === 'TBD')) return false;
+        if (seen.has(m.id)) return false;
+        seen.add(m.id);
+        return true;
+      }).sort((a, b) => new Date(`${a.date}T${a.time || '00:00'}`).getTime() - new Date(`${b.date}T${b.time || '00:00'}`).getTime());
       setMatches(supported);
       setLoading(false);
     });
-  }, [activeDay]);
+  }, []);
 
   // Load user's existing predictions
   useEffect(() => {
@@ -96,7 +106,7 @@ export default function PredictPage() {
     <div className="min-h-screen bg-background">
       <SEOHead
         title="Predict & Win — Football Score Predictions | LastFootball"
-        description="Predict football match scores and win rewards. Earn points for correct predictions. NPR 30,000 grand prize for 30 points."
+        description="Predict FIFA World Cup 2026 match scores and win rewards. +3 exact score, +1 correct winner. Score 100+ points to win NPR 30,000; overall champion wins NPR 50,000."
         path="/predict"
       />
       <Header />
@@ -111,7 +121,7 @@ export default function PredictPage() {
             Predict Scores. Earn Points. <span className="text-amber-400">Win Rewards.</span>
           </h1>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            Predict match scores before kickoff. Earn +4 for exact scores. Reach 30 points to win <span className="text-amber-400 font-bold">NPR 30,000</span>!
+            Predict World Cup 2026 scores before kickoff. <span className="text-emerald-400 font-bold">+3</span> for exact score, <span className="text-amber-400 font-bold">+1</span> for the right winner. Score <span className="text-amber-400 font-bold">100+ points</span> to win <span className="text-amber-400 font-bold">NPR 30,000</span> — the overall champion takes <span className="text-amber-400 font-bold">NPR 50,000</span>!
           </p>
         </div>
       </section>
@@ -127,12 +137,12 @@ export default function PredictPage() {
           <div className="bg-card border border-border rounded-xl p-3 text-center">
             <TrendingUp className="w-5 h-5 text-emerald-400 mx-auto mb-1" />
             <p className="text-[10px] font-bold text-foreground">Earn Points</p>
-            <p className="text-[9px] text-muted-foreground">+4 exact, -2 wrong</p>
+            <p className="text-[9px] text-muted-foreground">+3 exact, +1 winner, -1 wrong</p>
           </div>
           <div className="bg-card border border-border rounded-xl p-3 text-center">
             <Award className="w-5 h-5 text-amber-400 mx-auto mb-1" />
             <p className="text-[10px] font-bold text-foreground">Win Rewards</p>
-            <p className="text-[9px] text-muted-foreground">30 pts = NPR 30,000</p>
+            <p className="text-[9px] text-muted-foreground">100+ pts = NPR 30,000</p>
           </div>
         </div>
       </div>
@@ -142,29 +152,22 @@ export default function PredictPage() {
         <div className="bg-card border border-border rounded-xl p-4">
           <h3 className="text-xs font-bold text-foreground mb-2">Points System</h3>
           <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="flex justify-between py-1"><span className="text-muted-foreground">Correct score + winner</span><span className="text-emerald-400 font-bold">+4</span></div>
-            <div className="flex justify-between py-1"><span className="text-muted-foreground">Correct winner only</span><span className="text-amber-400 font-bold">0</span></div>
-            <div className="flex justify-between py-1"><span className="text-muted-foreground">Wrong winner + score</span><span className="text-red-400 font-bold">-2</span></div>
-            <div className="flex justify-between py-1"><span className="text-muted-foreground">30 points = reward</span><span className="text-amber-400 font-bold">🏆</span></div>
+            <div className="flex justify-between py-1"><span className="text-muted-foreground">Exact score + winner</span><span className="text-emerald-400 font-bold">+3</span></div>
+            <div className="flex justify-between py-1"><span className="text-muted-foreground">Correct winner only</span><span className="text-amber-400 font-bold">+1</span></div>
+            <div className="flex justify-between py-1"><span className="text-muted-foreground">Wrong winner + score</span><span className="text-red-400 font-bold">-1</span></div>
+            <div className="flex justify-between py-1"><span className="text-muted-foreground">100+ points</span><span className="text-amber-400 font-bold">NPR 30,000</span></div>
+            <div className="flex justify-between py-1"><span className="text-muted-foreground">Overall champion</span><span className="text-amber-400 font-bold">NPR 50,000</span></div>
+            <div className="flex justify-between py-1"><span className="text-muted-foreground">World Cup matches only</span><span className="text-primary font-bold">⚽</span></div>
           </div>
         </div>
       </div>
 
-      {/* Day tabs */}
+      {/* Upcoming WC matches header */}
       <div className="container max-w-4xl px-4 pb-3">
-        <div className="flex gap-2">
-          {(['today', 'tomorrow'] as const).map(day => (
-            <button
-              key={day}
-              onClick={() => setActiveDay(day)}
-              className={cn(
-                'px-4 py-2 rounded-full text-xs font-semibold capitalize transition-all',
-                activeDay === day ? 'bg-primary/10 text-primary ring-1 ring-primary/20' : 'text-muted-foreground hover:bg-secondary',
-              )}
-            >
-              {day === 'today' ? "Today's Matches" : "Tomorrow's Matches"}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          <span className="px-4 py-2 rounded-full text-xs font-semibold bg-primary/10 text-primary ring-1 ring-primary/20">
+            Upcoming World Cup Matches
+          </span>
         </div>
       </div>
 

@@ -116,7 +116,7 @@ export default function Leaderboard() {
             <Trophy className="w-3.5 h-3.5" /> LEADERBOARD
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-foreground">Top Predictors</h1>
-          <p className="text-sm text-muted-foreground mt-1">Reach 30 points to win <span className="text-amber-400 font-bold">NPR 30,000</span></p>
+          <p className="text-sm text-muted-foreground mt-1">Score <span className="text-amber-400 font-bold">100+ points</span> for NPR 30,000 · Champion wins <span className="text-amber-400 font-bold">NPR 50,000</span></p>
         </div>
       </section>
 
@@ -171,9 +171,9 @@ export default function Leaderboard() {
                 <p className="text-[9px] text-muted-foreground uppercase">Accuracy</p>
               </div>
             </div>
-            {myStats.total_points >= 30 && (
+            {myStats.total_points >= 100 && (
               <div className="mt-3 bg-amber-500/20 border border-amber-500/30 rounded-lg p-3 text-center">
-                <p className="text-sm font-bold text-amber-400">🎉 You've reached 30 points! Contact us to claim your NPR 30,000 reward!</p>
+                <p className="text-sm font-bold text-amber-400">🎉 You've passed 100 points! Contact us to claim your NPR 30,000 reward!</p>
               </div>
             )}
             {myStats.current_streak >= 3 && (
@@ -243,7 +243,7 @@ export default function Leaderboard() {
 
                   <span className={cn(
                     'w-14 text-center text-sm font-black tabular-nums',
-                    entry.total_points >= 30 ? 'text-amber-400' : entry.total_points > 0 ? 'text-primary' : 'text-muted-foreground',
+                    entry.total_points >= 100 ? 'text-amber-400' : entry.total_points > 0 ? 'text-primary' : 'text-muted-foreground',
                   )}>
                     {entry.total_points}
                   </span>
@@ -281,11 +281,12 @@ export default function Leaderboard() {
 
         {/* Rules */}
         <div className="bg-card border border-border rounded-xl p-5">
-          <h3 className="text-sm font-bold text-foreground mb-3">Monthly Winner Rules</h3>
+          <h3 className="text-sm font-bold text-foreground mb-3">World Cup Predict & Win Rules</h3>
           <div className="space-y-2 text-xs text-muted-foreground">
-            <p>• Predict at least <strong className="text-foreground">10 matches</strong> in a month to qualify</p>
-            <p>• Reach <strong className="text-amber-400">30 points</strong> to win the grand prize of NPR 30,000</p>
-            <p>• If no one reaches 30 points, the highest scorer wins</p>
+            <p>• Predictions are open for <strong className="text-foreground">World Cup 2026 matches only</strong></p>
+            <p>• <strong className="text-emerald-400">+3</strong> for the exact score, <strong className="text-amber-400">+1</strong> for the correct winner, <strong className="text-red-400">-1</strong> if both wrong</p>
+            <p>• Score <strong className="text-amber-400">100+ points</strong> to win <strong className="text-amber-400">NPR 30,000</strong></p>
+            <p>• The <strong className="text-amber-400">overall World Cup champion</strong> (highest total) wins <strong className="text-amber-400">NPR 50,000</strong></p>
             <p>• Ties are decided by lucky draw on our Facebook page</p>
             <p>• Must follow our official social media pages to be eligible</p>
           </div>
