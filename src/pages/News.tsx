@@ -34,34 +34,37 @@ export default function News() {
   useEffect(() => {
     const load = async () => {
       try {
-        const today = new Date();
-        const dates = [0, 1, 2].map(d => {
-          const date = new Date(today);
-          date.setDate(date.getDate() - d);
-          return date.toISOString().split('T')[0];
-        });
-
-        const [matchResults, wcMatches, news, externalNewsResult] = await Promise.allSettled([
-          Promise.all(dates.map(date => fetchMatchesByDate(date))),
-          fetchRecentWorldCupMatches(),
+        const [reportsResult, news, externalNewsResult] = await Promise.allSettled([
+          // Match reports are saved server-side to the posts table (clickable, persistent)
+          supabase.from('posts').select('*').eq('status', 'published').eq('category', 'match-report').order('published_at', { ascending: false }).limit(120),
           fetchFootballNews(),
           supabase.from('external_news').select('*').eq('is_archived', false).order('published_at', { ascending: false }).limit(50),
         ]);
 
-        const allMatches = matchResults.status === 'fulfilled' ? matchResults.value.flat() : [];
-        const wc = wcMatches.status === 'fulfilled' ? wcMatches.value : [];
-        // Merge recent World Cup matches (dedupe by id) so WC reports always generate,
-        // independent of whether the date-based fixture fetch succeeded.
-        const ids = new Set(allMatches.map((m: any) => m.id));
-        const merged = [...allMatches, ...wc.filter((m: any) => !ids.has(m.id))];
-        if (merged.length > 0) {
-          const reports = generateDailyReports(merged);
-          reports.sort((a, b) => {
+        if (reportsResult.status === 'fulfilled' && reportsResult.value.data) {
+          const rows = reportsResult.value.data;
+          const mapped: Article[] = rows.map((p: any) => ({
+            id: p.id,
+            slug: p.slug,
+            title: p.title,
+            summary: p.subtitle || p.excerpt || '',
+            body: p.body,
+            category: (p.league || '').toLowerCase().includes('world cup') ? 'featured' : 'match-report',
+            leagueName: p.league || '',
+            leagueLogo: undefined,
+            homeTeam: { name: p.teams?.[0] || '', logo: undefined },
+            awayTeam: { name: p.teams?.[1] || '', logo: undefined },
+            matchId: 0,
+            publishedAt: p.published_at,
+            isFeatured: (p.league || '').toLowerCase().includes('world cup'),
+          }));
+          // World Cup first, then newest
+          mapped.sort((a, b) => {
             if (a.isFeatured && !b.isFeatured) return -1;
             if (!a.isFeatured && b.isFeatured) return 1;
             return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
           });
-          setArticles(reports);
+          setArticles(mapped);
         }
 
         if (news.status === 'fulfilled') {

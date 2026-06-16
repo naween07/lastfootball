@@ -790,6 +790,11 @@ const server = http.createServer(async (req, res) => {
       return json(req, res, { started: true, note: 'Fantasy scoring run started in background' });
     }
 
+    if (url.pathname === '/api/reports/generate') {
+      generateMatchReports();
+      return json(req, res, { started: true, note: 'Report generation started in background' });
+    }
+
     error(req, res, 404, 'Not found');
   } catch (err) {
     console.error('Request error:', err);
@@ -806,6 +811,9 @@ server.listen(PORT, '127.0.0.1', () => {
   // Fantasy points job
   setTimeout(scoreFantasy, 20 * 1000);
   setInterval(scoreFantasy, 30 * 60 * 1000); // Every 30 minutes
+  // Match report generation
+  setTimeout(generateMatchReports, 35 * 1000);
+  setInterval(generateMatchReports, 20 * 60 * 1000); // Every 20 minutes
 });
 
 // ─── Fantasy Points Engine (FPL-style) ──────────────────────────────────────
@@ -892,6 +900,117 @@ async function scoreFantasy() {
     }
   } catch (e) {
     console.error('[FANTASY] scoring error:', e.message);
+  }
+}
+
+// ─── Match Report Generator (saves finished matches to posts table) ─────────
+const REPORT_LEAGUE_IDS = new Set([
+  1,        // World Cup
+  2, 3, 848,// UCL, UEL, Conference
+  39, 140, 135, 78, 61, // top 5
+  45, 48, 143, 137, 81, 66, // major domestic cups
+  4, 5, 9, 6, 13,           // Euro, Nations League, Copa America, AFCON, Libertadores
+]);
+
+function reportSlugify(t) {
+  return t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-').replace(/-+/g, '-').slice(0, 90);
+}
+
+function buildReportFromFixture(f) {
+  const home = f.teams?.home?.name, away = f.teams?.away?.name;
+  const hs = f.goals?.home, as_ = f.goals?.away;
+  if (hs === null || as_ === null || !home || !away) return null;
+  const comp = f.league?.name || 'the match';
+  const isDraw = hs === as_;
+  const homeWon = hs > as_;
+  const winner = homeWon ? home : away, loser = homeWon ? away : home;
+  const winScore = homeWon ? hs : as_, loseScore = homeWon ? as_ : hs;
+  const margin = Math.abs(hs - as_), total = hs + as_;
+  const date = f.fixture?.date ? new Date(f.fixture.date).toISOString() : new Date().toISOString();
+
+  // Title
+  let title;
+  if (isDraw && total === 0) title = `${home} and ${away} play out goalless stalemate`;
+  else if (isDraw) title = `${home} and ${away} share the spoils in ${total}-goal draw`;
+  else if (margin >= 3) title = `${winner} thrash ${loser} ${winScore}-${loseScore}`;
+  else title = `${winner} edge past ${loser} ${winScore}-${loseScore}`;
+
+  // Summary
+  let summary;
+  if (isDraw && total === 0) summary = `${home} and ${away} were unable to find a breakthrough in a ${comp} encounter that ended goalless.`;
+  else if (isDraw) summary = `${home} and ${away} played out an entertaining ${hs}-${as_} draw in the ${comp}.`;
+  else if (margin >= 3) summary = `${winner} produced a dominant display to beat ${loser} ${winScore}-${loseScore} in the ${comp}.`;
+  else summary = `${winner} claimed a hard-fought ${winScore}-${loseScore} victory over ${loser} in the ${comp}.`;
+
+  // Body paragraphs
+  const venue = f.fixture?.venue?.name ? `${f.fixture.venue.name}${f.fixture.venue.city ? ', ' + f.fixture.venue.city : ''}` : null;
+  const round = f.league?.round ? `${f.league.round} of the ${comp}` : comp;
+  const paras = [];
+  if (isDraw && total === 0) {
+    paras.push(`${home} and ${away} cancelled each other out in a tightly-contested ${comp} fixture that finished without a goal. Chances were at a premium${venue ? ` at ${venue}` : ''}, and both sides will reflect on a point that does little to settle the picture.`);
+  } else if (isDraw) {
+    paras.push(`${home} and ${away} could not be separated in a ${total >= 4 ? 'thrilling' : 'competitive'} ${hs}-${as_} draw${venue ? ` at ${venue}` : ''}. Both teams had spells on top across the ${round}, and a share of the points was arguably a fair reflection of an even contest.`);
+  } else if (margin >= 3) {
+    paras.push(`${winner} were in irresistible form as they swept aside ${loser} ${winScore}-${loseScore}${venue ? ` at ${venue}` : ''}. From early on it was clear which side carried the greater threat, and ${winner} never looked back as they ran out comfortable winners in the ${round}.`);
+  } else {
+    paras.push(`${winner} dug deep to see off ${loser} ${winScore}-${loseScore} in a closely-fought ${round}${venue ? ` at ${venue}` : ''}. The margin was slender, but ${winner} did enough at the key moments to take all the spoils on the day.`);
+  }
+  paras.push(isDraw
+    ? `The result leaves both ${home} and ${away} with plenty to ponder as the ${comp} continues. Each will feel there was more on offer, and attention now turns quickly to what comes next.`
+    : `It was a result that will lift ${winner} and leave ${loser} searching for answers. As the ${comp} rolls on, ${winner} will hope to build on this performance while ${loser} regroup.`);
+  paras.push(`Final score: ${home} ${hs}-${as_} ${away}.`);
+
+  const slug = reportSlugify(`${home}-${hs}-${as_}-${away}-${date.slice(0, 10)}`);
+  return { title, summary, body: paras.join('\n\n'), slug, league: comp, home, away, date, total, margin, isFeatured: f.league?.id === 1 };
+}
+
+async function generateMatchReports() {
+  try {
+    const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+    // Gather recently finished matches from notable leagues
+    const finished = [];
+    // World Cup first
+    const wc = await fetchUpstream('fixtures', { league: '1', season: '2026', status: 'FT-AET-PEN', timezone: 'America/New_York' });
+    for (const f of (wc?.response || [])) finished.push(f);
+    // Today + yesterday across all leagues, keep only notable ones
+    const today = new Date();
+    for (let d = 0; d <= 1; d++) {
+      const date = new Date(today); date.setDate(date.getDate() - d);
+      const ds = date.toISOString().split('T')[0];
+      const day = await fetchUpstream('fixtures', { date: ds });
+      for (const f of (day?.response || [])) {
+        const st = f.fixture?.status?.short;
+        if (['FT', 'AET', 'PEN'].includes(st) && REPORT_LEAGUE_IDS.has(f.league?.id) && f.league?.id !== 1) finished.push(f);
+      }
+    }
+    if (!finished.length) return;
+
+    let created = 0;
+    for (const f of finished.slice(0, 40)) {
+      const r = buildReportFromFixture(f);
+      if (!r) continue;
+      // Skip if a post with this slug already exists
+      const existing = await supabaseQueryWithKey('posts', `slug=eq.${encodeURIComponent(r.slug)}&select=id`, 'GET', null, SVC);
+      if (Array.isArray(existing) && existing.length) continue;
+      const jsonLd = generateJsonLd({ type: 'NewsArticle', title: r.title, description: r.summary, slug: r.slug, author: 'LastFootball', image: null, published: r.date });
+      const row = {
+        type: 'NewsArticle', status: 'published',
+        title: r.title, slug: r.slug, subtitle: r.summary, body: r.body,
+        excerpt: r.summary, meta_title: `${r.title} | LastFootball`,
+        meta_description: r.summary.slice(0, 155),
+        category: 'match-report', league: r.league,
+        teams: [r.home, r.away],
+        author_name: 'LastFootball', json_ld: jsonLd,
+        reading_time_mins: Math.max(1, Math.round(r.body.split(/\s+/).length / 200)),
+        published_at: r.date,
+      };
+      const res = await supabaseQueryWithKey('posts', '', 'POST', row, SVC);
+      if (Array.isArray(res) || res) created++;
+    }
+    if (created > 0) console.log(`[REPORTS] Generated ${created} match reports`);
+  } catch (e) {
+    console.error('[REPORTS] error:', e.message);
   }
 }
 
