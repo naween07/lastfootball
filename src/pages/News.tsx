@@ -48,12 +48,13 @@ export default function News() {
           supabase.from('external_news').select('*').eq('is_archived', false).order('published_at', { ascending: false }).limit(50),
         ]);
 
-        if (matchResults.status === 'fulfilled') {
-          const allMatches = matchResults.value.flat();
-          // Merge in recent World Cup matches (dedupe by id) so WC reports always generate
-          const wc = wcMatches.status === 'fulfilled' ? wcMatches.value : [];
-          const ids = new Set(allMatches.map((m: any) => m.id));
-          const merged = [...allMatches, ...wc.filter((m: any) => !ids.has(m.id))];
+        const allMatches = matchResults.status === 'fulfilled' ? matchResults.value.flat() : [];
+        const wc = wcMatches.status === 'fulfilled' ? wcMatches.value : [];
+        // Merge recent World Cup matches (dedupe by id) so WC reports always generate,
+        // independent of whether the date-based fixture fetch succeeded.
+        const ids = new Set(allMatches.map((m: any) => m.id));
+        const merged = [...allMatches, ...wc.filter((m: any) => !ids.has(m.id))];
+        if (merged.length > 0) {
           const reports = generateDailyReports(merged);
           reports.sort((a, b) => {
             if (a.isFeatured && !b.isFeatured) return -1;
