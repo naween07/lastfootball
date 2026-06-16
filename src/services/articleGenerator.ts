@@ -41,6 +41,14 @@ export function getMatchImportance(match: Match): number {
 
   let score = 0;
 
+  // Tier 0: World Cup — the biggest competition, always top priority
+  if (match.league.id === 1) {
+    score += 12;
+    if (CUP_KNOCKOUT_STAGES.some(s => (match.league.name || '').includes(s))) score += 4;
+    if (totalGoals >= 4) score += 1;
+    return score;
+  }
+
   // Tier 1: Major European competition (UCL, UEL only — not domestic cups)
   const majorCups = [2, 3]; // Champions League, Europa League
   if (majorCups.includes(match.league.id)) score += 8;
@@ -358,18 +366,46 @@ export function generateMatchReport(match: Match): Article | null {
 }
 
 // Generate reports for multiple matches
+// Leagues worth generating individual match reports + roundups for.
+// Everything else (4th-tier regional divisions, youth, etc.) is noise.
+const NOTABLE_LEAGUE_IDS = new Set([
+  1,    // World Cup
+  2, 3, // Champions League, Europa League
+  848,  // Conference League
+  39, 140, 135, 78, 61, // PL, La Liga, Serie A, Bundesliga, Ligue 1
+  88, 94, 144, 203, 197, 71, 128, 253, 262, // Eredivisie, Primeira, Belgian, Super Lig, Greek, Brazil, Argentina, MLS, Liga MX
+  45, 48, 143, 137, 81, 66, // major domestic cups (FA Cup, Carabao, Copa del Rey, Coppa Italia, DFB, Coupe de France)
+  4, 5, 9, 6, 13, // Euro, Nations League, Copa America, AFCON, Copa Libertadores
+]);
+
 export function generateDailyReports(matches: Match[]): Article[] {
   const finished = matches.filter(m => m.status === 'FT' || m.status === 'AET' || m.status === 'PEN');
-  
-  const matchReports = finished
+
+  // Only report on notable competitions — keeps the feed focused on football people follow
+  const notable = finished.filter(m => NOTABLE_LEAGUE_IDS.has(m.league.id));
+
+  const matchReports = notable
     .map(generateMatchReport)
-    .filter((a): a is Article => a !== null);
+    .filter((a): a is Article => a !== null)
+    // Most important first (World Cup leads), then by goals
+    .sort((a, b) => {
+      const ai = a.isFeatured ? 1 : 0, bi = b.isFeatured ? 1 : 0;
+      if (ai !== bi) return bi - ai;
+      const aWC = a.leagueName?.toLowerCase().includes('world cup') ? 1 : 0;
+      const bWC = b.leagueName?.toLowerCase().includes('world cup') ? 1 : 0;
+      return bWC - aWC;
+    });
 
-  const roundups = generateLeagueRoundups(finished);
-  const topMatches = generateTopMatchesArticle(finished);
-  const playerOfDay = generatePlayerOfDay(finished);
+  const roundups = generateLeagueRoundups(notable);
+  const topMatches = generateTopMatchesArticle(notable);
+  const playerOfDay = generatePlayerOfDay(notable);
 
-  // Interleave: roundups first, then top matches, then individual reports
+  // World Cup roundup first, then other roundups, top matches, then individual reports
+  roundups.sort((a, b) => {
+    const aWC = a.leagueName?.toLowerCase().includes('world cup') ? 1 : 0;
+    const bWC = b.leagueName?.toLowerCase().includes('world cup') ? 1 : 0;
+    return bWC - aWC;
+  });
   return [...roundups, ...topMatches, ...playerOfDay, ...matchReports];
 }
 

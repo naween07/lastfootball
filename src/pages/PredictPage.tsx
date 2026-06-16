@@ -66,14 +66,25 @@ export default function PredictPage() {
       if (!token) { toast.error('Please sign in again'); setSavingName(false); return; }
       const BASE = import.meta.env.VITE_SUPABASE_URL;
       const KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-      const res = await fetch(`${BASE}/rest/v1/profiles?user_id=eq.${user.id}`, {
-        method: 'PATCH',
-        headers: { apikey: KEY, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-        body: JSON.stringify({ display_name: name, username_set: true }),
+      // Upsert (insert-or-update) so it works even if the profile row doesn't exist yet.
+      // return=representation lets us confirm a row was actually written.
+      const res = await fetch(`${BASE}/rest/v1/profiles?on_conflict=user_id`, {
+        method: 'POST',
+        headers: {
+          apikey: KEY,
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Prefer: 'resolution=merge-duplicates,return=representation',
+        },
+        body: JSON.stringify({ user_id: user.id, display_name: name, username_set: true }),
       });
+      const rows = await res.json().catch(() => null);
       if (!res.ok) {
-        const t = await res.text().catch(() => '');
-        toast.error('Failed: ' + (t.substring(0, 100) || res.statusText));
+        const msg = Array.isArray(rows) ? '' : (rows?.message || rows?.hint || '');
+        toast.error('Failed to save username' + (msg ? ': ' + msg.substring(0, 80) : ''));
+      } else if (!Array.isArray(rows) || rows.length === 0) {
+        // Write matched no row — should not happen now, but guard against silent failure
+        toast.error('Could not save username — please refresh and try again');
       } else {
         setUsernameSet(true);
         setDisplayName(name);
@@ -263,8 +274,14 @@ export default function PredictPage() {
 
       {/* Logged-in greeting with set username */}
       {user && usernameSet && displayName && (
-        <div className="container max-w-4xl px-4 pb-2">
-          <p className="text-xs text-muted-foreground">Predicting as <span className="text-primary font-bold">{displayName}</span> · <button onClick={() => { setNameInput(displayName); setShowNameModal(true); }} className="text-primary/70 hover:underline">change</button></p>
+        <div className="container max-w-4xl px-4 pb-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-muted-foreground">Predicting as</span>
+            <span className="inline-flex items-center gap-1.5 bg-primary/15 text-primary font-black text-sm px-3 py-1 rounded-full ring-1 ring-primary/30">
+              <Star className="w-3.5 h-3.5" /> {displayName}
+            </span>
+            <button onClick={() => { setNameInput(displayName); setShowNameModal(true); }} className="text-[11px] text-primary/70 hover:text-primary hover:underline font-semibold">change</button>
+          </div>
         </div>
       )}
 
