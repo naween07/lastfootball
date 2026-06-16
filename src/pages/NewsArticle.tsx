@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import Header from '@/components/Header';
 import SEOHead from '@/components/SEOHead';
 import { supabase } from '@/integrations/supabase/client';
@@ -8,21 +8,43 @@ import { cn } from '@/lib/utils';
 
 export default function NewsArticle() {
   const { slug } = useParams();
+  const location = useLocation();
   const [article, setArticle] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!slug) return;
+    // Generated match reports are passed via router state (not stored in the DB)
+    const passed = (location.state as any)?.article;
+    if (passed && passed.slug === slug) {
+      setArticle({
+        title: passed.title,
+        subtitle: passed.summary,
+        body: passed.body,
+        category: passed.category || 'match-report',
+        league: passed.leagueName,
+        leagueName: passed.leagueName,
+        author_name: 'LastFootball',
+        published_at: passed.publishedAt || new Date().toISOString(),
+        reading_time_mins: Math.max(1, Math.round((passed.body || '').split(/\s+/).length / 200)),
+        view_count: 0,
+        type: 'NewsArticle',
+        homeTeam: passed.homeTeam,
+        awayTeam: passed.awayTeam,
+        _generated: true,
+      });
+      setLoading(false);
+      return;
+    }
     (async () => {
       const { data } = await supabase.from('posts').select('*').eq('slug', slug).eq('status', 'published').single();
       if (data) {
         setArticle(data);
-        // Increment views
         await supabase.from('posts').update({ view_count: (data.view_count || 0) + 1 }).eq('id', data.id);
       }
       setLoading(false);
     })();
-  }, [slug]);
+  }, [slug, location.state]);
 
   if (loading) return <div className="min-h-screen bg-[#0a0a0a]"><Header /><div className="flex justify-center py-20"><div className="w-5 h-5 border-2 border-[#00ff87] border-t-transparent rounded-full animate-spin" /></div></div>;
   if (!article) return <div className="min-h-screen bg-[#0a0a0a]"><Header /><div className="text-center py-20"><h2 className="text-xl font-bold text-white">Article not found</h2><Link to="/news" className="text-[#00ff87] text-sm mt-2 inline-block">← Back to News</Link></div></div>;
@@ -62,7 +84,7 @@ export default function NewsArticle() {
           <span className="flex items-center gap-1"><User className="w-3 h-3" />{article.author_name}</span>
           <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{new Date(article.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
           <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{article.reading_time_mins} min read</span>
-          <span className="flex items-center gap-1"><Eye className="w-3 h-3" />{article.view_count} views</span>
+          {!article._generated && <span className="flex items-center gap-1"><Eye className="w-3 h-3" />{article.view_count} views</span>}
         </div>
 
         {/* Featured image */}

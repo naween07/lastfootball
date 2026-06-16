@@ -209,6 +209,7 @@ function FeaturedReport({ article }: { article: Article }) {
   return (
     <Link
       to={`/news/${article.slug}`}
+      state={{ article }}
       className="block rounded-xl overflow-hidden border border-primary/20 bg-gradient-to-br from-card to-primary/5 hover:border-primary/40 transition-all group"
     >
       <div className="flex items-center justify-between px-4 py-3 bg-primary/5 border-b border-primary/10">
@@ -250,6 +251,7 @@ function ReportCard({ article }: { article: Article }) {
   return (
     <Link
       to={`/news/${article.slug}`}
+      state={{ article }}
       className="flex gap-3 p-3 rounded-xl border border-border bg-card hover:border-primary/30 hover:bg-card/80 transition-all group"
     >
       <div className="w-12 flex flex-col items-center justify-center gap-1 flex-shrink-0">
