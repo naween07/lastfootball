@@ -50,12 +50,17 @@ export default function News() {
 
         const allMatches = matchResults.status === 'fulfilled' ? matchResults.value.flat() : [];
         const wc = wcMatches.status === 'fulfilled' ? wcMatches.value : [];
+        // Diagnostics — visible in browser console
+        const wcFinished = wc.filter((m: any) => ['FT', 'AET', 'PEN'].includes(m.status));
+        console.log('[NEWS] WC fetch:', wcMatches.status, '| total WC:', wc.length, '| finished WC:', wcFinished.length, wcFinished.slice(0, 5).map((m: any) => `${m.homeTeam?.name} ${m.homeScore}-${m.awayScore} ${m.awayTeam?.name} [${m.status}] L${m.league?.id}`));
+        console.log('[NEWS] date-fixtures:', matchResults.status, '| total:', allMatches.length);
         // Merge recent World Cup matches (dedupe by id) so WC reports always generate,
         // independent of whether the date-based fixture fetch succeeded.
         const ids = new Set(allMatches.map((m: any) => m.id));
         const merged = [...allMatches, ...wc.filter((m: any) => !ids.has(m.id))];
         if (merged.length > 0) {
           const reports = generateDailyReports(merged);
+          console.log('[NEWS] reports generated:', reports.length, '| WC reports:', reports.filter(r => r.leagueName?.toLowerCase().includes('world')).length);
           reports.sort((a, b) => {
             if (a.isFeatured && !b.isFeatured) return -1;
             if (!a.isFeatured && b.isFeatured) return 1;
