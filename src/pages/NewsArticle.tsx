@@ -104,6 +104,15 @@ export default function NewsArticle() {
           prose-blockquote:border-[#00ff87] prose-blockquote:text-[#888]
           prose-li:text-[#ccc]
         ">
+          <style>{`
+            .lf-stats-table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; font-size: 0.875rem; border: 1px solid #222; border-radius: 8px; overflow: hidden; }
+            .lf-stats-table th { background: #111; color: #00ff87; font-weight: 700; padding: 0.6rem 0.75rem; text-align: center; border-bottom: 1px solid #222; }
+            .lf-stats-table th:first-child { text-align: left; }
+            .lf-stats-table td { padding: 0.55rem 0.75rem; text-align: center; color: #ddd; border-bottom: 1px solid #1a1a1a; }
+            .lf-stats-table td:first-child { text-align: left; color: #999; font-weight: 500; }
+            .lf-stats-table tr:last-child td { border-bottom: none; }
+            .lf-stats-table tr:hover td { background: #0d0d0d; }
+          `}</style>
           {/* Render markdown as HTML */}
           <div dangerouslySetInnerHTML={{ __html: markdownToHtml(article.body) }} />
         </div>
@@ -134,10 +143,38 @@ export default function NewsArticle() {
 // Simple markdown to HTML converter
 function markdownToHtml(md: string): string {
   if (!md) return '';
-  return md
+
+  // First, extract and convert markdown tables to HTML (so the | pipes don't get
+  // mangled by paragraph processing). Tables are contiguous lines starting with |.
+  const lines = md.split('\n');
+  const out: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (/^\s*\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1])) {
+      // Table block: header row, separator row, then body rows
+      const header = line.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+      i += 2; // skip header + separator
+      const rows: string[][] = [];
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
+        rows.push(lines[i].trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim()));
+        i++;
+      }
+      const thead = '<thead><tr>' + header.map(h => `<th>${h}</th>`).join('') + '</tr></thead>';
+      const tbody = '<tbody>' + rows.map(r => '<tr>' + r.map(c => `<td>${c}</td>`).join('') + '</tr>').join('') + '</tbody>';
+      out.push(`<table class="lf-stats-table">${thead}${tbody}</table>`);
+      continue;
+    }
+    out.push(line);
+    i++;
+  }
+
+  // Process the non-table content, protecting table HTML from paragraph wrapping
+  return out.join('\n')
     .replace(/^### (.*$)/gm, '<h3>$1</h3>')
     .replace(/^## (.*$)/gm, '<h2>$1</h2>')
     .replace(/^# (.*$)/gm, '<h1>$1</h1>')
+    .replace(/^> (.*$)/gm, '<blockquote>$1</blockquote>')
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.*?)\*/g, '<em>$1</em>')
     .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="rounded-lg" />')
@@ -145,6 +182,10 @@ function markdownToHtml(md: string): string {
     .replace(/^- (.*$)/gm, '<li>$1</li>')
     .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
     .replace(/\n\n/g, '</p><p>')
-    .replace(/^(?!<[h|u|l|p|i])/gm, '<p>')
-    .replace(/<p><\/p>/g, '');
+    .replace(/^(?!<[h|u|l|p|i|t|b])/gm, '<p>')
+    .replace(/<p><\/p>/g, '')
+    .replace(/<p>(<table)/g, '$1')
+    .replace(/(<\/table>)<\/p>/g, '$1')
+    .replace(/<p>(<blockquote>)/g, '$1')
+    .replace(/(<\/blockquote>)<\/p>/g, '$1');
 }

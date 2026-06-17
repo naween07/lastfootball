@@ -1050,6 +1050,233 @@ function reportSlugify(t) {
     .replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-').replace(/-+/g, '-').slice(0, 90);
 }
 
+// Pull a clean stat value from a fixtures/statistics team block
+function statVal(teamStats, type) {
+  if (!teamStats?.statistics) return null;
+  const row = teamStats.statistics.find(s => s.type === type);
+  if (!row) return null;
+  let v = row.value;
+  if (v === null || v === undefined) return null;
+  if (typeof v === 'string' && v.includes('%')) return parseInt(v);
+  return v;
+}
+
+const VAR = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+// Build a premium, data-driven match report applying journalistic translation rules.
+async function buildPremiumReport(f) {
+  const home = f.teams?.home?.name, away = f.teams?.away?.name;
+  const hs = f.goals?.home, as_ = f.goals?.away;
+  if (hs === null || as_ === null || !home || !away) return null;
+  const fid = f.fixture?.id;
+  const comp = f.league?.name || 'the match';
+  const round = f.league?.round || '';
+  const isDraw = hs === as_;
+  const homeWon = hs > as_;
+  const winner = homeWon ? home : away, loser = homeWon ? away : home;
+  const winScore = homeWon ? hs : as_, loseScore = homeWon ? as_ : hs;
+  const margin = Math.abs(hs - as_), total = hs + as_;
+  const date = f.fixture?.date ? new Date(f.fixture.date).toISOString() : new Date().toISOString();
+  const venue = f.fixture?.venue?.name ? `${f.fixture.venue.name}${f.fixture.venue.city ? ', ' + f.fixture.venue.city : ''}` : null;
+
+  // ── Fetch events + statistics (best-effort) ──
+  let events = [], statsResp = [];
+  try { const e = await fetchUpstream('fixtures/events', { fixture: String(fid) }); events = e?.response || []; } catch {}
+  try { const s = await fetchUpstream('fixtures/statistics', { fixture: String(fid) }); statsResp = s?.response || []; } catch {}
+
+  const homeId = f.teams?.home?.id, awayId = f.teams?.away?.id;
+  const hStat = statsResp.find(s => s.team?.id === homeId);
+  const aStat = statsResp.find(s => s.team?.id === awayId);
+
+  const S = (block, label) => {
+    const map = {
+      possession: 'Ball Possession', shots: 'Total Shots', sot: 'Shots on Goal',
+      corners: 'Corner Kicks', fouls: 'Fouls', passAcc: 'Passes %', saves: 'Goalkeeper Saves',
+    };
+    return statVal(block, map[label]);
+  };
+  const hPoss = S(hStat, 'possession'), aPoss = S(aStat, 'possession');
+  const hShots = S(hStat, 'shots'), aShots = S(aStat, 'shots');
+  const hSot = S(hStat, 'sot'), aSot = S(aStat, 'sot');
+  const hCorners = S(hStat, 'corners'), aCorners = S(aStat, 'corners');
+  const hFouls = S(hStat, 'fouls'), aFouls = S(aStat, 'fouls');
+  const hPass = S(hStat, 'passAcc'), aPass = S(aStat, 'passAcc');
+
+  // ── Goal scorers + types from events ──
+  const goals = events.filter(e => e.type === 'Goal');
+  const scorerMap = {}; // "name|team" -> { name, team, count, penalty, own }
+  for (const g of goals) {
+    const nm = g.player?.name || 'Unknown';
+    const tm = g.team?.id === homeId ? 'home' : 'away';
+    const key = nm + '|' + tm;
+    if (!scorerMap[key]) scorerMap[key] = { name: nm, team: tm, count: 0, penalty: 0, own: 0, minutes: [] };
+    scorerMap[key].count++;
+    if (g.detail === 'Penalty') scorerMap[key].penalty++;
+    if (g.detail === 'Own Goal') scorerMap[key].own++;
+    if (g.time?.elapsed) scorerMap[key].minutes.push(g.time.elapsed + (g.time.extra || 0));
+  }
+  const scorers = Object.values(scorerMap);
+  const teamScorers = (side) => scorers.filter(s => s.team === side);
+
+  // Describe a scorer with milestone translation
+  const describeScorer = (s) => {
+    const last = s.name.split(' ').slice(-1)[0];
+    let phrase = last;
+    if (s.own > 0 && s.count === s.own) return `an unfortunate own goal from ${last}`;
+    if (s.count >= 3) phrase = `a stunning hat-trick from ${last}`;
+    else if (s.count === 2) phrase = `a clinical brace from ${last}`;
+    else {
+      if (s.penalty > 0) phrase = `${last} from the penalty spot`;
+      else phrase = `${last}`;
+    }
+    return phrase;
+  };
+  const scorerList = (side) => {
+    const list = teamScorers(side).filter(s => s.own === 0);
+    if (!list.length) return '';
+    const parts = list.map(describeScorer);
+    if (parts.length === 1) return parts[0];
+    return parts.slice(0, -1).join(', ') + ' and ' + parts.slice(-1);
+  };
+
+  // ── TITLE ──
+  const hatTrickHero = scorers.find(s => s.count >= 3);
+  const braceHero = scorers.find(s => s.count === 2);
+  let title;
+  if (hatTrickHero) title = `${hatTrickHero.name.split(' ').slice(-1)[0].toUpperCase()} HAT-TRICK FIRES ${winner.toUpperCase()} PAST ${loser.toUpperCase()}`;
+  else if (isDraw && total === 0) title = `${home.toUpperCase()} AND ${away.toUpperCase()} PLAY OUT GOALLESS STALEMATE`;
+  else if (isDraw) title = `HONOURS EVEN AS ${home.toUpperCase()} AND ${away.toUpperCase()} SHARE ${total} GOALS`;
+  else if (margin >= 3) title = `${winner.toUpperCase()} RUN RIOT IN ${winScore}-${loseScore} ROUT OF ${loser.toUpperCase()}`;
+  else if (braceHero && (braceHero.team === (homeWon ? 'home' : 'away'))) title = `${braceHero.name.split(' ').slice(-1)[0].toUpperCase()} BRACE SINKS ${loser.toUpperCase()}`;
+  else title = `${winner.toUpperCase()} EDGE ${loser.toUpperCase()} IN ${winScore}-${loseScore} BATTLE`;
+
+  // ── SUBTITLE ──
+  let subtitle;
+  if (hatTrickHero) subtitle = `${hatTrickHero.name} steals the show with a treble as ${winner} dispatch ${loser} ${winScore}-${loseScore} in the ${comp}.`;
+  else if (isDraw && total === 0) subtitle = `${home} and ${away} cancel each other out in a tense, goalless ${comp} encounter.`;
+  else if (isDraw) subtitle = `${home} and ${away} trade blows in an absorbing ${hs}-${as_} draw that leaves the ${comp} group finely poised.`;
+  else if (margin >= 3) subtitle = `A ruthless ${winner} dismantle ${loser} ${winScore}-${loseScore} to lay down a serious marker in the ${comp}.`;
+  else subtitle = `${winner} dig deep to overcome a stubborn ${loser} ${winScore}-${loseScore} in a hard-fought ${comp} clash.`;
+
+  // ── BODY ──
+  const paras = [];
+  const arc = isDraw && total === 0
+    ? `${VAR(['Stalemate', 'Deadlock', 'A war of attrition'])}. ${home} and ${away} played out a goalless draw${venue ? ` at ${venue}` : ''}, a ${comp} contest that promised much but ultimately produced a cagey, chess-like affair where defensive discipline trumped attacking ambition.`
+    : isDraw
+    ? `${home} ${hs}-${as_} ${away}. The two sides could not be separated${venue ? ` at ${venue}` : ''} in a ${total >= 4 ? 'breathless, end-to-end' : 'tightly-fought'} ${comp} encounter, the kind of contest that ebbed and flowed and left both benches living on their nerves until the final whistle.`
+    : margin >= 3
+    ? `${winner} were imperious. A commanding ${winScore}-${loseScore} victory over ${loser}${venue ? ` at ${venue}` : ''} announced their intentions in this ${comp} campaign, the result rarely in doubt once the floodgates opened.`
+    : `${winner} found a way. A hard-earned ${winScore}-${loseScore} win over ${loser}${venue ? ` at ${venue}` : ''} may not have been pretty, but in tournament football it is results, not aesthetics, that matter — and ${winner} banked three precious points.`;
+  paras.push(arc + (round ? ` This was a ${round} fixture with real weight attached.` : ''));
+
+  // Attacking analysis
+  const att = [];
+  const dom = (hPoss != null && aPoss != null) ? (hPoss > aPoss ? 'home' : 'away') : null;
+  if (hPoss != null && aPoss != null) {
+    const domTeam = dom === 'home' ? home : away, domPoss = dom === 'home' ? hPoss : aPoss;
+    const subTeam = dom === 'home' ? away : home, subPoss = dom === 'home' ? aPoss : hPoss;
+    att.push(`${domTeam} ${VAR(['dictated the tempo', 'controlled the rhythm', 'monopolised the ball'])} with ${domPoss}% possession, ${subPoss <= 40 ? `leaving ${subTeam} starved of the ball on just ${subPoss}%` : `though ${subTeam} were far from passengers at ${subPoss}%`}.`);
+  }
+  const winnerSide = homeWon ? 'home' : 'away';
+  const wSot = winnerSide === 'home' ? hSot : aSot, wShots = winnerSide === 'home' ? hShots : aShots;
+  const sList = scorerList(winnerSide);
+  if (!isDraw && total > 0) {
+    let goalSentence = `The breakthrough${margin >= 2 ? 's' : ''} ${margin >= 2 ? 'came' : 'arrived'} through ${sList || 'the decisive moments'}`;
+    if (hatTrickHero && hatTrickHero.team === winnerSide) goalSentence += ` — a hat-trick hero on the night`;
+    else if (braceHero && braceHero.team === winnerSide) goalSentence += `, the brace proving the difference`;
+    att.push(goalSentence + '.');
+  }
+  // Shots-on-target contrast for the winning/dominant side
+  if (wSot != null && wShots != null) {
+    if (winnerSide && (winnerSide === 'home' ? hs : as_) > 0) {
+      const goalsScored = winnerSide === 'home' ? hs : as_;
+      if (wSot >= 6 && goalsScored === 1) att.push(`For all their pressure — ${wSot} shots on target — ${winner} had just a solitary goal to show for their dominance, a profligacy they will want to address.`);
+      else if (wShots >= 12 && wSot <= 4) att.push(`${winner} were busy without always being precise, firing ${wShots} efforts but testing the keeper only ${wSot} times.`);
+    }
+  }
+  // Loser wasteful
+  const loserSide = homeWon ? 'away' : 'home';
+  const lSot = loserSide === 'home' ? hSot : aSot;
+  const loserGoals = loserSide === 'home' ? hs : as_;
+  if (!isDraw && lSot != null && lSot >= 5 && loserGoals === 0) {
+    att.push(`${loser} will rue their wastefulness; ${lSot} shots on target yielded nothing, a clinical edge in the final third proving beyond them on the day.`);
+  }
+  // Corners as territorial pressure
+  if (hCorners != null && aCorners != null) {
+    const moreC = hCorners > aCorners ? 'home' : 'away';
+    const cTeam = moreC === 'home' ? home : away, cVal = moreC === 'home' ? hCorners : aCorners;
+    if (cVal >= 7) att.push(`${cTeam} ${VAR(['camped inside the opposition half', 'laid siege to the box'])}, forcing ${cVal} corners as they applied sustained territorial pressure.`);
+  }
+  if (att.length) paras.push(att.join(' '));
+  else paras.push(`In the final third, ${winner === home ? home : winner} carried the greater menace, fashioning the better openings across the ninety minutes.`);
+
+  // Defensive analysis
+  const def = [];
+  const homeCS = as_ === 0, awayCS = hs === 0;
+  if (homeCS || awayCS) {
+    const csTeam = homeCS ? home : away;
+    def.push(`At the back, ${csTeam} ${VAR(['kept a clean sheet', 'delivered an unblemished defensive display', 'stood firm for a shutout'])}, a platform of defensive solidity that underpinned ${homeCS && homeWon || awayCS && !homeWon ? 'the result' : 'their point'}.`);
+  }
+  if (hFouls != null && aFouls != null) {
+    const moreF = hFouls > aFouls ? 'home' : 'away';
+    const fTeam = moreF === 'home' ? home : away, fVal = moreF === 'home' ? hFouls : aFouls;
+    if (fVal >= 15) def.push(`${fTeam} adopted a notably physical approach, committing ${fVal} fouls to disrupt the opposition's transition rhythm and break up any momentum.`);
+  }
+  // GK heroics
+  const wSaves = statVal(homeCS ? hStat : awayCS ? aStat : null, 'Goalkeeper Saves');
+  if (wSaves != null && wSaves >= 5) {
+    const gkTeam = homeCS ? home : away;
+    def.push(`The ${gkTeam} goalkeeper was in inspired form, pulling off ${wSaves} saves to repel a sustained barrage and preserve his side's resistance.`);
+  }
+  if (def.length) paras.push(def.join(' '));
+
+  // Closing
+  paras.push(isDraw
+    ? `A point apiece leaves the ${comp} picture finely balanced, and both ${home} and ${away} will sense the job is far from done as the tournament unfolds.`
+    : `The victory propels ${winner} forward with confidence, while ${loser} are left to regroup and reassess with little time to dwell before their next ${comp} test.`);
+
+  // ── EXPERT SUMMARY (blockquote) ──
+  const verdict = isDraw
+    ? `> A share of the spoils that flatters neither side and satisfies both only partially. ${dom ? `${dom === 'home' ? home : away} controlled the ball but couldn't convert dominance into victory` : 'The margins were wafer-thin'}, and the ${comp} group remains wide open.`
+    : margin >= 3
+    ? `> A statement performance. ${winner} blended control with cutting edge to overwhelm ${loser}, and on this evidence they will fancy their chances against anyone left in the ${comp}.`
+    : `> A result built on resilience rather than fluency. ${winner} found the moments that mattered; ${loser} will feel they competed but ultimately lacked the ruthlessness that separates the good from the great at this level.`;
+
+  // ── STATS MATRIX ──
+  const fmt = (v, pct) => v == null ? '—' : (pct ? v + '%' : String(v));
+  const matrix = [
+    `| Metric | ${home} | ${away} |`,
+    `| :--- | :---: | :---: |`,
+    `| Goals | ${hs} | ${as_} |`,
+    `| Possession | ${fmt(hPoss, true)} | ${fmt(aPoss, true)} |`,
+    `| Total Shots | ${fmt(hShots)} | ${fmt(aShots)} |`,
+    `| Shots on Target | ${fmt(hSot)} | ${fmt(aSot)} |`,
+    `| Passing Accuracy | ${fmt(hPass, true)} | ${fmt(aPass, true)} |`,
+    `| Corners | ${fmt(hCorners)} | ${fmt(aCorners)} |`,
+    `| Fouls Committed | ${fmt(hFouls)} | ${fmt(aFouls)} |`,
+  ].join('\n');
+
+  const body = [
+    paras.join('\n\n'),
+    '',
+    verdict,
+    '',
+    '## Match Statistics',
+    '',
+    matrix,
+  ].join('\n');
+
+  const slug = reportSlugify(`${home}-${hs}-${as_}-${away}-${date.slice(0, 10)}`);
+  const metaDesc = subtitle.slice(0, 152);
+  const tags = ['World Cup 2026', home, away, comp, 'LastFootball', 'Match Report'];
+  const imageAlt = `${home} vs ${away} ${comp} match action — final score ${hs}-${as_}`;
+
+  return {
+    title, subtitle, body, slug, league: comp, home, away, date,
+    metaDesc, tags, imageAlt, isFeatured: f.league?.id === 1,
+  };
+}
+
 function buildReportFromFixture(f) {
   const home = f.teams?.home?.name, away = f.teams?.away?.name;
   const hs = f.goals?.home, as_ = f.goals?.away;
@@ -1120,20 +1347,27 @@ async function generateMatchReports() {
     if (!finished.length) return;
 
     let created = 0;
-    for (const f of finished.slice(0, 40)) {
-      const r = buildReportFromFixture(f);
-      if (!r) continue;
-      // Skip if a post with this slug already exists
-      const existing = await supabaseQueryWithKey('posts', `slug=eq.${encodeURIComponent(r.slug)}&select=id`, 'GET', null, SVC);
+    for (const f of finished.slice(0, 20)) {
+      // Skip if a post with this slug already exists (cheap check before fetching stats)
+      const home = f.teams?.home?.name, away = f.teams?.away?.name;
+      const hs = f.goals?.home, as_ = f.goals?.away;
+      if (hs == null || as_ == null || !home || !away) continue;
+      const date = f.fixture?.date ? new Date(f.fixture.date).toISOString() : new Date().toISOString();
+      const probeSlug = reportSlugify(`${home}-${hs}-${as_}-${away}-${date.slice(0, 10)}`);
+      const existing = await supabaseQueryWithKey('posts', `slug=eq.${encodeURIComponent(probeSlug)}&select=id`, 'GET', null, SVC);
       if (Array.isArray(existing) && existing.length) continue;
-      const jsonLd = generateJsonLd({ type: 'NewsArticle', title: r.title, description: r.summary, slug: r.slug, author: 'LastFootball', image: null, published: r.date });
+
+      const r = await buildPremiumReport(f);
+      if (!r) continue;
+      const jsonLd = generateJsonLd({ type: 'NewsArticle', title: r.title, description: r.subtitle, slug: r.slug, author: 'LastFootball', image: null, published: r.date });
       const row = {
         type: 'NewsArticle', status: 'published',
-        title: r.title, slug: r.slug, subtitle: r.summary, body: r.body,
-        excerpt: r.summary, meta_title: `${r.title} | LastFootball`,
-        meta_description: r.summary.slice(0, 155),
+        title: r.title, slug: r.slug, subtitle: r.subtitle, body: r.body,
+        excerpt: r.subtitle, meta_title: `${r.title} | LastFootball`,
+        meta_description: r.metaDesc,
         category: 'match-report', league: r.league,
-        teams: [r.home, r.away],
+        teams: [r.home, r.away], tags: r.tags,
+        featured_image_alt: r.imageAlt,
         author_name: 'LastFootball', json_ld: jsonLd,
         reading_time_mins: Math.max(1, Math.round(r.body.split(/\s+/).length / 200)),
         published_at: r.date,
@@ -1141,7 +1375,7 @@ async function generateMatchReports() {
       const res = await supabaseQueryWithKey('posts', '', 'POST', row, SVC);
       if (Array.isArray(res) || res) created++;
     }
-    if (created > 0) console.log(`[REPORTS] Generated ${created} match reports`);
+    if (created > 0) console.log(`[REPORTS] Generated ${created} premium match reports`);
   } catch (e) {
     console.error('[REPORTS] error:', e.message);
   }
