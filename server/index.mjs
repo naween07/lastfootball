@@ -468,13 +468,18 @@ const server = http.createServer(async (req, res) => {
 
     // ─── Aggregated homepage data (1 call instead of 13) ────────────────
     if (path === '/api/homepage') {
-      const tz = params.get('tz') || 'UTC';
+      const tz = url.searchParams.get('tz') || 'UTC';
       const cacheKey = 'agg_homepage:' + tz;
       const hit = cacheGet(cacheKey);
       if (hit) return json(req, res, hit.data);
 
-      // "Today" in the viewer's timezone
-      const today = new Date(new Date().toLocaleString('en-US', { timeZone: tz })).toLocaleDateString('en-CA');
+      // "Today" in the viewer's timezone (fall back to UTC if tz is invalid)
+      let today;
+      try {
+        today = new Date(new Date().toLocaleString('en-US', { timeZone: tz })).toLocaleDateString('en-CA');
+      } catch {
+        today = new Date().toLocaleDateString('en-CA');
+      }
       const leagues = [
         { id: 39, name: 'Premier League', season: '2025' },
         { id: 140, name: 'La Liga', season: '2025' },
