@@ -6,7 +6,7 @@ import OptimizedImage from '@/components/OptimizedImage';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchMatchesByDate, Match } from '@/services/footballApi';
-import { Trophy, Target, Lock, Loader2, ChevronRight, TrendingUp, Award, Star, Clock } from 'lucide-react';
+import { Trophy, Target, Lock, Loader2, ChevronRight, TrendingUp, Award, Star, Clock, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -177,7 +177,7 @@ export default function PredictPage() {
     <div className="min-h-screen bg-background">
       <SEOHead
         title="Predict & Win — Football Score Predictions | LastFootball"
-        description="Predict FIFA World Cup 2026 match scores and win rewards. +3 exact score, +1 correct winner. Score 100+ points to win NPR 30,000; overall champion wins NPR 50,000."
+        description="Predict FIFA World Cup 2026 scores and win. Reach 100+ points for NPR 30,000; overall champion wins NPR 50,000 — up to NPR 80,000 combined."
         path="/predict"
       />
       <Header />
@@ -192,7 +192,7 @@ export default function PredictPage() {
             Predict Scores. Earn Points. <span className="text-amber-400">Win Rewards.</span>
           </h1>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            Predict World Cup 2026 scores before kickoff. <span className="text-emerald-400 font-bold">+3</span> for exact score, <span className="text-amber-400 font-bold">+1</span> for the right winner. Score <span className="text-amber-400 font-bold">100+ points</span> to win <span className="text-amber-400 font-bold">NPR 30,000</span> — the overall champion takes <span className="text-amber-400 font-bold">NPR 50,000</span>!
+            Predict World Cup 2026 scores before kickoff. <span className="text-emerald-400 font-bold">+3</span> for exact score, <span className="text-amber-400 font-bold">+1</span> for the right winner. Reach <span className="text-amber-400 font-bold">100+ points</span> for <span className="text-amber-400 font-bold">NPR 30,000</span>, and the overall champion wins <span className="text-amber-400 font-bold">NPR 50,000</span> — up to <span className="text-amber-400 font-bold">NPR 80,000</span> combined!
           </p>
         </div>
       </section>
@@ -228,6 +228,7 @@ export default function PredictPage() {
             <div className="flex justify-between py-1"><span className="text-muted-foreground">Wrong winner + score</span><span className="text-red-400 font-bold">-1</span></div>
             <div className="flex justify-between py-1"><span className="text-muted-foreground">100+ points</span><span className="text-amber-400 font-bold">NPR 30,000</span></div>
             <div className="flex justify-between py-1"><span className="text-muted-foreground">Overall champion</span><span className="text-amber-400 font-bold">NPR 50,000</span></div>
+            <div className="flex justify-between py-1"><span className="text-muted-foreground">Champion + 100 pts</span><span className="text-amber-400 font-bold">NPR 80,000</span></div>
             <div className="flex justify-between py-1"><span className="text-muted-foreground">World Cup matches only</span><span className="text-primary font-bold">⚽</span></div>
           </div>
         </div>
@@ -383,15 +384,43 @@ export default function PredictPage() {
         {/* Full Leaderboard */}
         <FullLeaderboard userId={user?.id} />
 
-        {/* Rules */}
+        {/* Terms & Conditions */}
         <div className="mt-4 bg-card border border-border rounded-xl p-5">
-          <h3 className="text-sm font-bold text-foreground mb-3">Monthly Winner Rules</h3>
-          <div className="space-y-2 text-xs text-muted-foreground">
-            <p>• Predict at least <strong className="text-foreground">10 matches</strong> in a month to qualify</p>
-            <p>• Reach <strong className="text-amber-400">30 points</strong> to win the grand prize of NPR 30,000</p>
-            <p>• If no one reaches 30 points, the highest scorer wins</p>
-            <p>• Ties are decided by lucky draw on our Facebook page</p>
-            <p>• Must follow our official social media pages to be eligible</p>
+          <div className="flex items-center gap-2 mb-3">
+            <FileText className="w-4 h-4 text-primary" />
+            <h3 className="text-sm font-bold text-foreground">Terms &amp; Conditions</h3>
+          </div>
+          <div className="space-y-2.5 text-xs text-muted-foreground leading-relaxed">
+            <p className="flex gap-2"><span className="text-primary font-bold flex-shrink-0">1.</span><span>You must predict <strong className="text-foreground">at least 20 matches</strong> during the tournament to qualify. Fewer than 20 predictions means disqualification from all prizes.</span></p>
+            <p className="flex gap-2"><span className="text-primary font-bold flex-shrink-0">2.</span><span>You must <strong className="text-foreground">follow our official social media pages</strong> (Facebook, Instagram, TikTok) to be eligible for any reward.</span></p>
+            <p className="flex gap-2"><span className="text-primary font-bold flex-shrink-0">3.</span><span>All prizes are distributed <strong className="text-foreground">after the FIFA World Cup 2026 final match</strong>.</span></p>
+            <p className="flex gap-2"><span className="text-primary font-bold flex-shrink-0">4.</span><span><strong className="text-foreground">Century Club —</strong> everyone who reaches <strong className="text-amber-400">100 points or more</strong> is rewarded with <strong className="text-amber-400">NPR 30,000</strong>, paid after the final. There is no limit on the number of winners; if 15 people cross 100 points, all 15 receive NPR 30,000. If nobody reaches 100 points, this prize is not awarded.</span></p>
+            <p className="flex gap-2"><span className="text-primary font-bold flex-shrink-0">5.</span><span><strong className="text-foreground">Champion —</strong> the single highest scorer after the final wins <strong className="text-amber-400">NPR 50,000</strong>. To qualify, the champion must have at least <strong className="text-foreground">30 points</strong>; if the top score is below 30, the champion prize is not awarded. If multiple users finish tied on the highest points, the winner is decided by a <strong className="text-foreground">lottery system</strong>.</span></p>
+            <p className="flex gap-2"><span className="text-primary font-bold flex-shrink-0">6.</span><span><strong className="text-foreground">The two prizes stack.</strong> A champion who also crossed 100 points collects both — <strong className="text-amber-400">NPR 30,000 + NPR 50,000 = NPR 80,000</strong>. A champion who finishes below 100 (but at or above 30) receives only the <strong className="text-amber-400">NPR 50,000</strong> champion prize.</span></p>
+            <p className="flex gap-2"><span className="text-primary font-bold flex-shrink-0">7.</span><span>Scoring: <strong className="text-emerald-400">+3</strong> for an exact score, <strong className="text-amber-400">+1</strong> for the correct winner, <strong className="text-red-400">−1</strong> if both are wrong.</span></p>
+            <p className="flex gap-2"><span className="text-primary font-bold flex-shrink-0">8.</span><span>Predictions are open for <strong className="text-foreground">World Cup 2026 matches only</strong>, and must be submitted before kickoff.</span></p>
+          </div>
+
+          {/* Follow us */}
+          <div className="mt-5 pt-4 border-t border-border">
+            <p className="text-xs font-bold text-foreground mb-3">Follow us to stay eligible</p>
+            <div className="flex flex-wrap gap-2">
+              <a href="https://www.facebook.com/share/17M5xdrYHN/?mibextid=wwXIfr" target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-secondary hover:bg-secondary/70 transition-colors text-xs font-semibold text-foreground">
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="#1877F2"><path d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.69.24 2.69.24v2.97h-1.52c-1.49 0-1.95.93-1.95 1.89v2.25h3.33l-.53 3.49h-2.8V24C19.61 23.1 24 18.1 24 12.07z"/></svg>
+                Facebook
+              </a>
+              <a href="https://instagram.com/1lastfootball" target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-secondary hover:bg-secondary/70 transition-colors text-xs font-semibold text-foreground">
+                <svg className="w-4 h-4" viewBox="0 0 24 24"><defs><radialGradient id="ig" cx="0.3" cy="1" r="1"><stop offset="0" stopColor="#fdf497"/><stop offset="0.05" stopColor="#fdf497"/><stop offset="0.45" stopColor="#fd5949"/><stop offset="0.6" stopColor="#d6249f"/><stop offset="0.9" stopColor="#285AEB"/></radialGradient></defs><path fill="url(#ig)" d="M12 2.16c3.2 0 3.58.01 4.85.07 1.17.05 1.8.25 2.23.41.56.22.96.48 1.38.9.42.42.68.82.9 1.38.16.43.36 1.06.41 2.23.06 1.27.07 1.65.07 4.85s-.01 3.58-.07 4.85c-.05 1.17-.25 1.8-.41 2.23-.22.56-.48.96-.9 1.38-.42.42-.82.68-1.38.9-.43.16-1.06.36-2.23.41-1.27.06-1.65.07-4.85.07s-3.58-.01-4.85-.07c-1.17-.05-1.8-.25-2.23-.41-.56-.22-.96-.48-1.38-.9-.42-.42-.68-.82-.9-1.38-.16-.43-.36-1.06-.41-2.23-.06-1.27-.07-1.65-.07-4.85s.01-3.58.07-4.85c.05-1.17.25-1.8.41-2.23.22-.56.48-.96.9-1.38.42-.42.82-.68 1.38-.9.43-.16 1.06-.36 2.23-.41 1.27-.06 1.65-.07 4.85-.07M12 0C8.74 0 8.33.01 7.05.07 5.78.13 4.9.33 4.14.63c-.79.31-1.46.72-2.13 1.38C1.35 2.68.94 3.35.63 4.14.33 4.9.13 5.78.07 7.05.01 8.33 0 8.74 0 12s.01 3.67.07 4.95c.06 1.27.26 2.15.56 2.91.31.79.72 1.46 1.38 2.13.67.66 1.34 1.07 2.13 1.38.76.3 1.64.5 2.91.56C8.33 23.99 8.74 24 12 24s3.67-.01 4.95-.07c1.27-.06 2.15-.26 2.91-.56.79-.31 1.46-.72 2.13-1.38.66-.67 1.07-1.34 1.38-2.13.3-.76.5-1.64.56-2.91.06-1.28.07-1.69.07-4.95s-.01-3.67-.07-4.95c-.06-1.27-.26-2.15-.56-2.91-.31-.79-.72-1.46-1.38-2.13C20.32 1.35 19.65.94 18.86.63c-.76-.3-1.64-.5-2.91-.56C14.67.01 14.26 0 12 0zm0 5.84a6.16 6.16 0 100 12.32 6.16 6.16 0 000-12.32zm0 10.16a4 4 0 110-8 4 4 0 010 8zm6.41-10.4a1.44 1.44 0 100 2.88 1.44 1.44 0 000-2.88z"/></svg>
+                Instagram
+              </a>
+              <a href="https://tiktok.com/@1lastfootball" target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-secondary hover:bg-secondary/70 transition-colors text-xs font-semibold text-foreground">
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-5.2 1.74 2.89 2.89 0 012.89-4.64 2.93 2.93 0 01.88.13V9.4a6.84 6.84 0 00-1-.05A6.33 6.33 0 005 20.1a6.34 6.34 0 0010.86-4.43v-7a8.16 8.16 0 004.77 1.52v-3.4a4.85 4.85 0 01-1.04-.1z"/></svg>
+                TikTok
+              </a>
+            </div>
           </div>
         </div>
       </main>
@@ -498,9 +527,9 @@ function FullLeaderboard({ userId }: { userId?: string }) {
               <p className="text-[9px] text-muted-foreground uppercase">Eligible</p>
             </div>
           </div>
-          {myEntry.total_points >= 30 && (
+          {myEntry.total_points >= 100 && (
             <div className="mt-3 bg-amber-500/20 border border-amber-500/30 rounded-lg p-2 text-center">
-              <p className="text-xs font-bold text-amber-400">🎉 30 points reached! Contact us to claim NPR 30,000!</p>
+              <p className="text-xs font-bold text-amber-400">🎉 100 points reached! You're in the Century Club — NPR 30,000 after the final!</p>
             </div>
           )}
         </div>
@@ -650,12 +679,12 @@ function MyPredictions({ userId }: { userId: string }) {
         {/* Balance card */}
         <div className="bg-background/50 rounded-xl p-4 mb-3 text-center">
           <p className="text-3xl font-black text-primary tabular-nums">{totalPoints}</p>
-          <p className="text-[10px] text-muted-foreground uppercase font-semibold">Total Points{totalPoints >= 30 ? ' 🏆' : ` / 30 Goal`}</p>
-          {/* Progress bar to 30 */}
+          <p className="text-[10px] text-muted-foreground uppercase font-semibold">Total Points{totalPoints >= 100 ? ' 🏆' : ` / 100`}</p>
+          {/* Progress bar to 100 (Century Club) */}
           <div className="w-full h-2 bg-secondary rounded-full mt-2 overflow-hidden">
-            <div className="h-full rounded-full bg-gradient-to-r from-primary to-emerald-400 transition-all" style={{ width: `${Math.min(100, (totalPoints / 30) * 100)}%` }} />
+            <div className="h-full rounded-full bg-gradient-to-r from-primary to-emerald-400 transition-all" style={{ width: `${Math.min(100, (totalPoints / 100) * 100)}%` }} />
           </div>
-          <p className="text-[9px] text-muted-foreground mt-1">{Math.max(0, 30 - totalPoints)} points to NPR 30,000 reward</p>
+          <p className="text-[9px] text-muted-foreground mt-1">{Math.max(0, 100 - totalPoints)} points to the NPR 30,000 Century Club</p>
         </div>
 
         <div className="grid grid-cols-5 gap-1.5">

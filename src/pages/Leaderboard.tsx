@@ -284,10 +284,12 @@ export default function Leaderboard() {
           <h3 className="text-sm font-bold text-foreground mb-3">World Cup Predict & Win Rules</h3>
           <div className="space-y-2 text-xs text-muted-foreground">
             <p>• Predictions are open for <strong className="text-foreground">World Cup 2026 matches only</strong></p>
+            <p>• Predict <strong className="text-foreground">at least 20 matches</strong> to qualify for any prize</p>
             <p>• <strong className="text-emerald-400">+3</strong> for the exact score, <strong className="text-amber-400">+1</strong> for the correct winner, <strong className="text-red-400">-1</strong> if both wrong</p>
-            <p>• Score <strong className="text-amber-400">100+ points</strong> to win <strong className="text-amber-400">NPR 30,000</strong></p>
-            <p>• The <strong className="text-amber-400">overall World Cup champion</strong> (highest total) wins <strong className="text-amber-400">NPR 50,000</strong></p>
-            <p>• Ties are decided by lucky draw on our Facebook page</p>
+            <p>• <strong className="text-foreground">Century Club:</strong> everyone who reaches <strong className="text-amber-400">100+ points</strong> wins <strong className="text-amber-400">NPR 30,000</strong> (no limit on winners)</p>
+            <p>• <strong className="text-foreground">Champion:</strong> the highest scorer (minimum <strong className="text-foreground">30 points</strong>) wins <strong className="text-amber-400">NPR 50,000</strong>; ties decided by lottery</p>
+            <p>• Prizes stack — a champion above 100 points takes <strong className="text-amber-400">NPR 80,000</strong> total</p>
+            <p>• All prizes paid <strong className="text-foreground">after the World Cup final</strong></p>
             <p>• Must follow our official social media pages to be eligible</p>
           </div>
         </div>
