@@ -4,6 +4,8 @@
 
 import http from 'node:http';
 import https from 'node:https';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const PORT = 3001;
 const API_BASE = 'https://v3.football.api-sports.io';
@@ -469,45 +471,7 @@ const server = http.createServer(async (req, res) => {
     // ─── Dynamic sitemap (static pages + all published posts) ───────────
     if (path === '/api/sitemap.xml' || path === '/sitemap.xml') {
       const cached = cacheGet('sitemap:xml');
-      if (cached) {
-        res.writeHead(200, { ...getCorsHeaders(req), 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=600' });
-        return res.end(cached.data);
-      }
-      const BASE = 'https://lastfootball.com';
-      const today = new Date().toISOString().split('T')[0];
-      const staticPages = [
-        { loc: '/', freq: 'always', pri: '1.0' },
-        { loc: '/live', freq: 'always', pri: '0.9' },
-        { loc: '/fixtures', freq: 'daily', pri: '0.9' },
-        { loc: '/news', freq: 'hourly', pri: '0.9' },
-        { loc: '/stats', freq: 'daily', pri: '0.8' },
-        { loc: '/worldcup', freq: 'daily', pri: '0.95' },
-        { loc: '/worldcup/fixtures', freq: 'daily', pri: '0.9' },
-        { loc: '/predict', freq: 'daily', pri: '0.8' },
-        { loc: '/leaderboard', freq: 'daily', pri: '0.6' },
-        { loc: '/compare', freq: 'weekly', pri: '0.7' },
-        { loc: '/search', freq: 'weekly', pri: '0.6' },
-      ];
-      const urls = staticPages.map(p =>
-        `  <url><loc>${BASE}${p.loc}</loc><changefreq>${p.freq}</changefreq><priority>${p.pri}</priority></url>`
-      );
-      // All published posts (match reports + articles)
-      try {
-        const posts = await supabaseQueryWithKey('posts',
-          'status=eq.published&select=slug,updated_at,published_at,category&order=published_at.desc&limit=5000',
-          'GET', null, process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY);
-        if (Array.isArray(posts)) {
-          for (const p of posts) {
-            if (!p.slug) continue;
-            const lastmod = (p.updated_at || p.published_at || '').split('T')[0] || today;
-            const pri = p.category === 'match-report' ? '0.7' : '0.8';
-            urls.push(`  <url><loc>${BASE}/news/${encodeURIComponent(p.slug)}</loc><lastmod>${lastmod}</lastmod><changefreq>weekly</changefreq><priority>${pri}</priority></url>`);
-          }
-        }
-      } catch (e) { console.error('[SITEMAP] posts fetch error:', e.message); }
-
-      const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>`;
-      cacheSet('sitemap:xml', xml, { fresh: 600, stale: 1800 });
+      const xml = cached ? cached.data : await buildSitemapXml();
       res.writeHead(200, { ...getCorsHeaders(req), 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=600' });
       return res.end(xml);
     }
@@ -901,6 +865,9 @@ server.listen(PORT, '127.0.0.1', () => {
   // Match report generation
   setTimeout(generateMatchReports, 35 * 1000);
   setInterval(generateMatchReports, 20 * 60 * 1000); // Every 20 minutes
+  // Write the static sitemap file (nginx serves it directly) — on startup + every 30 min
+  setTimeout(writeSitemapFile, 50 * 1000);
+  setInterval(writeSitemapFile, 30 * 60 * 1000);
   // Keep World Cup stats cache always warm so the first viewer never sees stale data
   setTimeout(warmWorldCupStats, 10 * 1000);
   setInterval(warmWorldCupStats, 90 * 1000); // Every 90 seconds
@@ -1421,13 +1388,69 @@ async function generateMatchReports() {
       const res = await supabaseQueryWithKey('posts', '', 'POST', row, SVC);
       if (Array.isArray(res) || res) created++;
     }
-    if (created > 0) console.log(`[REPORTS] Generated ${created} premium match reports`);
+    if (created > 0) {
+      console.log(`[REPORTS] Generated ${created} premium match reports`);
+      writeSitemapFile(); // keep sitemap fresh with the new reports
+    }
   } catch (e) {
     console.error('[REPORTS] error:', e.message);
   }
 }
 
-// ─── Supabase HTTP helpers ──────────────────────────────────────────────────
+// ─── Sitemap builder (used by endpoint + static file writer) ────────────────
+async function buildSitemapXml() {
+  const BASE = 'https://lastfootball.com';
+  const today = new Date().toISOString().split('T')[0];
+  const staticPages = [
+    { loc: '/', freq: 'always', pri: '1.0' },
+    { loc: '/live', freq: 'always', pri: '0.9' },
+    { loc: '/fixtures', freq: 'daily', pri: '0.9' },
+    { loc: '/news', freq: 'hourly', pri: '0.9' },
+    { loc: '/stats', freq: 'daily', pri: '0.8' },
+    { loc: '/worldcup', freq: 'daily', pri: '0.95' },
+    { loc: '/worldcup/fixtures', freq: 'daily', pri: '0.9' },
+    { loc: '/predict', freq: 'daily', pri: '0.8' },
+    { loc: '/leaderboard', freq: 'daily', pri: '0.6' },
+    { loc: '/compare', freq: 'weekly', pri: '0.7' },
+    { loc: '/search', freq: 'weekly', pri: '0.6' },
+  ];
+  const urls = staticPages.map(p =>
+    `  <url><loc>${BASE}${p.loc}</loc><changefreq>${p.freq}</changefreq><priority>${p.pri}</priority></url>`
+  );
+  try {
+    const posts = await supabaseQueryWithKey('posts',
+      'status=eq.published&select=slug,updated_at,published_at,category&order=published_at.desc&limit=5000',
+      'GET', null, process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY);
+    if (Array.isArray(posts)) {
+      for (const p of posts) {
+        if (!p.slug) continue;
+        const lastmod = (p.updated_at || p.published_at || '').split('T')[0] || today;
+        const pri = p.category === 'match-report' ? '0.7' : '0.8';
+        urls.push(`  <url><loc>${BASE}/news/${encodeURIComponent(p.slug)}</loc><lastmod>${lastmod}</lastmod><changefreq>weekly</changefreq><priority>${pri}</priority></url>`);
+      }
+    }
+  } catch (e) { console.error('[SITEMAP] posts fetch error:', e.message); }
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>`;
+  cacheSet('sitemap:xml', xml, { fresh: 600, stale: 1800 });
+  return xml;
+}
+
+// Write the sitemap to the static dist file that nginx serves directly.
+// This sidesteps any nginx routing quirks — nginx always serves dist/sitemap.xml fine.
+async function writeSitemapFile() {
+  try {
+    const xml = await buildSitemapXml();
+    const distPath = path.join(process.cwd(), 'dist', 'sitemap.xml');
+    fs.writeFileSync(distPath, xml, 'utf8');
+    const count = (xml.match(/<url>/g) || []).length;
+    console.log(`[SITEMAP] Wrote ${count} URLs to ${distPath}`);
+  } catch (e) {
+    console.error('[SITEMAP] file write error:', e.message);
+  }
+}
+
+
 
 function supabaseQuery(table, params = '', method = 'GET', body = null) {
   return supabaseQueryWithKey(table, params, method, body, SUPABASE_KEY);
