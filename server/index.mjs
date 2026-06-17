@@ -816,7 +816,33 @@ server.listen(PORT, '127.0.0.1', () => {
   // Match report generation
   setTimeout(generateMatchReports, 35 * 1000);
   setInterval(generateMatchReports, 20 * 60 * 1000); // Every 20 minutes
+  // Keep World Cup stats cache always warm so the first viewer never sees stale data
+  setTimeout(warmWorldCupStats, 10 * 1000);
+  setInterval(warmWorldCupStats, 90 * 1000); // Every 90 seconds
 });
+
+// Proactively refresh WC standings + top scorers so the cache is always fresh.
+// Quota-aware: backs off if the daily API budget is running low.
+async function warmWorldCupStats() {
+  // Don't spend budget when nearly exhausted
+  if (quota.daily.limit > 0 && quota.daily.remaining > 0 && quota.daily.remaining < 500) return;
+  const targets = [
+    { endpoint: 'standings', params: { league: '1', season: '2026' } },
+    { endpoint: 'players/topscorers', params: { league: '1', season: '2026' } },
+    { endpoint: 'players/topassists', params: { league: '1', season: '2026' } },
+  ];
+  for (const t of targets) {
+    try {
+      const sortedKeys = Object.keys(t.params).sort();
+      const cacheKey = t.endpoint + '?' + sortedKeys.map(k => k + '=' + t.params[k]).join('&');
+      const ttl = getTtl(t.endpoint, t.params);
+      const data = await fetchUpstream(t.endpoint, t.params);
+      cacheSet(cacheKey, data, ttl);
+    } catch (e) {
+      // ignore individual failures (quota, transient)
+    }
+  }
+}
 
 // ─── Fantasy Points Engine (FPL-style) ──────────────────────────────────────
 // Scores finished WC fixtures from real player stats, applies to fantasy squads.

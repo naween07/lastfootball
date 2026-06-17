@@ -23,11 +23,13 @@ export default function PlayerStatsView({ leagueId, season }: PlayerStatsViewPro
   const currentCategory = STAT_CATEGORIES.find(c => c.key === activeCategory)!;
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     currentCategory.fetchFn(leagueId, season)
-      .then(setPlayers)
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      .then(data => { if (!cancelled) setPlayers(data); })
+      .catch(err => { if (!cancelled) { console.error(err); setPlayers([]); } })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [leagueId, season, activeCategory]);
 
   const getValue = (p: PlayerStat): string => {
