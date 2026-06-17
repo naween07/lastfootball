@@ -466,6 +466,52 @@ const server = http.createServer(async (req, res) => {
       return json(req, res, { ok: true, cache: cache.size, logos: logoCache.size, rateLimits: rateLimits.size });
     }
 
+    // ─── Dynamic sitemap (static pages + all published posts) ───────────
+    if (path === '/api/sitemap.xml' || path === '/sitemap.xml') {
+      const cached = cacheGet('sitemap:xml');
+      if (cached) {
+        res.writeHead(200, { ...getCorsHeaders(req), 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=600' });
+        return res.end(cached.data);
+      }
+      const BASE = 'https://lastfootball.com';
+      const today = new Date().toISOString().split('T')[0];
+      const staticPages = [
+        { loc: '/', freq: 'always', pri: '1.0' },
+        { loc: '/live', freq: 'always', pri: '0.9' },
+        { loc: '/fixtures', freq: 'daily', pri: '0.9' },
+        { loc: '/news', freq: 'hourly', pri: '0.9' },
+        { loc: '/stats', freq: 'daily', pri: '0.8' },
+        { loc: '/worldcup', freq: 'daily', pri: '0.95' },
+        { loc: '/worldcup/fixtures', freq: 'daily', pri: '0.9' },
+        { loc: '/predict', freq: 'daily', pri: '0.8' },
+        { loc: '/leaderboard', freq: 'daily', pri: '0.6' },
+        { loc: '/compare', freq: 'weekly', pri: '0.7' },
+        { loc: '/search', freq: 'weekly', pri: '0.6' },
+      ];
+      const urls = staticPages.map(p =>
+        `  <url><loc>${BASE}${p.loc}</loc><changefreq>${p.freq}</changefreq><priority>${p.pri}</priority></url>`
+      );
+      // All published posts (match reports + articles)
+      try {
+        const posts = await supabaseQueryWithKey('posts',
+          'status=eq.published&select=slug,updated_at,published_at,category&order=published_at.desc&limit=5000',
+          'GET', null, process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY);
+        if (Array.isArray(posts)) {
+          for (const p of posts) {
+            if (!p.slug) continue;
+            const lastmod = (p.updated_at || p.published_at || '').split('T')[0] || today;
+            const pri = p.category === 'match-report' ? '0.7' : '0.8';
+            urls.push(`  <url><loc>${BASE}/news/${encodeURIComponent(p.slug)}</loc><lastmod>${lastmod}</lastmod><changefreq>weekly</changefreq><priority>${pri}</priority></url>`);
+          }
+        }
+      } catch (e) { console.error('[SITEMAP] posts fetch error:', e.message); }
+
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>`;
+      cacheSet('sitemap:xml', xml, { fresh: 600, stale: 1800 });
+      res.writeHead(200, { ...getCorsHeaders(req), 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=600' });
+      return res.end(xml);
+    }
+
     // ─── Aggregated homepage data (1 call instead of 13) ────────────────
     if (path === '/api/homepage') {
       const tz = url.searchParams.get('tz') || 'UTC';
