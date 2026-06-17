@@ -619,6 +619,18 @@ const server = http.createServer(async (req, res) => {
     }
 
     // Football API proxy
+    // World Cup top stats computed from real match events (fresher than the
+    // upstream topscorers aggregate, which lags hours behind finished matches)
+    if (path === '/api/wc-topstats') {
+      const cached = cacheGet('computed:wc-topstats');
+      if (cached) {
+        return json(req, res, cached.data, { 'X-Cache': 'HIT', 'Cache-Control': 'no-cache, no-store, must-revalidate' });
+      }
+      const data = await computeWorldCupTopStats();
+      cacheSet('computed:wc-topstats', data, { fresh: 90, stale: 600 });
+      return json(req, res, data, { 'X-Cache': 'MISS', 'Cache-Control': 'no-cache, no-store, must-revalidate' });
+    }
+
     if (path === '/api/football') {
       const endpoint = url.searchParams.get('endpoint');
       if (!endpoint) return error(req, res, 400, 'Missing endpoint');
@@ -819,7 +831,73 @@ server.listen(PORT, '127.0.0.1', () => {
   // Keep World Cup stats cache always warm so the first viewer never sees stale data
   setTimeout(warmWorldCupStats, 10 * 1000);
   setInterval(warmWorldCupStats, 90 * 1000); // Every 90 seconds
+  // Compute WC top scorers from real match events (heavier; less frequent)
+  setTimeout(async () => { try { const d = await computeWorldCupTopStats(); cacheSet('computed:wc-topstats', d, { fresh: 90, stale: 600 }); } catch {} }, 45 * 1000);
+  setInterval(async () => {
+    if (quota.daily.limit > 0 && quota.daily.remaining > 0 && quota.daily.remaining < 800) return;
+    try { const d = await computeWorldCupTopStats(); cacheSet('computed:wc-topstats', d, { fresh: 90, stale: 600 }); } catch {}
+  }, 5 * 60 * 1000); // Every 5 minutes
 });
+
+// Compute WC top scorers / assists / cards directly from finished-match player
+// stats — available immediately, unlike the upstream topscorers aggregate.
+async function computeWorldCupTopStats() {
+  try {
+    const fx = await fetchUpstream('fixtures', { league: '1', season: '2026', status: 'FT-AET-PEN' });
+    const finished = fx?.response || [];
+    const players = {}; // id -> { player, team, goals, penalties, assists, yellow, red, apps }
+
+    // Cap per run to protect quota; finished WC matches accumulate slowly
+    for (const f of finished.slice(0, 64)) {
+      const fid = f.fixture?.id;
+      if (!fid) continue;
+      let stats;
+      try {
+        stats = await fetchUpstream('fixtures/players', { fixture: String(fid) });
+      } catch { continue; }
+      for (const t of (stats?.response || [])) {
+        const team = { id: t.team?.id, name: t.team?.name, logo: t.team?.logo };
+        for (const pl of (t.players || [])) {
+          const s = pl.statistics?.[0];
+          if (!s) continue;
+          const id = pl.player?.id;
+          if (!id) continue;
+          if (!players[id]) {
+            players[id] = {
+              player: { id, name: pl.player?.name, photo: pl.player?.photo },
+              team, goals: 0, penalties: 0, assists: 0, yellow: 0, red: 0,
+            };
+          }
+          const p = players[id];
+          p.goals += s.goals?.total || 0;
+          p.penalties += s.penalty?.scored || 0;
+          p.assists += s.goals?.assists || 0;
+          p.yellow += s.cards?.yellow || 0;
+          p.red += s.cards?.red || 0;
+          // keep latest team seen
+          if (team?.id) p.team = team;
+        }
+      }
+    }
+
+    const list = Object.values(players);
+    const rankBy = (key, min = 1) => list
+      .filter(p => p[key] >= min)
+      .sort((a, b) => b[key] - a[key] || a.player.name.localeCompare(b.player.name))
+      .slice(0, 25);
+
+    return {
+      topscorers: rankBy('goals'),
+      topassists: rankBy('assists'),
+      topyellowcards: rankBy('yellow'),
+      topredcards: rankBy('red'),
+      computedAt: new Date().toISOString(),
+    };
+  } catch (e) {
+    console.error('[WC-STATS] compute error:', e.message);
+    return { topscorers: [], topassists: [], topyellowcards: [], topredcards: [], computedAt: null };
+  }
+}
 
 // Proactively refresh WC standings + top scorers so the cache is always fresh.
 // Quota-aware: backs off if the daily API budget is running low.

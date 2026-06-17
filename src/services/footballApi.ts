@@ -522,8 +522,37 @@ function mapPlayerStat(p: any, index: number): PlayerStat {
   };
 }
 
+// For the World Cup, the upstream topscorers aggregate lags hours behind finished
+// matches. We compute it server-side from real match events instead.
+let wcStatsCache: { data: any; expiry: number } | null = null;
+async function fetchWorldCupTopStats(): Promise<any> {
+  if (wcStatsCache && Date.now() < wcStatsCache.expiry) return wcStatsCache.data;
+  const res = await fetch(`${API_BASE_URL}/wc-topstats`, { headers: { 'Content-Type': 'application/json' } });
+  if (!res.ok) throw new Error(`WC stats error: ${res.status}`);
+  const data = await res.json();
+  wcStatsCache = { data, expiry: Date.now() + 30_000 };
+  return data;
+}
+
+function mapComputedStat(p: any, index: number): PlayerStat {
+  return {
+    rank: index + 1,
+    player: { id: p.player?.id, name: p.player?.name, photo: p.player?.photo },
+    team: { id: p.team?.id || 0, name: p.team?.name || '', logo: p.team?.logo || '' },
+    goals: p.goals || 0, penalties: p.penalties || 0, assists: p.assists || 0,
+    yellowCards: p.yellow || 0, redCards: p.red || 0,
+    shots: 0, shotsOnTarget: 0, dribbles: 0, dribblesWon: 0, fouls: 0,
+    keyPasses: 0, passes: 0, passAccuracy: 0, tackles: 0,
+  };
+}
+
 export async function fetchTopScorers(leagueId: number, season: number): Promise<PlayerStat[]> {
   try {
+    if (leagueId === 1) {
+      const s = await fetchWorldCupTopStats();
+      if (s?.topscorers?.length) return s.topscorers.map(mapComputedStat);
+      // fall through to aggregate if compute is empty
+    }
     const data = await callApi("players/topscorers", { league: String(leagueId), season: String(season) });
     return data.map(mapPlayerStat);
   } catch (err) {
@@ -534,6 +563,10 @@ export async function fetchTopScorers(leagueId: number, season: number): Promise
 
 export async function fetchTopAssists(leagueId: number, season: number): Promise<PlayerStat[]> {
   try {
+    if (leagueId === 1) {
+      const s = await fetchWorldCupTopStats();
+      if (s?.topassists?.length) return s.topassists.map(mapComputedStat);
+    }
     const data = await callApi("players/topassists", { league: String(leagueId), season: String(season) });
     return data.map(mapPlayerStat);
   } catch (err) {
@@ -544,6 +577,10 @@ export async function fetchTopAssists(leagueId: number, season: number): Promise
 
 export async function fetchTopYellowCards(leagueId: number, season: number): Promise<PlayerStat[]> {
   try {
+    if (leagueId === 1) {
+      const s = await fetchWorldCupTopStats();
+      if (s?.topyellowcards?.length) return s.topyellowcards.map(mapComputedStat);
+    }
     const data = await callApi("players/topyellowcards", { league: String(leagueId), season: String(season) });
     return data.map(mapPlayerStat);
   } catch (err) {
@@ -554,6 +591,10 @@ export async function fetchTopYellowCards(leagueId: number, season: number): Pro
 
 export async function fetchTopRedCards(leagueId: number, season: number): Promise<PlayerStat[]> {
   try {
+    if (leagueId === 1) {
+      const s = await fetchWorldCupTopStats();
+      if (s?.topredcards?.length) return s.topredcards.map(mapComputedStat);
+    }
     const data = await callApi("players/topredcards", { league: String(leagueId), season: String(season) });
     return data.map(mapPlayerStat);
   } catch (err) {
