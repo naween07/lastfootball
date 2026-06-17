@@ -551,7 +551,7 @@ function FullLeaderboard({ userId }: { userId?: string }) {
                     {isMe ? 'You' : entry.username} {isSelected ? '▾' : '▸'}
                   </span>
                   <span className={cn('w-12 text-center text-sm font-black tabular-nums',
-                    entry.total_points >= 30 ? 'text-amber-400' : entry.total_points > 0 ? 'text-primary' : 'text-muted-foreground',
+                    entry.total_points >= 100 ? 'text-amber-400' : entry.total_points > 0 ? 'text-primary' : 'text-muted-foreground',
                   )}>
                     {entry.total_points}
                   </span>
@@ -608,37 +608,14 @@ function MyPredictions({ userId }: { userId: string }) {
   const [activeTab, setActiveTab] = useState<'all' | 'scored' | 'pending' | 'ledger'>('all');
 
   useEffect(() => {
-    const loadAndScore = async () => {
+    const load = async () => {
+      // Scoring is handled exclusively server-side (single source of truth:
+      // +3 exact, +1 correct winner, -1 wrong). Never score on the client.
       const { data } = await supabase.from('predictions').select('*').eq('user_id', userId).order('predicted_at', { ascending: false }).limit(100);
-      if (!data) { setLoading(false); return; }
-
-      const unscored = data.filter(p => p.points === null);
-      if (unscored.length > 0) {
-        const { callApi } = await import('@/services/footballApi');
-        for (const pred of unscored) {
-          try {
-            const fixtures = await callApi('fixtures', { id: String(pred.match_id) });
-            if (!fixtures?.length) continue;
-            const f = fixtures[0];
-            const status = f.fixture?.status?.short;
-            if (!['FT', 'AET', 'PEN'].includes(status)) continue;
-            const actualHome = f.goals?.home;
-            const actualAway = f.goals?.away;
-            if (actualHome === null || actualAway === null) continue;
-            let points = 0;
-            if (pred.home_score === actualHome && pred.away_score === actualAway) points = 4;
-            else if ((pred.home_score > pred.away_score && actualHome > actualAway) || (pred.home_score < pred.away_score && actualHome < actualAway) || (pred.home_score === pred.away_score && actualHome === actualAway)) points = 0;
-            else points = -2;
-            await supabase.from('predictions').update({ points, scored_at: new Date().toISOString() }).eq('id', pred.id);
-            pred.points = points;
-            pred.scored_at = new Date().toISOString();
-          } catch {}
-        }
-      }
-      setPreds(data);
+      if (data) setPreds(data);
       setLoading(false);
     };
-    loadAndScore();
+    load();
   }, [userId]);
 
   if (loading) return <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>;
@@ -647,8 +624,8 @@ function MyPredictions({ userId }: { userId: string }) {
   const scored = preds.filter(p => p.points !== null);
   const pending = preds.filter(p => p.points === null);
   const totalPoints = scored.reduce((sum, p) => sum + (p.points || 0), 0);
-  const exactScores = scored.filter(p => p.points === 4).length;
-  const correctWinners = scored.filter(p => p.points === 0).length;
+  const exactScores = scored.filter(p => p.points === 3).length;
+  const correctWinners = scored.filter(p => p.points === 1).length;
   const wrongPreds = scored.filter(p => (p.points || 0) < 0).length;
 
   // Points ledger — running balance
@@ -777,14 +754,14 @@ function MyPredictions({ userId }: { userId: string }) {
                   <div className="min-w-[55px] text-center">
                     {pred.points === null ? (
                       <span className="text-[10px] font-bold bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full">⏳ Pending</span>
-                    ) : pred.points >= 4 ? (
+                    ) : pred.points >= 3 ? (
                       <div>
                         <span className="text-[10px] font-bold bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full">+{pred.points} 🎯</span>
                         <p className="text-[8px] text-emerald-400 mt-0.5">Exact Score!</p>
                       </div>
-                    ) : pred.points === 0 ? (
+                    ) : pred.points > 0 ? (
                       <div>
-                        <span className="text-[10px] font-bold bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full">0</span>
+                        <span className="text-[10px] font-bold bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full">+{pred.points}</span>
                         <p className="text-[8px] text-amber-400 mt-0.5">Right Team</p>
                       </div>
                     ) : (

@@ -30,7 +30,8 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const load = async () => {
+    let cancelled = false;
+    const load = async (attempt = 1) => {
       try {
         const [homeData, newsData] = await Promise.allSettled([
           fetchHomepageData(),
@@ -41,18 +42,30 @@ export default function HomePage() {
             .limit(4),
         ]);
 
+        if (cancelled) return;
+
+        let gotData = false;
         if (homeData.status === 'fulfilled') {
-          setLiveMatches([...homeData.value.liveMatches].sort((a, b) => (a.league.id === 1 ? 0 : 1) - (b.league.id === 1 ? 0 : 1)));
-          setTodayMatches(homeData.value.todayMatches);
-          setTopScorers(homeData.value.scorers);
-          setStandingsData(homeData.value.standings);
+          const hd = homeData.value;
+          setLiveMatches([...hd.liveMatches].sort((a, b) => (a.league.id === 1 ? 0 : 1) - (b.league.id === 1 ? 0 : 1)));
+          setTodayMatches(hd.todayMatches);
+          setTopScorers(hd.scorers);
+          setStandingsData(hd.standings);
+          gotData = hd.scorers.length > 0 || hd.standings.length > 0 || hd.liveMatches.length > 0 || hd.todayMatches.length > 0;
         }
 
         if (newsData.status === 'fulfilled' && newsData.value.data) setNews(newsData.value.data);
+
+        // If the server cache wasn't warm yet (empty data), retry once shortly
+        if (!gotData && attempt < 3 && !cancelled) {
+          setTimeout(() => { if (!cancelled) load(attempt + 1); }, 2000);
+          return;
+        }
       } catch {}
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     };
     load();
+    return () => { cancelled = true; };
   }, []);
 
   const upcomingMatches = useMemo(() =>

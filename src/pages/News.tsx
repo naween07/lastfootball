@@ -32,7 +32,8 @@ export default function News() {
   const [activeTab, setActiveTab] = useState<Tab>('reports');
 
   useEffect(() => {
-    const load = async () => {
+    let cancelled = false;
+    const load = async (attempt = 1) => {
       try {
         const [reportsResult, news, externalNewsResult] = await Promise.allSettled([
           // Match reports are saved server-side to the posts table (clickable, persistent)
@@ -40,6 +41,7 @@ export default function News() {
           fetchFootballNews(),
           supabase.from('external_news').select('*').eq('is_archived', false).order('published_at', { ascending: false }).limit(50),
         ]);
+        if (cancelled) return;
 
         if (reportsResult.status === 'fulfilled' && reportsResult.value.data) {
           const rows = reportsResult.value.data;
@@ -75,9 +77,10 @@ export default function News() {
           setSourceNews(externalNewsResult.value.data);
         }
       } catch {}
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     };
     load();
+    return () => { cancelled = true; };
   }, []);
 
   const tabs = [

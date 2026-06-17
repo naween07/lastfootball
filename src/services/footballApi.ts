@@ -947,7 +947,17 @@ const LEAGUE_NAMES: Record<number, string> = { 1: 'World Cup 2026', 39: 'Premier
 export async function fetchHomepageData(): Promise<HomepageData> {
   try {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-    const res = await fetch(`${API_BASE_URL}/homepage?tz=${encodeURIComponent(tz)}`, { headers: { 'Content-Type': 'application/json' } });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20_000);
+    let res;
+    try {
+      res = await fetch(`${API_BASE_URL}/homepage?tz=${encodeURIComponent(tz)}`, {
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
     const data = await res.json();
 
     const liveMatches = (data.live?.response || []).map(mapFixtureToMatch);
