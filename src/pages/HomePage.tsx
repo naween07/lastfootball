@@ -42,7 +42,7 @@ export default function HomePage() {
         ]);
 
         if (homeData.status === 'fulfilled') {
-          setLiveMatches(homeData.value.liveMatches);
+          setLiveMatches([...homeData.value.liveMatches].sort((a, b) => (a.league.id === 1 ? 0 : 1) - (b.league.id === 1 ? 0 : 1)));
           setTodayMatches(homeData.value.todayMatches);
           setTopScorers(homeData.value.scorers);
           setStandingsData(homeData.value.standings);
@@ -56,11 +56,27 @@ export default function HomePage() {
   }, []);
 
   const upcomingMatches = useMemo(() =>
-    todayMatches.filter(m => m.status === 'NS' || m.status === 'TBD').slice(0, 6),
+    todayMatches
+      .filter(m => m.status === 'NS' || m.status === 'TBD')
+      .sort((a, b) => {
+        // World Cup (league 1) first, then by kickoff time
+        const aWC = a.league.id === 1 ? 0 : 1;
+        const bWC = b.league.id === 1 ? 0 : 1;
+        if (aWC !== bWC) return aWC - bWC;
+        return new Date(`${a.date}T${a.time || '00:00'}`).getTime() - new Date(`${b.date}T${b.time || '00:00'}`).getTime();
+      })
+      .slice(0, 6),
   [todayMatches]);
 
   const recentResults = useMemo(() =>
-    todayMatches.filter(m => m.status === 'FT' || m.status === 'AET' || m.status === 'PEN').slice(0, 4),
+    todayMatches
+      .filter(m => m.status === 'FT' || m.status === 'AET' || m.status === 'PEN')
+      .sort((a, b) => {
+        const aWC = a.league.id === 1 ? 0 : 1;
+        const bWC = b.league.id === 1 ? 0 : 1;
+        return aWC - bWC;
+      })
+      .slice(0, 4),
   [todayMatches]);
 
   // Featured match = biggest live match or first upcoming
