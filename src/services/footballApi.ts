@@ -946,47 +946,44 @@ const LEAGUE_NAMES: Record<number, string> = { 1: 'World Cup 2026', 39: 'Premier
 
 export async function fetchHomepageData(): Promise<HomepageData> {
   try {
-    const res = await fetch(`${API_BASE_URL}/homepage`, { headers: { 'Content-Type': 'application/json' } });
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    const res = await fetch(`${API_BASE_URL}/homepage?tz=${encodeURIComponent(tz)}`, { headers: { 'Content-Type': 'application/json' } });
     const data = await res.json();
 
     const liveMatches = (data.live?.response || []).map(mapFixtureToMatch);
     const todayMatches = (data.today?.response || []).map(mapFixtureToMatch);
-    // During the World Cup, show it first
     const wcActive = !!data.worldCupActive;
 
     const scorers: HomepageData['scorers'] = [];
-    for (const [idStr, val] of Object.entries(data.scorers || {})) {
-      const id = parseInt(idStr);
-      const resp = (val as any)?.response || [];
-      if (resp.length > 0) {
+    const standings: HomepageData['standings'] = [];
+
+    if (wcActive) {
+      // ── Top scorers: computed from real WC match events (not the lagging aggregate) ──
+      const wcScorers = data.wcScorers || [];
+      if (wcScorers.length > 0) {
         scorers.push({
-          league: LEAGUE_NAMES[id] || `League ${id}`,
-          scorers: resp.slice(0, 5).map((p: any) => ({
+          league: 'World Cup 2026',
+          scorers: wcScorers.slice(0, 5).map((p: any) => ({
             player: { id: p.player?.id, name: p.player?.name, photo: p.player?.photo },
-            team: { id: p.statistics?.[0]?.team?.id, name: p.statistics?.[0]?.team?.name, logo: p.statistics?.[0]?.team?.logo },
-            goals: p.statistics?.[0]?.goals?.total || 0,
-            assists: p.statistics?.[0]?.goals?.assists || 0,
+            team: { id: p.team?.id, name: p.team?.name, logo: p.team?.logo },
+            goals: p.goals || 0,
+            assists: p.assists || 0,
           })),
         });
       }
-    }
 
-    const standings: HomepageData['standings'] = [];
-    for (const [idStr, val] of Object.entries(data.standings || {})) {
-      const id = parseInt(idStr);
-      const blocks = (val as any)?.response?.[0]?.league?.standings || [];
-      // For cups (WC) the API returns many group blocks — flatten, then take the
-      // overall leaders by points for the homepage mini-table.
-      let resp: any[] = [];
-      if (blocks.length > 1) {
-        resp = blocks.flat().sort((a: any, b: any) => (b.points - a.points) || (b.goalsDiff - a.goalsDiff));
-      } else {
-        resp = blocks[0] || [];
-      }
-      if (resp.length > 0) {
+      // ── Standings: show WC as proper GROUP tables, never mixed with other leagues ──
+      const blocks = data.wcStandings?.response?.[0]?.league?.standings || [];
+      // Keep only real Group A–L blocks (dedupe handled by the group label)
+      const groupBlocks = blocks.filter((g: any) => {
+        const label = (g?.[0]?.group || '').toLowerCase();
+        return /group\s+[a-l]\b/i.test(label);
+      });
+      for (const g of groupBlocks.slice(0, 12)) {
+        const label = g[0]?.group || 'Group';
         standings.push({
-          league: LEAGUE_NAMES[id] || `League ${id}`,
-          teams: resp.slice(0, 5).map((t: any) => ({
+          league: `World Cup · ${label}`,
+          teams: g.slice(0, 4).map((t: any) => ({
             rank: t.rank,
             name: t.team?.name || '',
             logo: t.team?.logo || '',
@@ -996,13 +993,40 @@ export async function fetchHomepageData(): Promise<HomepageData> {
           })),
         });
       }
-    }
-
-    // Put World Cup first when active
-    if (wcActive) {
-      const wcName = LEAGUE_NAMES[1];
-      scorers.sort((a, b) => (a.league === wcName ? -1 : b.league === wcName ? 1 : 0));
-      standings.sort((a, b) => (a.league === wcName ? -1 : b.league === wcName ? 1 : 0));
+    } else {
+      // ── Off-tournament: domestic league scorers + standings ──
+      for (const [idStr, val] of Object.entries(data.scorers || {})) {
+        const id = parseInt(idStr);
+        const resp = (val as any)?.response || [];
+        if (resp.length > 0) {
+          scorers.push({
+            league: LEAGUE_NAMES[id] || `League ${id}`,
+            scorers: resp.slice(0, 5).map((p: any) => ({
+              player: { id: p.player?.id, name: p.player?.name, photo: p.player?.photo },
+              team: { id: p.statistics?.[0]?.team?.id, name: p.statistics?.[0]?.team?.name, logo: p.statistics?.[0]?.team?.logo },
+              goals: p.statistics?.[0]?.goals?.total || 0,
+              assists: p.statistics?.[0]?.goals?.assists || 0,
+            })),
+          });
+        }
+      }
+      for (const [idStr, val] of Object.entries(data.standings || {})) {
+        const id = parseInt(idStr);
+        const block = (val as any)?.response?.[0]?.league?.standings?.[0] || [];
+        if (block.length > 0) {
+          standings.push({
+            league: LEAGUE_NAMES[id] || `League ${id}`,
+            teams: block.slice(0, 5).map((t: any) => ({
+              rank: t.rank,
+              name: t.team?.name || '',
+              logo: t.team?.logo || '',
+              pts: t.points || 0,
+              played: t.all?.played || 0,
+              gd: t.goalsDiff || 0,
+            })),
+          });
+        }
+      }
     }
 
     return { liveMatches, todayMatches, scorers, standings };

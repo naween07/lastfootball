@@ -468,13 +468,14 @@ const server = http.createServer(async (req, res) => {
 
     // ─── Aggregated homepage data (1 call instead of 13) ────────────────
     if (path === '/api/homepage') {
-      const cacheKey = 'agg_homepage';
+      const tz = params.get('tz') || 'UTC';
+      const cacheKey = 'agg_homepage:' + tz;
       const hit = cacheGet(cacheKey);
       if (hit) return json(req, res, hit.data);
 
-      const today = new Date().toLocaleDateString('en-CA');
+      // "Today" in the viewer's timezone
+      const today = new Date(new Date().toLocaleString('en-US', { timeZone: tz })).toLocaleDateString('en-CA');
       const leagues = [
-        { id: 1, name: 'World Cup', season: '2026' },
         { id: 39, name: 'Premier League', season: '2025' },
         { id: 140, name: 'La Liga', season: '2025' },
         { id: 135, name: 'Serie A', season: '2025' },
@@ -483,9 +484,19 @@ const server = http.createServer(async (req, res) => {
       ];
 
       try {
+        // Probe whether the World Cup is currently active (has standings)
+        let wcActive = false;
+        let wcStandings = null;
+        try {
+          const ws = await fetchUpstream('standings', { league: '1', season: '2026' });
+          const blocks = ws?.response?.[0]?.league?.standings;
+          if (blocks && blocks.length) { wcActive = true; wcStandings = ws; }
+        } catch {}
+
         const [live, todayMatches, ...rest] = await Promise.allSettled([
-          fetchUpstream('fixtures', { live: 'all' }),
-          fetchUpstream('fixtures', { date: today }),
+          fetchUpstream('fixtures', { live: 'all', timezone: tz }),
+          // Today's fixtures in the viewer's timezone (so WC games show on the right day)
+          fetchUpstream('fixtures', { date: today, timezone: tz }),
           ...leagues.map(l => fetchUpstream('players/topscorers', { league: String(l.id), season: l.season })),
           ...leagues.map(l => fetchUpstream('standings', { league: String(l.id), season: l.season })),
         ]);
@@ -495,9 +506,25 @@ const server = http.createServer(async (req, res) => {
           today: todayMatches.status === 'fulfilled' ? todayMatches.value : [],
           scorers: {},
           standings: {},
-          worldCupActive: false,
+          worldCupActive: wcActive,
+          wcScorers: null,
+          wcStandings: wcActive ? wcStandings : null,
         };
 
+        // During the WC: use computed top scorers (real match events, not the lagging aggregate)
+        if (wcActive) {
+          try {
+            let computed = cacheGet('computed:wc-topstats');
+            if (!computed) {
+              const d = await computeWorldCupTopStats();
+              cacheSet('computed:wc-topstats', d, { fresh: 90, stale: 600 });
+              computed = { data: d };
+            }
+            result.wcScorers = computed.data?.topscorers || [];
+          } catch {}
+        }
+
+        // Domestic leagues (shown when WC is NOT active, or as secondary)
         leagues.forEach((l, i) => {
           const scorerRes = rest[i];
           const standRes = rest[i + leagues.length];
@@ -505,16 +532,11 @@ const server = http.createServer(async (req, res) => {
           if (standRes?.status === 'fulfilled') result.standings[l.id] = standRes.value;
         });
 
-        // Flag whether the World Cup has live/recent data so the client can prioritize it
-        const wcStand = result.standings[1]?.response?.[0]?.league?.standings;
-        const wcScorers = result.scorers[1]?.response;
-        result.worldCupActive = !!((wcStand && wcStand.length) || (wcScorers && wcScorers.length));
-
         cacheSet(cacheKey, result, { fresh: 60, stale: 120 });
         return json(req, res, result);
       } catch (err) {
         console.error('Homepage aggregate error:', err);
-        return json(req, res, { live: [], today: [], scorers: {}, standings: {} });
+        return json(req, res, { live: [], today: [], scorers: {}, standings: {}, worldCupActive: false });
       }
     }
 
