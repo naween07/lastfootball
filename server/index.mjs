@@ -1441,10 +1441,25 @@ async function buildSitemapXml() {
 async function writeSitemapFile() {
   try {
     const xml = await buildSitemapXml();
-    const distPath = path.join(process.cwd(), 'dist', 'sitemap.xml');
-    fs.writeFileSync(distPath, xml, 'utf8');
-    const count = (xml.match(/<url>/g) || []).length;
-    console.log(`[SITEMAP] Wrote ${count} URLs to ${distPath}`);
+    // Resolve dist relative to this file (server/index.mjs -> ../dist), not cwd,
+    // since the process may run from the server/ directory.
+    const here = path.dirname(new URL(import.meta.url).pathname);
+    const candidates = [
+      path.resolve(here, '..', 'dist', 'sitemap.xml'),   // server/ -> ../dist
+      '/var/www/lastfootball/dist/sitemap.xml',           // absolute fallback
+    ];
+    let written = false;
+    for (const distPath of candidates) {
+      try {
+        if (!fs.existsSync(path.dirname(distPath))) continue;
+        fs.writeFileSync(distPath, xml, 'utf8');
+        const count = (xml.match(/<url>/g) || []).length;
+        console.log(`[SITEMAP] Wrote ${count} URLs to ${distPath}`);
+        written = true;
+        break;
+      } catch (e) { /* try next candidate */ }
+    }
+    if (!written) console.error('[SITEMAP] could not write to any dist path');
   } catch (e) {
     console.error('[SITEMAP] file write error:', e.message);
   }
