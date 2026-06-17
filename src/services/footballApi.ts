@@ -28,20 +28,27 @@ export async function callApi(endpoint: string, params: Record<string, string> =
   const query = new URLSearchParams({ endpoint, ...params }).toString();
   const cacheKey = query;
   const isLive = params.live === "all";
-  const ttl = isLive ? 30_000 : 300_000;
+  // Near-real-time for stats that change during matches; modest cache for static-ish data
+  const liveStat = endpoint === "standings" || endpoint.startsWith("players/") || endpoint === "teams/statistics";
+  const ttl = isLive ? 20_000 : liveStat ? 30_000 : 300_000;
   const cached = getCached(cacheKey);
   if (cached) return cached;
 
-  const response = await fetch(`${API_BASE_URL}/football?${query}`, {
-    headers: {
-      "Content-Type": "application/json",
-    },
-  });
-  if (!response.ok) throw new Error(`API error: ${response.status}`);
-  const data = await response.json();
-  const result = data.response || [];
-  setCache(cacheKey, result, ttl);
-  return result;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const response = await fetch(`${API_BASE_URL}/football?${query}`, {
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`API error: ${response.status}`);
+    const data = await response.json();
+    const result = data.response || [];
+    setCache(cacheKey, result, ttl);
+    return result;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 function mapStatus(short: string): Match["status"] {

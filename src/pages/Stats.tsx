@@ -36,11 +36,13 @@ export default function Stats() {
 
   useEffect(() => {
     if (activeTab !== 'Tables') return;
+    let cancelled = false;
     setStandingsLoading(true);
     fetchStandings(activeLeague, season)
-      .then(setStandings)
-      .catch(console.error)
-      .finally(() => setStandingsLoading(false));
+      .then(data => { if (!cancelled) setStandings(data); })
+      .catch(err => { if (!cancelled) { console.error(err); setStandings([]); } })
+      .finally(() => { if (!cancelled) setStandingsLoading(false); });
+    return () => { cancelled = true; };
   }, [activeLeague, season, activeTab]);
 
   const seasonOptions = getSeasonOptions(activeLeague);

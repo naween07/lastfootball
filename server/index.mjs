@@ -56,11 +56,11 @@ function getTtl(endpoint, params) {
   // Squad data — rarely changes (transfers only)
   if (endpoint === 'players/squads') return { fresh: 86400, stale: 172800 }; // 24h fresh, 48h stale
   
-  // Standings — refresh fast during the tournament (live group-stage swings)
-  if (endpoint === 'standings') return { fresh: 180, stale: 900 }; // 3min fresh, 15min stale
+  // Standings — near-real-time during the tournament (live group-stage swings)
+  if (endpoint === 'standings') return { fresh: 60, stale: 600 }; // 1min fresh, 10min stale
   
-  // Player stats (top scorers etc.) — refresh fast during the tournament
-  if (endpoint.startsWith('players/')) return { fresh: 180, stale: 900 };
+  // Player stats (top scorers etc.) — near-real-time during the tournament
+  if (endpoint.startsWith('players/')) return { fresh: 60, stale: 600 };
   
   // Team info — very stable
   if (endpoint === 'teams') {
@@ -640,14 +640,16 @@ const server = http.createServer(async (req, res) => {
         }
         return json(req, res, entry.data, {
           'X-Cache': isFresh ? 'HIT' : 'STALE',
-          'Cache-Control': `public, max-age=${ttl.fresh}, stale-while-revalidate=${ttl.stale}`,
+          // Don't let the browser cache API data — the server memory cache provides speed,
+          // and browser caching caused stale/empty data on soft SPA navigation.
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
         });
       }
 
       const data = await revalidate(cacheKey, endpoint, params, ttl);
       return json(req, res, data, {
         'X-Cache': 'MISS',
-        'Cache-Control': `public, max-age=${ttl.fresh}, stale-while-revalidate=${ttl.stale}`,
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
       });
     }
 
