@@ -239,7 +239,7 @@ export default function HomePage() {
                   )}
                 />
               ) : (
-                <p className="text-sm text-muted-foreground py-4 text-center">Loading...</p>
+                <p className="text-sm text-muted-foreground py-4 text-center">{loading ? 'Loading…' : 'No stats available yet'}</p>
               )}
             </DashboardCard>
           </div>
@@ -303,7 +303,7 @@ export default function HomePage() {
               linkTo="/stats"
               linkLabel="View League Standings"
             >
-              <StandingsWidget data={standingsData} />
+              <StandingsWidget data={standingsData} loading={loading} />
             </DashboardCard>
           </div>
         </section>
@@ -551,7 +551,7 @@ function timeAgo(dateStr: string): string {
 
 // ─── Hero Background with rotating images ───────────────────────────────────
 // ─── Standings Widget — rotating league tables ──────────────────────────────
-function StandingsWidget({ data }: { data: { league: string; teams: { rank: number; name: string; logo: string; pts: number; played: number; gd: number }[] }[] }) {
+function StandingsWidget({ data, loading }: { loading?: boolean; data: { league: string; teams: { rank: number; name: string; logo: string; pts: number; played: number; gd: number }[] }[] }) {
   const [idx, setIdx] = useState(0);
 
   useEffect(() => {
@@ -560,7 +560,7 @@ function StandingsWidget({ data }: { data: { league: string; teams: { rank: numb
     return () => clearInterval(timer);
   }, [data.length]);
 
-  if (!data.length) return <p className="text-sm text-muted-foreground py-4 text-center">Loading standings...</p>;
+  if (!data.length) return <p className="text-sm text-muted-foreground py-4 text-center">{loading ? 'Loading standings…' : 'Standings unavailable right now'}</p>;
 
   const current = data[idx];
   return (

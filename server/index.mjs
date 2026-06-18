@@ -495,75 +495,14 @@ const server = http.createServer(async (req, res) => {
       const cacheKey = 'agg_homepage:' + tz;
       const hit = cacheGet(cacheKey);
       if (hit) return json(req, res, hit.data);
-
-      // "Today" in the viewer's timezone (fall back to UTC if tz is invalid)
-      let today;
       try {
-        today = new Date(new Date().toLocaleString('en-US', { timeZone: tz })).toLocaleDateString('en-CA');
-      } catch {
-        today = new Date().toLocaleDateString('en-CA');
-      }
-      const leagues = [
-        { id: 39, name: 'Premier League', season: '2025' },
-        { id: 140, name: 'La Liga', season: '2025' },
-        { id: 135, name: 'Serie A', season: '2025' },
-        { id: 78, name: 'Bundesliga', season: '2025' },
-        { id: 61, name: 'Ligue 1', season: '2025' },
-      ];
-
-      try {
-        // Probe whether the World Cup is currently active (has standings)
-        let wcActive = false;
-        let wcStandings = null;
-        try {
-          const ws = await fetchUpstream('standings', { league: '1', season: '2026' });
-          const blocks = ws?.response?.[0]?.league?.standings;
-          if (blocks && blocks.length) { wcActive = true; wcStandings = ws; }
-        } catch {}
-
-        const [live, todayMatches, ...rest] = await Promise.allSettled([
-          fetchUpstream('fixtures', { live: 'all', timezone: tz }),
-          // Today's fixtures in the viewer's timezone (so WC games show on the right day)
-          fetchUpstream('fixtures', { date: today, timezone: tz }),
-          ...leagues.map(l => fetchUpstream('players/topscorers', { league: String(l.id), season: l.season })),
-          ...leagues.map(l => fetchUpstream('standings', { league: String(l.id), season: l.season })),
-        ]);
-
-        const result = {
-          live: live.status === 'fulfilled' ? live.value : [],
-          today: todayMatches.status === 'fulfilled' ? todayMatches.value : [],
-          scorers: {},
-          standings: {},
-          worldCupActive: wcActive,
-          wcScorers: null,
-          wcStandings: wcActive ? wcStandings : null,
-        };
-
-        // During the WC: use computed top scorers (real match events, not the lagging aggregate)
-        if (wcActive) {
-          try {
-            let computed = cacheGet('computed:wc-topstats');
-            if (!computed) {
-              const d = await computeWorldCupTopStats();
-              cacheSet('computed:wc-topstats', d, { fresh: 90, stale: 600 });
-              computed = { data: d };
-            }
-            result.wcScorers = computed.data?.topscorers || [];
-          } catch {}
-        }
-
-        // Domestic leagues (shown when WC is NOT active, or as secondary)
-        leagues.forEach((l, i) => {
-          const scorerRes = rest[i];
-          const standRes = rest[i + leagues.length];
-          if (scorerRes?.status === 'fulfilled') result.scorers[l.id] = scorerRes.value;
-          if (standRes?.status === 'fulfilled') result.standings[l.id] = standRes.value;
-        });
-
-        cacheSet(cacheKey, result, { fresh: 60, stale: 120 });
+        const result = await buildHomepageData(tz);
         return json(req, res, result);
       } catch (err) {
         console.error('Homepage aggregate error:', err);
+        // Degraded: serve last good homepage data if we have it, rather than empty
+        const lg = lastGood.get(cacheKey);
+        if (lg) return json(req, res, lg.data, { 'X-Cache': 'DEGRADED' });
         return json(req, res, { live: [], today: [], scorers: {}, standings: {}, worldCupActive: false });
       }
     }
@@ -981,6 +920,70 @@ async function computeWorldCupTopStats() {
   }
 }
 
+// Build the aggregated homepage payload for a given timezone (cached + warmable).
+async function buildHomepageData(tz) {
+  const cacheKey = 'agg_homepage:' + tz;
+  let today;
+  try {
+    today = new Date(new Date().toLocaleString('en-US', { timeZone: tz })).toLocaleDateString('en-CA');
+  } catch {
+    today = new Date().toLocaleDateString('en-CA');
+  }
+  const leagues = [
+    { id: 39, name: 'Premier League', season: '2025' },
+    { id: 140, name: 'La Liga', season: '2025' },
+    { id: 135, name: 'Serie A', season: '2025' },
+    { id: 78, name: 'Bundesliga', season: '2025' },
+    { id: 61, name: 'Ligue 1', season: '2025' },
+  ];
+
+  let wcActive = false, wcStandings = null;
+  try {
+    const ws = await fetchUpstream('standings', { league: '1', season: '2026' });
+    const blocks = ws?.response?.[0]?.league?.standings;
+    if (blocks && blocks.length) { wcActive = true; wcStandings = ws; }
+  } catch {}
+
+  const [live, todayMatches, ...rest] = await Promise.allSettled([
+    fetchUpstream('fixtures', { live: 'all', timezone: tz }),
+    fetchUpstream('fixtures', { date: today, timezone: tz }),
+    ...leagues.map(l => fetchUpstream('players/topscorers', { league: String(l.id), season: l.season })),
+    ...leagues.map(l => fetchUpstream('standings', { league: String(l.id), season: l.season })),
+  ]);
+
+  const result = {
+    live: live.status === 'fulfilled' ? live.value : [],
+    today: todayMatches.status === 'fulfilled' ? todayMatches.value : [],
+    scorers: {},
+    standings: {},
+    worldCupActive: wcActive,
+    wcScorers: null,
+    wcStandings: wcActive ? wcStandings : null,
+  };
+
+  if (wcActive) {
+    try {
+      let computed = cacheGet('computed:wc-topstats');
+      if (!computed) {
+        const d = await computeWorldCupTopStats();
+        cacheSet('computed:wc-topstats', d, { fresh: 90, stale: 600 });
+        computed = { data: d };
+      }
+      result.wcScorers = computed.data?.topscorers || [];
+    } catch {}
+  }
+
+  leagues.forEach((l, i) => {
+    const scorerRes = rest[i];
+    const standRes = rest[i + leagues.length];
+    if (scorerRes?.status === 'fulfilled') result.scorers[l.id] = scorerRes.value;
+    if (standRes?.status === 'fulfilled') result.standings[l.id] = standRes.value;
+  });
+
+  cacheSet(cacheKey, result, { fresh: 60, stale: 300 });
+  return result;
+}
+
 // Proactively refresh WC standings + top scorers so the cache is always fresh.
 // Quota-aware: backs off if the daily API budget is running low.
 async function warmWorldCupStats() {
@@ -1001,6 +1004,11 @@ async function warmWorldCupStats() {
     } catch (e) {
       // ignore individual failures (quota, transient)
     }
+  }
+  // Warm the homepage aggregate for the primary audience timezone + UTC so the
+  // first visitor never hits a cold (empty) homepage.
+  for (const tz of ['Asia/Kathmandu', 'UTC']) {
+    try { await buildHomepageData(tz); } catch {}
   }
 }
 
