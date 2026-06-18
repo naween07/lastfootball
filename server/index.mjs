@@ -1414,8 +1414,21 @@ async function generateMatchReports() {
     }
     if (!finished.length) return;
 
+    // Process NEWEST matches first — otherwise the 20-item cap is permanently
+    // filled by the oldest matches (which already have reports), and newly
+    // finished matches never get one.
+    finished.sort((a, b) => {
+      const da = new Date(a.fixture?.date || 0).getTime();
+      const db = new Date(b.fixture?.date || 0).getTime();
+      return db - da;
+    });
+
     let created = 0;
-    for (const f of finished.slice(0, 20)) {
+    let checked = 0;
+    for (const f of finished) {
+      if (created >= 15) break;      // cap new reports created per run
+      if (checked >= 40) break;       // cap existence-probes per run (quota safety)
+      checked++;
       // Skip if a post with this slug already exists (cheap check before fetching stats)
       const home = f.teams?.home?.name, away = f.teams?.away?.name;
       const hs = f.goals?.home, as_ = f.goals?.away;
