@@ -119,6 +119,30 @@ const quota = {
   callsToday: 0,
 };
 
+// Circuit breaker: background jobs (warming, reports, fantasy, computed stats)
+// must call this and bail if it returns false. Keeps a hard reserve of the daily
+// quota for real user traffic so background work can NEVER exhaust the limit.
+// Real user requests are NOT gated by this — they always run (and fall back to
+// cached/last-good data if the API itself is exhausted).
+const QUOTA_RESERVE = 1500; // always leave this many calls for live user traffic
+let _breakerLogged = false;
+function backgroundJobsAllowed() {
+  // If we haven't seen a quota header yet, allow (we'll learn the real number fast)
+  if (!quota.daily.limit) return true;
+  if (quota.daily.remaining <= QUOTA_RESERVE) {
+    if (!_breakerLogged) {
+      console.warn(`🛑 CIRCUIT BREAKER: background jobs paused — only ${quota.daily.remaining} calls left (reserve ${QUOTA_RESERVE} for users). Resumes at daily reset.`);
+      _breakerLogged = true;
+    }
+    return false;
+  }
+  if (_breakerLogged && quota.daily.remaining > QUOTA_RESERVE + 500) {
+    console.log(`✅ CIRCUIT BREAKER: quota recovered (${quota.daily.remaining} left) — background jobs resumed.`);
+    _breakerLogged = false;
+  }
+  return true;
+}
+
 function fetchWithHeaders(url, headers) {
   return new Promise((resolve, reject) => {
     https.get(url, { headers }, (res) => {
@@ -853,7 +877,7 @@ server.listen(PORT, '127.0.0.1', () => {
   // Compute WC top scorers from real match events (heavier; less frequent)
   setTimeout(async () => { try { const d = await computeWorldCupTopStats(); cacheSet('computed:wc-topstats', d, { fresh: 90, stale: 600 }); } catch {} }, 45 * 1000);
   setInterval(async () => {
-    if (quota.daily.limit > 0 && quota.daily.remaining > 0 && quota.daily.remaining < 800) return;
+    if (!backgroundJobsAllowed()) return;
     try { const d = await computeWorldCupTopStats(); cacheSet('computed:wc-topstats', d, { fresh: 90, stale: 600 }); } catch {}
   }, 5 * 60 * 1000); // Every 5 minutes
 });
@@ -1003,8 +1027,7 @@ async function buildHomepageData(tz) {
 // Proactively refresh WC standings + top scorers so the cache is always fresh.
 // Quota-aware: backs off if the daily API budget is running low.
 async function warmWorldCupStats() {
-  // Don't spend budget when nearly exhausted
-  if (quota.daily.limit > 0 && quota.daily.remaining > 0 && quota.daily.remaining < 500) return;
+  if (!backgroundJobsAllowed()) return;
   const targets = [
     { endpoint: 'standings', params: { league: '1', season: '2026' } },
     { endpoint: 'players/topscorers', params: { league: '1', season: '2026' } },
@@ -1032,6 +1055,7 @@ async function warmWorldCupStats() {
 // ─── Fantasy Points Engine (FPL-style) ──────────────────────────────────────
 // Scores finished WC fixtures from real player stats, applies to fantasy squads.
 async function scoreFantasy() {
+  if (!backgroundJobsAllowed()) return;
   try {
     const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
 
@@ -1411,6 +1435,7 @@ function buildReportFromFixture(f) {
 }
 
 async function generateMatchReports() {
+  if (!backgroundJobsAllowed()) return;
   try {
     const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
     // Gather recently finished matches from notable leagues
