@@ -873,7 +873,7 @@ server.listen(PORT, '127.0.0.1', () => {
   setInterval(writeSitemapFile, 30 * 60 * 1000);
   // Keep World Cup stats cache always warm so the first viewer never sees stale data
   setTimeout(warmWorldCupStats, 10 * 1000);
-  setInterval(warmWorldCupStats, 180 * 1000); // Every 3 minutes
+  setInterval(warmWorldCupStats, 300 * 1000); // Every 5 minutes
   // Compute WC top scorers from real match events (heavier; less frequent)
   setTimeout(async () => { try { const d = await computeWorldCupTopStats(); cacheSet('computed:wc-topstats', d, { fresh: 90, stale: 600 }); } catch {} }, 45 * 1000);
   setInterval(async () => {
@@ -984,12 +984,28 @@ async function buildHomepageData(tz) {
   // Domestic league scorers/standings barely change and aren't even shown during
   // the WC — cache them for 6h so warming doesn't refetch them every few minutes.
   const domesticTtl = { fresh: 21600, stale: 43200 };
-  const [live, todayMatches, ...rest] = await Promise.allSettled([
-    cachedUpstream('fixtures', { live: 'all', timezone: tz }, { fresh: 20, stale: 40 }),
+
+  // Live fixtures: poll fast (20s) ONLY when matches are actually live. When nothing
+  // is live, cache for 5 min so we don't burn calls polling an empty result.
+  const liveKey = 'fixtures?live=all&timezone=' + tz;
+  let liveData;
+  const liveHit = cacheGet(liveKey);
+  if (liveHit) {
+    liveData = liveHit.data;
+  } else {
+    try {
+      liveData = await fetchUpstream('fixtures', { live: 'all', timezone: tz });
+      const hasLive = (liveData?.response || []).length > 0;
+      cacheSet(liveKey, liveData, hasLive ? { fresh: 20, stale: 40 } : { fresh: 300, stale: 600 });
+    } catch { liveData = { response: [] }; }
+  }
+
+  const [todayMatches, ...rest] = await Promise.allSettled([
     cachedUpstream('fixtures', { date: today, timezone: tz }, { fresh: 60, stale: 300 }),
     ...leagues.map(l => cachedUpstream('players/topscorers', { league: String(l.id), season: l.season }, domesticTtl)),
     ...leagues.map(l => cachedUpstream('standings', { league: String(l.id), season: l.season }, domesticTtl)),
   ]);
+  const live = { status: 'fulfilled', value: liveData };
 
   const result = {
     live: live.status === 'fulfilled' ? live.value : [],
@@ -1047,9 +1063,9 @@ async function warmWorldCupStats() {
   // Warm the homepage aggregate. buildHomepageData now uses cache-first fetching,
   // so this only spends fresh API calls on the few things that actually expired
   // (live + today fixtures + WC stats), NOT the domestic leagues every time.
-  for (const tz of ['Asia/Kathmandu', 'UTC']) {
-    try { await buildHomepageData(tz); } catch {}
-  }
+  // Warm the homepage aggregate for the primary audience timezone only (Nepal).
+  // buildHomepageData is cache-first, so this mostly reuses cached data.
+  try { await buildHomepageData('Asia/Kathmandu'); } catch {}
 }
 
 // ─── Fantasy Points Engine (FPL-style) ──────────────────────────────────────
