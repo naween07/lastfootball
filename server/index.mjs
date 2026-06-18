@@ -158,6 +158,19 @@ async function fetchUpstream(endpoint, params) {
   return data;
 }
 
+// Cache-first upstream fetch: returns cached data if still within stale window,
+// otherwise fetches and caches. Use this for warming/aggregation so repeated
+// builds reuse cached data instead of burning fresh API calls each time.
+async function cachedUpstream(endpoint, params, ttl) {
+  const sortedKeys = Object.keys(params).sort();
+  const cacheKey = endpoint + '?' + sortedKeys.map(k => k + '=' + params[k]).join('&');
+  const hit = cacheGet(cacheKey);
+  if (hit) return hit.data;
+  const data = await fetchUpstream(endpoint, params);
+  cacheSet(cacheKey, data, ttl || getTtl(endpoint, params));
+  return data;
+}
+
 async function revalidate(cacheKey, endpoint, params, ttl) {
   const existing = inflight.get(cacheKey);
   if (existing) return existing;
@@ -939,16 +952,19 @@ async function buildHomepageData(tz) {
 
   let wcActive = false, wcStandings = null;
   try {
-    const ws = await fetchUpstream('standings', { league: '1', season: '2026' });
+    const ws = await cachedUpstream('standings', { league: '1', season: '2026' });
     const blocks = ws?.response?.[0]?.league?.standings;
     if (blocks && blocks.length) { wcActive = true; wcStandings = ws; }
   } catch {}
 
+  // Domestic league scorers/standings barely change and aren't even shown during
+  // the WC — cache them for 6h so warming doesn't refetch them every few minutes.
+  const domesticTtl = { fresh: 21600, stale: 43200 };
   const [live, todayMatches, ...rest] = await Promise.allSettled([
-    fetchUpstream('fixtures', { live: 'all', timezone: tz }),
-    fetchUpstream('fixtures', { date: today, timezone: tz }),
-    ...leagues.map(l => fetchUpstream('players/topscorers', { league: String(l.id), season: l.season })),
-    ...leagues.map(l => fetchUpstream('standings', { league: String(l.id), season: l.season })),
+    cachedUpstream('fixtures', { live: 'all', timezone: tz }, { fresh: 20, stale: 40 }),
+    cachedUpstream('fixtures', { date: today, timezone: tz }, { fresh: 60, stale: 300 }),
+    ...leagues.map(l => cachedUpstream('players/topscorers', { league: String(l.id), season: l.season }, domesticTtl)),
+    ...leagues.map(l => cachedUpstream('standings', { league: String(l.id), season: l.season }, domesticTtl)),
   ]);
 
   const result = {
@@ -1005,8 +1021,9 @@ async function warmWorldCupStats() {
       // ignore individual failures (quota, transient)
     }
   }
-  // Warm the homepage aggregate for the primary audience timezone + UTC so the
-  // first visitor never hits a cold (empty) homepage.
+  // Warm the homepage aggregate. buildHomepageData now uses cache-first fetching,
+  // so this only spends fresh API calls on the few things that actually expired
+  // (live + today fixtures + WC stats), NOT the domestic leagues every time.
   for (const tz of ['Asia/Kathmandu', 'UTC']) {
     try { await buildHomepageData(tz); } catch {}
   }
