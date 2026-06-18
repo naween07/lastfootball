@@ -85,6 +85,11 @@ function cacheGet(key) {
   return entry;
 }
 
+// "Last good" store: the most recent successful response per key, kept even after
+// the TTL cache expires. Used as a fallback when the upstream API fails (e.g. quota
+// exhausted) so the site never serves empty data / skeletons.
+const lastGood = new Map();
+
 function cacheSet(key, data, ttl) {
   const now = Date.now();
   if (cache.size >= MAX_ENTRIES) {
@@ -97,6 +102,14 @@ function cacheSet(key, data, ttl) {
     freshUntil: now + ttl.fresh * 1000,
     staleUntil: now + (ttl.fresh + ttl.stale) * 1000,
   });
+  // Remember the last good payload indefinitely (bounded) for degraded fallback
+  if (data !== null && data !== undefined) {
+    if (lastGood.size >= MAX_ENTRIES * 2) {
+      const oldest = lastGood.keys().next().value;
+      if (oldest) lastGood.delete(oldest);
+    }
+    lastGood.set(key, { data, savedAt: now });
+  }
 }
 
 // ─── API Quota Monitor ──────────────────────────────────────────────────────
@@ -695,11 +708,25 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
-      const data = await revalidate(cacheKey, endpoint, params, ttl);
-      return json(req, res, data, {
-        'X-Cache': 'MISS',
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-      });
+      try {
+        const data = await revalidate(cacheKey, endpoint, params, ttl);
+        return json(req, res, data, {
+          'X-Cache': 'MISS',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+        });
+      } catch (apiErr) {
+        // Upstream failed (e.g. quota exhausted). Serve the last good copy if we
+        // have one, so the site shows recent data instead of empty skeletons.
+        const lg = lastGood.get(cacheKey);
+        if (lg) {
+          return json(req, res, lg.data, {
+            'X-Cache': 'DEGRADED',
+            'X-Data-Age': String(Math.round((Date.now() - lg.savedAt) / 1000)),
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+          });
+        }
+        throw apiErr;
+      }
     }
 
     // News
@@ -870,7 +897,7 @@ server.listen(PORT, '127.0.0.1', () => {
   setInterval(writeSitemapFile, 30 * 60 * 1000);
   // Keep World Cup stats cache always warm so the first viewer never sees stale data
   setTimeout(warmWorldCupStats, 10 * 1000);
-  setInterval(warmWorldCupStats, 90 * 1000); // Every 90 seconds
+  setInterval(warmWorldCupStats, 180 * 1000); // Every 3 minutes
   // Compute WC top scorers from real match events (heavier; less frequent)
   setTimeout(async () => { try { const d = await computeWorldCupTopStats(); cacheSet('computed:wc-topstats', d, { fresh: 90, stale: 600 }); } catch {} }, 45 * 1000);
   setInterval(async () => {
@@ -885,16 +912,32 @@ async function computeWorldCupTopStats() {
   try {
     const fx = await fetchUpstream('fixtures', { league: '1', season: '2026', status: 'FT-AET-PEN' });
     const finished = fx?.response || [];
-    const players = {}; // id -> { player, team, goals, penalties, assists, yellow, red, apps }
+    const players = {}; // id -> aggregated stats
 
-    // Cap per run to protect quota; finished WC matches accumulate slowly
-    for (const f of finished.slice(0, 64)) {
+    let fetchedThisRun = 0;
+    for (const f of finished.slice(0, 104)) {
       const fid = f.fixture?.id;
       if (!fid) continue;
+
+      // A finished match's player stats NEVER change — cache them permanently
+      // (per fixture) so we only ever hit the API once per match. This is the
+      // single biggest quota saver: previously every run refetched every match.
+      const cacheKey = `fixplayers:${fid}`;
       let stats;
-      try {
-        stats = await fetchUpstream('fixtures/players', { fixture: String(fid) });
-      } catch { continue; }
+      const cached = cacheGet(cacheKey);
+      if (cached) {
+        stats = cached.data;
+      } else {
+        // Limit new fetches per run to avoid a quota spike when many matches finish at once
+        if (fetchedThisRun >= 12) continue;
+        try {
+          stats = await fetchUpstream('fixtures/players', { fixture: String(fid) });
+          fetchedThisRun++;
+          // Cache for ~30 days — finished match data is immutable
+          cacheSet(cacheKey, stats, { fresh: 2592000, stale: 2592000 });
+        } catch { continue; }
+      }
+
       for (const t of (stats?.response || [])) {
         const team = { id: t.team?.id, name: t.team?.name, logo: t.team?.logo };
         for (const pl of (t.players || [])) {
@@ -914,7 +957,6 @@ async function computeWorldCupTopStats() {
           p.assists += s.goals?.assists || 0;
           p.yellow += s.cards?.yellow || 0;
           p.red += s.cards?.red || 0;
-          // keep latest team seen
           if (team?.id) p.team = team;
         }
       }
@@ -1092,10 +1134,15 @@ async function buildPremiumReport(f) {
   const date = f.fixture?.date ? new Date(f.fixture.date).toISOString() : new Date().toISOString();
   const venue = f.fixture?.venue?.name ? `${f.fixture.venue.name}${f.fixture.venue.city ? ', ' + f.fixture.venue.city : ''}` : null;
 
-  // ── Fetch events + statistics (best-effort) ──
+  // Events + statistics for a finished match are immutable — cache permanently per fixture.
   let events = [], statsResp = [];
-  try { const e = await fetchUpstream('fixtures/events', { fixture: String(fid) }); events = e?.response || []; } catch {}
-  try { const s = await fetchUpstream('fixtures/statistics', { fixture: String(fid) }); statsResp = s?.response || []; } catch {}
+  const evKey = `fixevents:${fid}`, stKey = `fixstats:${fid}`;
+  const evCached = cacheGet(evKey);
+  if (evCached) { events = evCached.data; }
+  else { try { const e = await fetchUpstream('fixtures/events', { fixture: String(fid) }); events = e?.response || []; cacheSet(evKey, events, { fresh: 2592000, stale: 2592000 }); } catch {} }
+  const stCached = cacheGet(stKey);
+  if (stCached) { statsResp = stCached.data; }
+  else { try { const s = await fetchUpstream('fixtures/statistics', { fixture: String(fid) }); statsResp = s?.response || []; cacheSet(stKey, statsResp, { fresh: 2592000, stale: 2592000 }); } catch {} }
 
   const homeId = f.teams?.home?.id, awayId = f.teams?.away?.id;
   const hStat = statsResp.find(s => s.team?.id === homeId);
