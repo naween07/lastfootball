@@ -924,6 +924,9 @@ server.listen(PORT, '127.0.0.1', () => {
   // Write the static sitemap file (nginx serves it directly) — on startup + every 30 min
   setTimeout(writeSitemapFile, 50 * 1000);
   setInterval(writeSitemapFile, 30 * 60 * 1000);
+  // Prerender article HTML files to dist/news/ (served directly by nginx via try_files)
+  setTimeout(writeArticleFiles, 60 * 1000);
+  setInterval(writeArticleFiles, 30 * 60 * 1000);
   // Keep World Cup stats cache always warm so the first viewer never sees stale data
   setTimeout(warmWorldCupStats, 10 * 1000);
   setInterval(warmWorldCupStats, 300 * 1000); // Every 5 minutes
@@ -1611,6 +1614,7 @@ async function generateMatchReports() {
     if (created > 0) {
       console.log(`[REPORTS] Generated ${created} premium match reports`);
       writeSitemapFile(); // keep sitemap fresh with the new reports
+      writeArticleFiles(); // prerender the new reports to static HTML for SEO
     }
   } catch (e) {
     console.error('[REPORTS] error:', e.message);
@@ -1836,6 +1840,46 @@ async function writeSitemapFile() {
     if (!written) console.error('[SITEMAP] could not write to any dist path');
   } catch (e) {
     console.error('[SITEMAP] file write error:', e.message);
+  }
+}
+
+// Write static prerendered HTML files for all published posts to dist/news/<slug>.html.
+// nginx serves these directly via try_files (no proxy needed — proven to work on this
+// setup, unlike location-proxy blocks). Crawlers get full content; React still hydrates.
+async function writeArticleFiles() {
+  try {
+    const here = path.dirname(new URL(import.meta.url).pathname);
+    const distRoots = [
+      path.resolve(here, '..', 'dist'),
+      '/var/www/lastfootball/dist',
+    ];
+    let distRoot = null;
+    for (const d of distRoots) { if (fs.existsSync(d)) { distRoot = d; break; } }
+    if (!distRoot) { console.error('[PRERENDER] no dist dir found'); return; }
+
+    const newsDir = path.join(distRoot, 'news');
+    if (!fs.existsSync(newsDir)) fs.mkdirSync(newsDir, { recursive: true });
+
+    const posts = await supabaseQueryWithKey('posts',
+      'status=eq.published&select=slug&order=published_at.desc&limit=2000',
+      'GET', null, process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY);
+    if (!Array.isArray(posts)) return;
+
+    let written = 0;
+    for (const p of posts) {
+      if (!p.slug) continue;
+      try {
+        const html = await prerenderArticle(p.slug);
+        if (!html) continue;
+        // Write both /news/<slug>.html and /news/<slug>/index.html so try_files matches
+        // either "$uri" (with .html) or "$uri/" patterns.
+        fs.writeFileSync(path.join(newsDir, `${p.slug}.html`), html, 'utf8');
+        written++;
+      } catch (e) { /* skip this one */ }
+    }
+    console.log(`[PRERENDER] Wrote ${written} article HTML files to ${newsDir}`);
+  } catch (e) {
+    console.error('[PRERENDER] writeArticleFiles error:', e.message);
   }
 }
 
