@@ -518,6 +518,31 @@ const server = http.createServer(async (req, res) => {
       return json(req, res, { ok: true, cache: cache.size, logos: logoCache.size, rateLimits: rateLimits.size });
     }
 
+    // ─── Server-side prerender for article pages (SEO) ──────────────────
+    // Crawlers (and users) hitting /news/:slug get full HTML with real title,
+    // meta tags, JSON-LD, and article text baked in — not an empty SPA shell.
+    // The React app still hydrates on top for interactivity.
+    if (path.startsWith('/news/') && path.length > 6) {
+      const slug = decodeURIComponent(path.slice(6)).replace(/\/$/, '');
+      if (slug && !slug.includes('/')) {
+        try {
+          const html = await prerenderArticle(slug);
+          if (html) {
+            res.writeHead(200, {
+              ...getCorsHeaders(req),
+              'Content-Type': 'text/html; charset=utf-8',
+              'Cache-Control': 'public, max-age=300',
+            });
+            return res.end(html);
+          }
+        } catch (e) {
+          console.error('[PRERENDER] error:', e.message);
+        }
+        // Fall through to SPA shell if no content / error
+        return serveSpaShell(req, res);
+      }
+    }
+
     // ─── Dynamic sitemap (static pages + all published posts) ───────────
     if (path === '/api/sitemap.xml' || path === '/sitemap.xml') {
       const cached = cacheGet('sitemap:xml');
@@ -1593,6 +1618,160 @@ async function generateMatchReports() {
 }
 
 // ─── Sitemap builder (used by endpoint + static file writer) ────────────────
+// ─── Server-side prerender for SEO ──────────────────────────────────────────
+let _spaShellCache = null;
+function getSpaShell() {
+  if (_spaShellCache) return _spaShellCache;
+  const here = path.dirname(new URL(import.meta.url).pathname);
+  const candidates = [
+    path.resolve(here, '..', 'dist', 'index.html'),
+    '/var/www/lastfootball/dist/index.html',
+  ];
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) { _spaShellCache = fs.readFileSync(p, 'utf8'); return _spaShellCache; }
+    } catch {}
+  }
+  return null;
+}
+
+function serveSpaShell(req, res) {
+  const shell = getSpaShell();
+  if (shell) {
+    res.writeHead(200, { ...getCorsHeaders(req), 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+    return res.end(shell);
+  }
+  res.writeHead(404, getCorsHeaders(req));
+  return res.end('Not found');
+}
+
+function escapeHtml(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Minimal, safe markdown → HTML for prerendered article body (crawler-visible).
+function mdToHtmlServer(md) {
+  if (!md) return '';
+  const lines = md.split('\n');
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    // Tables
+    if (/^\s*\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1])) {
+      const header = line.trim().replace(/^\||\|$/g, '').split('|').map(c => escapeHtml(c.trim()));
+      i += 2;
+      const rows = [];
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
+        rows.push(lines[i].trim().replace(/^\||\|$/g, '').split('|').map(c => escapeHtml(c.trim())));
+        i++;
+      }
+      out.push('<table><thead><tr>' + header.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>' +
+        rows.map(r => '<tr>' + r.map(c => `<td>${c}</td>`).join('') + '</tr>').join('') + '</tbody></table>');
+      continue;
+    }
+    if (/^### /.test(line)) { out.push(`<h3>${escapeHtml(line.slice(4))}</h3>`); i++; continue; }
+    if (/^## /.test(line)) { out.push(`<h2>${escapeHtml(line.slice(3))}</h2>`); i++; continue; }
+    if (/^# /.test(line)) { out.push(`<h1>${escapeHtml(line.slice(2))}</h1>`); i++; continue; }
+    if (/^> /.test(line)) { out.push(`<blockquote>${escapeHtml(line.slice(2))}</blockquote>`); i++; continue; }
+    if (line.trim() === '') { i++; continue; }
+    // Paragraph with simple bold/italic
+    let p = escapeHtml(line)
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>');
+    out.push(`<p>${p}</p>`);
+    i++;
+  }
+  return out.join('\n');
+}
+
+// Build a fully prerendered HTML page for a published article (match report etc.)
+async function prerenderArticle(slug) {
+  // Fetch the post (cached briefly to avoid DB hit per crawl)
+  const cacheKey = 'prerender:' + slug;
+  const hit = cacheGet(cacheKey);
+  if (hit) return hit.data;
+
+  const rows = await supabaseQueryWithKey('posts',
+    `slug=eq.${encodeURIComponent(slug)}&status=eq.published&select=title,subtitle,meta_description,body,league,teams,featured_image,featured_image_alt,published_at,json_ld,author_name&limit=1`,
+    'GET', null, process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY);
+  if (!Array.isArray(rows) || !rows.length) return null;
+  const post = rows[0];
+
+  const shell = getSpaShell();
+  if (!shell) return null;
+
+  const BASE = 'https://lastfootball.com';
+  const url = `${BASE}/news/${encodeURIComponent(slug)}`;
+  const title = escapeHtml(post.title || 'Match Report');
+  const desc = escapeHtml((post.meta_description || post.subtitle || '').slice(0, 200));
+  const image = post.featured_image || `${BASE}/og-image.png`;
+  const imageAlt = escapeHtml(post.featured_image_alt || post.title || '');
+  const published = post.published_at || new Date().toISOString();
+  const pageTitle = `${title} | LastFootball`;
+
+  // Build the crawler-visible content block
+  const bodyHtml = mdToHtmlServer(post.body || '');
+  const subtitleHtml = post.subtitle ? `<p class="article-subtitle"><em>${escapeHtml(post.subtitle)}</em></p>` : '';
+  const teamsLine = Array.isArray(post.teams) && post.teams.length
+    ? `<p class="article-teams">${escapeHtml(post.teams.join(' vs '))}${post.league ? ' — ' + escapeHtml(post.league) : ''}</p>` : '';
+  const contentBlock = `
+    <article class="prerendered-article">
+      <h1>${title}</h1>
+      ${subtitleHtml}
+      ${teamsLine}
+      <div class="article-body">${bodyHtml}</div>
+    </article>`;
+
+  // JSON-LD: prefer stored, else build a NewsArticle
+  let jsonLd = post.json_ld;
+  if (!jsonLd) {
+    jsonLd = {
+      '@context': 'https://schema.org',
+      '@type': 'NewsArticle',
+      headline: post.title,
+      description: post.meta_description || post.subtitle,
+      datePublished: published,
+      author: { '@type': 'Organization', name: post.author_name || 'LastFootball' },
+      publisher: { '@type': 'Organization', name: 'LastFootball', logo: { '@type': 'ImageObject', url: `${BASE}/favicon.svg` } },
+      mainEntityOfPage: url,
+    };
+  }
+  const jsonLdScript = `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>`;
+
+  // Inject into the shell: replace <title>, description, canonical, OG/Twitter, add article JSON-LD,
+  // and place the content block inside #root so crawlers see it (React replaces it on hydration).
+  let html = shell;
+
+  // Title
+  html = html.replace(/<title>[\s\S]*?<\/title>/, `<title>${escapeHtml(pageTitle)}</title>`);
+  // Description meta
+  html = html.replace(/<meta name="description"[^>]*>/, `<meta name="description" content="${desc}" />`);
+  // Canonical
+  if (/<link rel="canonical"/.test(html)) {
+    html = html.replace(/<link rel="canonical"[^>]*>/, `<link rel="canonical" href="${url}" />`);
+  } else {
+    html = html.replace('</head>', `  <link rel="canonical" href="${url}" />\n</head>`);
+  }
+  // OG tags
+  html = html
+    .replace(/<meta property="og:type"[^>]*>/, `<meta property="og:type" content="article" />`)
+    .replace(/<meta property="og:url"[^>]*>/, `<meta property="og:url" content="${url}" />`)
+    .replace(/<meta property="og:title"[^>]*>/, `<meta property="og:title" content="${title}" />`)
+    .replace(/<meta property="og:description"[^>]*>/, `<meta property="og:description" content="${desc}" />`)
+    .replace(/<meta property="og:image"[^>]*>/, `<meta property="og:image" content="${escapeHtml(image)}" />`)
+    .replace(/<meta name="twitter:title"[^>]*>/, `<meta name="twitter:title" content="${title}" />`)
+    .replace(/<meta name="twitter:description"[^>]*>/, `<meta name="twitter:description" content="${desc}" />`)
+    .replace(/<meta name="twitter:image"[^>]*>/, `<meta name="twitter:image" content="${escapeHtml(image)}" />`);
+  // Article JSON-LD (append before </head>)
+  html = html.replace('</head>', `  ${jsonLdScript}\n</head>`);
+  // Inject content into #root (crawler sees it; React hydration replaces it)
+  html = html.replace(/<div id="root">[\s\S]*?<\/div>/, `<div id="root">${contentBlock}</div>`);
+
+  cacheSet(cacheKey, html, { fresh: 300, stale: 1800 });
+  return html;
+}
+
 async function buildSitemapXml() {
   const BASE = 'https://lastfootball.com';
   const today = new Date().toISOString().split('T')[0];
