@@ -56,9 +56,12 @@ export default function HomePage() {
 
         if (newsData.status === 'fulfilled' && newsData.value.data) setNews(newsData.value.data);
 
-        // If the server cache wasn't warm yet (empty data), retry once shortly
-        if (!gotData && attempt < 3 && !cancelled) {
-          setTimeout(() => { if (!cancelled) load(attempt + 1); }, 2000);
+        // If data came back empty (server cache still warming), retry quickly.
+        // Backoff: 800ms, 1.5s, 2.5s, 4s, 6s — up to 5 retries.
+        if (!gotData && attempt <= 5 && !cancelled) {
+          const delays = [800, 1500, 2500, 4000, 6000];
+          setTimeout(() => { if (!cancelled) load(attempt + 1); }, delays[attempt - 1] || 6000);
+          if (attempt === 1) setLoading(false); // stop the full-page spinner; widgets show their own state
           return;
         }
       } catch {}

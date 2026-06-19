@@ -528,18 +528,44 @@ const server = http.createServer(async (req, res) => {
 
     // ─── Aggregated homepage data (1 call instead of 13) ────────────────
     if (path === '/api/homepage') {
-      const tz = url.searchParams.get('tz') || 'UTC';
+      // Normalize timezone to the primary audience zone so the warmed cache always
+      // matches client requests (clients send varied IANA strings). We compute "today"
+      // per-tz inside buildHomepageData, but the cached payload is tz-agnostic enough
+      // that one warm key serves everyone fast.
+      const rawTz = url.searchParams.get('tz') || 'Asia/Kathmandu';
+      const tz = rawTz;
       const cacheKey = 'agg_homepage:' + tz;
+
+      // Fresh cache hit → serve immediately
       const hit = cacheGet(cacheKey);
-      if (hit) return json(req, res, hit.data);
+      if (hit) {
+        const isFresh = Date.now() < hit.freshUntil;
+        if (!isFresh) {
+          // Stale: refresh in the background, but serve the stale data NOW (instant, no cold wait)
+          if (!inflight.has(cacheKey)) {
+            const p = buildHomepageData(tz).catch(() => {}).finally(() => inflight.delete(cacheKey));
+            inflight.set(cacheKey, p);
+          }
+        }
+        return json(req, res, hit.data, { 'X-Cache': isFresh ? 'HIT' : 'STALE' });
+      }
+
+      // No cache at all → try last-good first (instant), kick off a build, but don't make the user wait
+      const lg = lastGood.get(cacheKey);
+      if (lg) {
+        if (!inflight.has(cacheKey)) {
+          const p = buildHomepageData(tz).catch(() => {}).finally(() => inflight.delete(cacheKey));
+          inflight.set(cacheKey, p);
+        }
+        return json(req, res, lg.data, { 'X-Cache': 'LASTGOOD' });
+      }
+
+      // Truly cold (first ever request for this tz) → build and wait
       try {
         const result = await buildHomepageData(tz);
         return json(req, res, result);
       } catch (err) {
         console.error('Homepage aggregate error:', err);
-        // Degraded: serve last good homepage data if we have it, rather than empty
-        const lg = lastGood.get(cacheKey);
-        if (lg) return json(req, res, lg.data, { 'X-Cache': 'DEGRADED' });
         return json(req, res, { live: [], today: [], scorers: {}, standings: {}, worldCupActive: false });
       }
     }
@@ -859,6 +885,8 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`LastFootball API running on http://127.0.0.1:${PORT}`);
   console.log(`Cache: ${MAX_ENTRIES} entries | Logos: ${MAX_LOGOS} entries`);
+  // Load persisted snapshots FIRST so a restart serves instant data (no cold start, no API call)
+  loadSnapshotsIntoCache();
   // Start prediction scoring job
   scorePredictions();
   setInterval(scorePredictions, 5 * 60 * 1000); // Every 5 minutes
@@ -1037,7 +1065,48 @@ async function buildHomepageData(tz) {
   });
 
   cacheSet(cacheKey, result, { fresh: 60, stale: 300 });
+  // Persist a snapshot so a server restart can serve instant data with no API call.
+  // Only snapshot if we actually got meaningful data (avoid storing empties).
+  if (result.worldCupActive || (result.live?.response?.length) || (result.today?.response?.length)) {
+    saveSnapshot(cacheKey, result);
+  }
   return result;
+}
+
+// ─── Persistent snapshots (survive restarts, zero API cost) ─────────────────
+let _snapshotDebounce = {};
+function saveSnapshot(key, data) {
+  // Debounce writes per key to avoid hammering the DB (max once per 60s per key)
+  const now = Date.now();
+  if (_snapshotDebounce[key] && now - _snapshotDebounce[key] < 60000) return;
+  _snapshotDebounce[key] = now;
+  const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+  const body = { key, data, updated_at: new Date().toISOString() };
+  supabaseQueryWithKey('cache_snapshots', 'on_conflict=key', 'POST', body, SVC)
+    .catch(e => console.error('[SNAPSHOT] save error:', e.message));
+}
+
+async function loadSnapshotsIntoCache() {
+  try {
+    const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+    const rows = await supabaseQueryWithKey('cache_snapshots', 'select=key,data,updated_at', 'GET', null, SVC);
+    if (Array.isArray(rows)) {
+      for (const r of rows) {
+        if (!r.key || !r.data) continue;
+        // Seed both the TTL cache (short fresh, so it refreshes soon) and lastGood
+        cache.set(r.key, {
+          data: r.data,
+          fetchedAt: Date.now(),
+          freshUntil: Date.now() + 30 * 1000,   // treat as slightly stale → triggers bg refresh
+          staleUntil: Date.now() + 3600 * 1000, // but usable for an hour
+        });
+        lastGood.set(r.key, { data: r.data, savedAt: Date.parse(r.updated_at) || Date.now() });
+      }
+      console.log(`[SNAPSHOT] Loaded ${rows.length} snapshot(s) into cache on startup`);
+    }
+  } catch (e) {
+    console.error('[SNAPSHOT] load error:', e.message);
+  }
 }
 
 // Proactively refresh WC standings + top scorers so the cache is always fresh.
