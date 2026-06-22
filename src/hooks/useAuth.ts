@@ -81,8 +81,8 @@ async function checkProfile(userId: string): Promise<boolean> {
     if (error) return true;
     if (data) return data.onboarding_completed ?? true;
 
-    // No profile — create one
-    await supabase.from('profiles').insert({ user_id: userId, onboarding_completed: true }).catch(() => {});
+    // No profile — create one (errors are swallowed by the surrounding try/catch)
+    await supabase.from('profiles').insert({ user_id: userId, onboarding_completed: true });
     return true;
   } catch {
     return true;

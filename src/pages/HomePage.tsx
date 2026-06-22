@@ -73,7 +73,7 @@ export default function HomePage() {
 
   const upcomingMatches = useMemo(() =>
     todayMatches
-      .filter(m => m.status === 'NS' || m.status === 'TBD')
+      .filter(m => m.status === 'NS' || (m.status as string) === 'TBD')
       .sort((a, b) => {
         // World Cup (league 1) first, then by kickoff time
         const aWC = a.league.id === 1 ? 0 : 1;
