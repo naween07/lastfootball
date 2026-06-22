@@ -11,31 +11,13 @@ export function useAuth() {
   useEffect(() => {
     let mounted = true;
 
-    // 1. Get initial session FIRST — this is the source of truth
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!mounted) return;
-      setSession(session);
-      setUser(session?.user ?? null);
-
-      if (session?.user) {
-        checkProfile(session.user.id).then(completed => {
-          if (mounted) {
-            setOnboardingCompleted(completed);
-            setLoading(false);
-          }
-        });
-      } else {
-        setLoading(false);
-      }
-    });
-
-    // 2. Listen for changes AFTER initial session is set
+    // Subscribe to auth changes. The client auto-initializes on construction and
+    // fires INITIAL_SESSION once the session is loaded from storage — handling it
+    // here (rather than a separate getSession race) makes the logged-in state appear
+    // as fast as the client allows, on first load, without needing a refresh.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!mounted) return;
-
-        // Ignore INITIAL_SESSION since we handle it above
-        if (event === 'INITIAL_SESSION') return;
 
         setSession(session);
         setUser(session?.user ?? null);
@@ -46,8 +28,20 @@ export function useAuth() {
         } else {
           setOnboardingCompleted(null);
         }
+        if (mounted) setLoading(false);
       }
     );
+
+    // Fallback: also read the current session immediately in case the listener's
+    // INITIAL_SESSION is delayed. Whichever resolves first wins; both are idempotent.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted || !session) return;
+      setSession(session);
+      setUser(session.user ?? null);
+      checkProfile(session.user.id).then(completed => {
+        if (mounted) { setOnboardingCompleted(completed); setLoading(false); }
+      });
+    }).catch(() => { if (mounted) setLoading(false); });
 
     return () => {
       mounted = false;

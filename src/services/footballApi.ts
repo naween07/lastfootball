@@ -946,12 +946,11 @@ const LEAGUE_NAMES: Record<number, string> = { 1: 'World Cup 2026', 39: 'Premier
 
 export async function fetchHomepageData(): Promise<HomepageData> {
   try {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20_000);
+    const timeoutId = setTimeout(() => controller.abort(), 12_000);
     let res;
     try {
-      res = await fetch(`${API_BASE_URL}/homepage?tz=${encodeURIComponent(tz)}`, {
+      res = await fetch(`${API_BASE_URL}/homepage`, {
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
       });

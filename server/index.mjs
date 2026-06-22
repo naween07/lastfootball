@@ -553,29 +553,26 @@ const server = http.createServer(async (req, res) => {
 
     // ─── Aggregated homepage data (1 call instead of 13) ────────────────
     if (path === '/api/homepage') {
-      // Normalize timezone to the primary audience zone so the warmed cache always
-      // matches client requests (clients send varied IANA strings). We compute "today"
-      // per-tz inside buildHomepageData, but the cached payload is tz-agnostic enough
-      // that one warm key serves everyone fast.
-      const rawTz = url.searchParams.get('tz') || 'Asia/Kathmandu';
-      const tz = rawTz;
+      // Use a SINGLE cache key for all visitors. Clients send varied IANA timezone
+      // strings (Asia/Kathmandu, Asia/Katmandu, Asia/Calcutta, etc.) and per-tz keys
+      // meant most mobile visitors hit a COLD key (warming only covered one tz) and
+      // saw empty widgets until refresh. The homepage data is essentially tz-agnostic
+      // (fixtures carry their own kickoff times), so one warm key serves everyone fast.
+      const tz = 'Asia/Kathmandu';
       const cacheKey = 'agg_homepage:' + tz;
 
       // Fresh cache hit → serve immediately
       const hit = cacheGet(cacheKey);
       if (hit) {
         const isFresh = Date.now() < hit.freshUntil;
-        if (!isFresh) {
-          // Stale: refresh in the background, but serve the stale data NOW (instant, no cold wait)
-          if (!inflight.has(cacheKey)) {
-            const p = buildHomepageData(tz).catch(() => {}).finally(() => inflight.delete(cacheKey));
-            inflight.set(cacheKey, p);
-          }
+        if (!isFresh && !inflight.has(cacheKey)) {
+          const p = buildHomepageData(tz).catch(() => {}).finally(() => inflight.delete(cacheKey));
+          inflight.set(cacheKey, p);
         }
         return json(req, res, hit.data, { 'X-Cache': isFresh ? 'HIT' : 'STALE' });
       }
 
-      // No cache at all → try last-good first (instant), kick off a build, but don't make the user wait
+      // No TTL cache → serve last-good instantly (never make the user wait / see empty)
       const lg = lastGood.get(cacheKey);
       if (lg) {
         if (!inflight.has(cacheKey)) {
@@ -585,9 +582,15 @@ const server = http.createServer(async (req, res) => {
         return json(req, res, lg.data, { 'X-Cache': 'LASTGOOD' });
       }
 
-      // Truly cold (first ever request for this tz) → build and wait
+      // Truly cold (first request ever, e.g. right after a fresh deploy with no snapshot)
+      // → build and wait, but coalesce concurrent requests so we build only once.
       try {
-        const result = await buildHomepageData(tz);
+        let p = inflight.get(cacheKey);
+        if (!p) {
+          p = buildHomepageData(tz).finally(() => inflight.delete(cacheKey));
+          inflight.set(cacheKey, p);
+        }
+        const result = await p;
         return json(req, res, result);
       } catch (err) {
         console.error('Homepage aggregate error:', err);
@@ -907,11 +910,14 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, '127.0.0.1', () => {
+server.listen(PORT, '127.0.0.1', async () => {
   console.log(`LastFootball API running on http://127.0.0.1:${PORT}`);
   console.log(`Cache: ${MAX_ENTRIES} entries | Logos: ${MAX_LOGOS} entries`);
-  // Load persisted snapshots FIRST so a restart serves instant data (no cold start, no API call)
-  loadSnapshotsIntoCache();
+  // Load persisted snapshots FIRST (awaited) so the homepage cache is populated before
+  // the first visitor arrives — no cold start, no empty widgets, no API call needed.
+  await loadSnapshotsIntoCache();
+  // Immediately warm the homepage aggregate so even a snapshot-less start is fast.
+  buildHomepageData('Asia/Kathmandu').catch(() => {});
   // Start prediction scoring job
   scorePredictions();
   setInterval(scorePredictions, 5 * 60 * 1000); // Every 5 minutes
