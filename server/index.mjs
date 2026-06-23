@@ -518,6 +518,25 @@ const server = http.createServer(async (req, res) => {
       return json(req, res, { ok: true, cache: cache.size, logos: logoCache.size, rateLimits: rateLimits.size });
     }
 
+    // ─── Share kit: copy-paste posting helper for Facebook/social ───────────
+    // Lists recent match reports with a ready-to-post caption + score-card image.
+    // Open in a browser, click "Copy", paste into a Facebook Page post.
+    if (path === '/api/share-kit') {
+      try {
+        const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+        const posts = await supabaseQueryWithKey('posts',
+          "category=eq.match-report&status=eq.published&select=title,slug,subtitle,league,teams,featured_image,published_at&order=published_at.desc&limit=25",
+          'GET', null, SVC);
+        const html = buildShareKitHtml(Array.isArray(posts) ? posts : []);
+        res.writeHead(200, { ...getCorsHeaders(req), 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+        return res.end(html);
+      } catch (e) {
+        console.error('[SHAREKIT] error:', e.message);
+        res.writeHead(500, getCorsHeaders(req));
+        return res.end('error');
+      }
+    }
+
     // ─── Server-side prerender for article pages (SEO) ──────────────────
     // Crawlers (and users) hitting /news/:slug get full HTML with real title,
     // meta tags, JSON-LD, and article text baked in — not an empty SPA shell.
@@ -916,8 +935,10 @@ server.listen(PORT, '127.0.0.1', async () => {
   // Load persisted snapshots FIRST (awaited) so the homepage cache is populated before
   // the first visitor arrives — no cold start, no empty widgets, no API call needed.
   await loadSnapshotsIntoCache();
-  // Immediately warm the homepage aggregate so even a snapshot-less start is fast.
+  // Generate the homepage immediately so even a snapshot-less start is fast.
   buildHomepageData('Asia/Kathmandu').catch(() => {});
+  // Backfill score cards for existing reports (once, shortly after boot)
+  setTimeout(() => { backfillScoreCards().catch(() => {}); }, 90 * 1000);
   // Start prediction scoring job
   scorePredictions();
   setInterval(scorePredictions, 5 * 60 * 1000); // Every 5 minutes
@@ -1550,7 +1571,7 @@ function buildReportFromFixture(f) {
   paras.push(`Final score: ${home} ${hs}-${as_} ${away}.`);
 
   const slug = reportSlugify(`${home}-${hs}-${as_}-${away}-${date.slice(0, 10)}`);
-  return { title, summary, body: paras.join('\n\n'), slug, league: comp, home, away, date, total, margin, isFeatured: f.league?.id === 1 };
+  return { title, summary, body: paras.join('\n\n'), slug, league: comp, home, away, hs, as_, date, total, margin, isFeatured: f.league?.id === 1 };
 }
 
 async function generateMatchReports() {
@@ -1601,7 +1622,10 @@ async function generateMatchReports() {
 
       const r = await buildPremiumReport(f);
       if (!r) continue;
-      const jsonLd = generateJsonLd({ type: 'NewsArticle', title: r.title, description: r.subtitle, slug: r.slug, author: 'LastFootball', image: null, published: r.date });
+      // Generate a branded score-card OG image for social sharing
+      const cardPath = await writeScoreCard({ slug: r.slug, home: r.home, away: r.away, hs: r.hs, as_: r.as_, league: r.league, date: r.date });
+      const ogImage = cardPath ? `https://lastfootball.com${cardPath}` : null;
+      const jsonLd = generateJsonLd({ type: 'NewsArticle', title: r.title, description: r.subtitle, slug: r.slug, author: 'LastFootball', image: ogImage, published: r.date });
       const row = {
         type: 'NewsArticle', status: 'published',
         title: r.title, slug: r.slug, subtitle: r.subtitle, body: r.body,
@@ -1609,6 +1633,7 @@ async function generateMatchReports() {
         meta_description: r.metaDesc,
         category: 'match-report', league: r.league,
         teams: [r.home, r.away], tags: r.tags,
+        featured_image: ogImage,
         featured_image_alt: r.imageAlt,
         author_name: 'LastFootball', json_ld: jsonLd,
         reading_time_mins: Math.max(1, Math.round(r.body.split(/\s+/).length / 200)),
@@ -1628,6 +1653,64 @@ async function generateMatchReports() {
 }
 
 // ─── Sitemap builder (used by endpoint + static file writer) ────────────────
+// ─── Share kit HTML (copy-paste social posting helper) ──────────────────────
+function buildShareKitHtml(posts) {
+  const BASE = 'https://lastfootball.com';
+  const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const cards = posts.map((p, i) => {
+    const teams = Array.isArray(p.teams) ? p.teams : [];
+    const url = `${BASE}/news/${encodeURIComponent(p.slug)}`;
+    const img = p.featured_image || `${BASE}/og-image.png`;
+    const hashtags = ['#Football', '#WorldCup2026', '#LastFootball',
+      ...teams.map(t => '#' + String(t).replace(/[^a-zA-Z0-9]/g, ''))].join(' ');
+    // Ready-to-post caption
+    const caption = `⚽ ${p.title}\n\n${p.subtitle || ''}\n\nFull match report 👇\n${url}\n\n${hashtags}`;
+    const cid = `cap${i}`;
+    return `
+      <div class="card">
+        <img src="${esc(img)}" alt="${esc(p.title)}" loading="lazy" />
+        <div class="body">
+          <div class="ttl">${esc(p.title)}</div>
+          <textarea id="${cid}" readonly>${esc(caption)}</textarea>
+          <div class="row">
+            <button onclick="cp('${cid}', this)">📋 Copy caption</button>
+            <a href="${esc(img)}" download class="btn">⬇ Image</a>
+            <a href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}" target="_blank" class="btn">Share dialog</a>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="robots" content="noindex"/>
+  <title>LastFootball — Share Kit</title>
+  <style>
+    body{background:#0d0d0d;color:#eee;font-family:system-ui,Arial,sans-serif;margin:0;padding:16px;}
+    h1{font-size:20px;}h1 b{color:#4ade80;}
+    .note{color:#888;font-size:13px;margin-bottom:20px;line-height:1.5;}
+    .card{background:#161616;border:1px solid #262626;border-radius:14px;overflow:hidden;margin-bottom:18px;max-width:620px;}
+    .card img{width:100%;display:block;}
+    .body{padding:14px;}
+    .ttl{font-weight:800;margin-bottom:10px;font-size:15px;}
+    textarea{width:100%;box-sizing:border-box;height:120px;background:#0d0d0d;color:#ddd;border:1px solid #333;border-radius:8px;padding:10px;font-size:13px;resize:vertical;font-family:inherit;}
+    .row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
+    button,.btn{background:#4ade80;color:#0d0d0d;border:none;border-radius:8px;padding:9px 14px;font-weight:700;cursor:pointer;text-decoration:none;font-size:13px;display:inline-block;}
+    .btn{background:#222;color:#4ade80;border:1px solid #333;}
+  </style></head><body>
+  <h1>Last<b>Football</b> — Share Kit</h1>
+  <p class="note">Ready-to-post captions + branded score cards for your latest match reports.<br/>
+  <b>To post on Facebook:</b> tap "Copy caption", tap "⬇ Image" to save the card, then create a Facebook post — paste the caption and attach the image. The link preview will also show the card automatically.</p>
+  ${cards || '<p class="note">No published match reports yet.</p>'}
+  <script>
+    function cp(id, btn){
+      var t=document.getElementById(id); t.select(); t.setSelectionRange(0,99999);
+      navigator.clipboard.writeText(t.value).then(function(){
+        var o=btn.textContent; btn.textContent='✓ Copied!'; setTimeout(function(){btn.textContent=o;},1500);
+      });
+    }
+  </script></body></html>`;
+}
+
 // ─── Server-side prerender for SEO ──────────────────────────────────────────
 let _spaShellCache = null;
 function getSpaShell() {
@@ -1852,6 +1935,101 @@ async function writeSitemapFile() {
 // Write static prerendered HTML files for all published posts to dist/news/<slug>.html.
 // nginx serves these directly via try_files (no proxy needed — proven to work on this
 // setup, unlike location-proxy blocks). Crawlers get full content; React still hydrates.
+// ─── Branded score-card OG images for social sharing ────────────────────────
+// Lazy-load sharp so the server still boots if it isn't installed.
+let _sharp = null, _sharpTried = false;
+async function getSharp() {
+  if (_sharpTried) return _sharp;
+  _sharpTried = true;
+  try { _sharp = (await import('sharp')).default; }
+  catch { console.error('[OG] sharp not installed — score cards disabled'); _sharp = null; }
+  return _sharp;
+}
+
+function ogEscape(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function ogFitFont(name, base, maxChars){ if(name.length<=maxChars) return base; return Math.max(30, Math.floor(base*maxChars/name.length)); }
+
+function scoreCardSvg({ home, away, hs, as_, league, dateLabel }) {
+  const W=1200, H=630;
+  const hFont=ogFitFont(home,56,11), aFont=ogFitFont(away,56,11);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#0d0d0d"/><stop offset="55%" stop-color="#141414"/><stop offset="100%" stop-color="#0a1f12"/></linearGradient>
+    <linearGradient id="grn" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#4ade80"/><stop offset="100%" stop-color="#22c55e"/></linearGradient>
+  </defs>
+  <rect width="${W}" height="${H}" fill="url(#bg)"/>
+  <rect x="0" y="0" width="${W}" height="8" fill="url(#grn)"/>
+  <rect x="0" y="${H-8}" width="${W}" height="8" fill="url(#grn)"/>
+  <text x="${W/2}" y="92" font-family="Arial,sans-serif" font-size="30" fill="#4ade80" text-anchor="middle" font-weight="700" letter-spacing="2">${ogEscape(league.toUpperCase())}</text>
+  <text x="${W/2}" y="132" font-family="Arial,sans-serif" font-size="22" fill="#999" text-anchor="middle">${ogEscape(dateLabel)}</text>
+  <text x="295" y="335" font-family="Arial,sans-serif" font-size="${hFont}" fill="#fff" text-anchor="middle" font-weight="800">${ogEscape(home)}</text>
+  <text x="905" y="335" font-family="Arial,sans-serif" font-size="${aFont}" fill="#fff" text-anchor="middle" font-weight="800">${ogEscape(away)}</text>
+  <rect x="510" y="265" width="180" height="110" rx="16" fill="#1c1c1c" stroke="url(#grn)" stroke-width="3"/>
+  <text x="${W/2}" y="345" font-family="Arial,sans-serif" font-size="64" fill="#4ade80" text-anchor="middle" font-weight="900">${hs} - ${as_}</text>
+  <text x="${W/2}" y="415" font-family="Arial,sans-serif" font-size="24" fill="#777" text-anchor="middle" font-weight="700" letter-spacing="2">FULL TIME</text>
+  <text x="${W/2-4}" y="558" font-family="Arial,sans-serif" font-size="40" fill="#ffffff" text-anchor="end" font-weight="900">Last</text>
+  <text x="${W/2+4}" y="558" font-family="Arial,sans-serif" font-size="40" fill="#4ade80" text-anchor="start" font-weight="900">Football</text>
+  <text x="${W/2}" y="596" font-family="Arial,sans-serif" font-size="19" fill="#666" text-anchor="middle" letter-spacing="4">LASTFOOTBALL.COM</text>
+</svg>`;
+}
+
+// Render and save a score-card PNG to dist/og/<slug>.png. Returns the public path or null.
+async function writeScoreCard({ slug, home, away, hs, as_, league, date }) {
+  const sharp = await getSharp();
+  if (!sharp) return null;
+  try {
+    const here = path.dirname(new URL(import.meta.url).pathname);
+    const distRoots = [path.resolve(here, '..', 'dist'), '/var/www/lastfootball/dist'];
+    let distRoot = null;
+    for (const d of distRoots) { if (fs.existsSync(d)) { distRoot = d; break; } }
+    if (!distRoot) return null;
+    const ogDir = path.join(distRoot, 'og');
+    if (!fs.existsSync(ogDir)) fs.mkdirSync(ogDir, { recursive: true });
+    const outPath = path.join(ogDir, `${slug}.png`);
+    if (fs.existsSync(outPath)) return `/og/${slug}.png`;  // immutable per finished match
+    let dateLabel = '';
+    try { dateLabel = new Date(date).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' }); } catch {}
+    const svg = scoreCardSvg({ home, away, hs, as_, league, dateLabel });
+    await sharp(Buffer.from(svg)).png().toFile(outPath);
+    return `/og/${slug}.png`;
+  } catch (e) {
+    console.error('[OG] writeScoreCard error:', e.message);
+    return null;
+  }
+}
+
+// Backfill score cards for existing match reports that have no featured_image yet,
+// then update the post row so OG tags and the news UI use the card.
+async function backfillScoreCards() {
+  const sharp = await getSharp();
+  if (!sharp) return;
+  try {
+    const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+    const rows = await supabaseQueryWithKey('posts',
+      "category=eq.match-report&status=eq.published&featured_image=is.null&select=id,slug,teams,league,title,published_at&limit=200",
+      'GET', null, SVC);
+    if (!Array.isArray(rows) || !rows.length) return;
+    let done = 0;
+    for (const p of rows) {
+      const teams = Array.isArray(p.teams) ? p.teams : [];
+      const home = teams[0], away = teams[1];
+      if (!home || !away) continue;
+      // Parse score from slug: home-HS-AS-away-date
+      const m = (p.slug || '').match(/-(\d+)-(\d+)-/);
+      if (!m) continue;
+      const hs = m[1], as_ = m[2];
+      const cardPath = await writeScoreCard({ slug: p.slug, home, away, hs, as_, league: p.league || 'Match Report', date: p.published_at });
+      if (!cardPath) continue;
+      const ogImage = `https://lastfootball.com${cardPath}`;
+      await supabaseQueryWithKey('posts', `id=eq.${p.id}`, 'PATCH', { featured_image: ogImage }, SVC);
+      done++;
+    }
+    if (done > 0) console.log(`[OG] Backfilled ${done} score cards`);
+  } catch (e) {
+    console.error('[OG] backfill error:', e.message);
+  }
+}
+
 async function writeArticleFiles() {
   try {
     const here = path.dirname(new URL(import.meta.url).pathname);
