@@ -1365,6 +1365,14 @@ async function buildPremiumReport(f) {
     if (g.time?.elapsed) scorerMap[key].minutes.push(g.time.elapsed + (g.time.extra || 0));
   }
   const scorers = Object.values(scorerMap);
+  // Sanity guard: a player cannot score more goals than their team's final total.
+  // The events feed can contain duplicates, VAR-overturned entries, or mislabeled
+  // rows that inflate a scorer's count (e.g. a "hat-trick" in a 2-0 game). Clamp each
+  // scorer's count to the team total so milestones (brace/hat-trick) are never overstated.
+  for (const s of scorers) {
+    const teamTotal = s.team === 'home' ? hs : as_;
+    if (typeof teamTotal === 'number' && s.count > teamTotal) s.count = teamTotal;
+  }
   const teamScorers = (side) => scorers.filter(s => s.team === side);
 
   // Describe a scorer with milestone translation
@@ -1986,13 +1994,15 @@ function scoreCardSvg({ home, away, hs, as_, league, dateLabel, homeFlag, awayFl
 async function writeScoreCard({ slug, home, away, hs, as_, league, date, homeLogo, awayLogo }) {
   if (!sharp) return null;
   try {
+    // IMPORTANT: store cards OUTSIDE dist/ — `vite build` wipes dist/ on every build,
+    // which would delete all generated cards. This persistent dir survives rebuilds.
     const here = path.dirname(new URL(import.meta.url).pathname);
-    const distRoots = [path.resolve(here, '..', 'dist'), '/var/www/lastfootball/dist'];
-    let distRoot = null;
-    for (const d of distRoots) { if (fs.existsSync(d)) { distRoot = d; break; } }
-    if (!distRoot) return null;
-    const ogDir = path.join(distRoot, 'og');
-    if (!fs.existsSync(ogDir)) fs.mkdirSync(ogDir, { recursive: true });
+    const ogRoots = [path.resolve(here, '..', 'og-cards'), '/var/www/lastfootball/og-cards'];
+    let ogDir = null;
+    for (const d of ogRoots) {
+      try { fs.mkdirSync(d, { recursive: true }); ogDir = d; break; } catch {}
+    }
+    if (!ogDir) return null;
     const outPath = path.join(ogDir, `${slug}.png`);
     if (fs.existsSync(outPath)) return `/og/${slug}.png`;  // immutable per finished match
     let dateLabel = '';
