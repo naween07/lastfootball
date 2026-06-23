@@ -1571,7 +1571,7 @@ function buildReportFromFixture(f) {
   paras.push(`Final score: ${home} ${hs}-${as_} ${away}.`);
 
   const slug = reportSlugify(`${home}-${hs}-${as_}-${away}-${date.slice(0, 10)}`);
-  return { title, summary, body: paras.join('\n\n'), slug, league: comp, home, away, hs, as_, date, total, margin, isFeatured: f.league?.id === 1 };
+  return { title, summary, body: paras.join('\n\n'), slug, league: comp, home, away, hs, as_, date, total, margin, homeLogo: f.teams?.home?.logo || null, awayLogo: f.teams?.away?.logo || null, isFeatured: f.league?.id === 1 };
 }
 
 async function generateMatchReports() {
@@ -1623,7 +1623,7 @@ async function generateMatchReports() {
       const r = await buildPremiumReport(f);
       if (!r) continue;
       // Generate a branded score-card OG image for social sharing
-      const cardPath = await writeScoreCard({ slug: r.slug, home: r.home, away: r.away, hs: r.hs, as_: r.as_, league: r.league, date: r.date });
+      const cardPath = await writeScoreCard({ slug: r.slug, home: r.home, away: r.away, hs: r.hs, as_: r.as_, league: r.league, date: r.date, homeLogo: r.homeLogo, awayLogo: r.awayLogo });
       const ogImage = cardPath ? `https://lastfootball.com${cardPath}` : null;
       const jsonLd = generateJsonLd({ type: 'NewsArticle', title: r.title, description: r.subtitle, slug: r.slug, author: 'LastFootball', image: ogImage, published: r.date });
       const row = {
@@ -1936,22 +1936,29 @@ async function writeSitemapFile() {
 // nginx serves these directly via try_files (no proxy needed — proven to work on this
 // setup, unlike location-proxy blocks). Crawlers get full content; React still hydrates.
 // ─── Branded score-card OG images for social sharing ────────────────────────
-// Lazy-load sharp so the server still boots if it isn't installed.
-let _sharp = null, _sharpTried = false;
-async function getSharp() {
-  if (_sharpTried) return _sharp;
-  _sharpTried = true;
-  try { _sharp = (await import('sharp')).default; }
-  catch { console.error('[OG] sharp not installed — score cards disabled'); _sharp = null; }
-  return _sharp;
-}
+// (uses the top-level `sharp` import; if sharp is null, cards are skipped)
 
 function ogEscape(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function ogFitFont(name, base, maxChars){ if(name.length<=maxChars) return base; return Math.max(30, Math.floor(base*maxChars/name.length)); }
 
-function scoreCardSvg({ home, away, hs, as_, league, dateLabel }) {
+// Fetch a flag/logo image and return a base64 data URI (or null on failure)
+async function flagDataUri(url) {
+  if (!url) return null;
+  try {
+    const { buf, type } = await fetchBuffer(url);
+    if (!buf || !buf.length) return null;
+    return `data:${type || 'image/png'};base64,${buf.toString('base64')}`;
+  } catch { return null; }
+}
+
+function scoreCardSvg({ home, away, hs, as_, league, dateLabel, homeFlag, awayFlag }) {
   const W=1200, H=630;
-  const hFont=ogFitFont(home,56,11), aFont=ogFitFont(away,56,11);
+  const hFont=ogFitFont(home,52,12), aFont=ogFitFont(away,52,12);
+  // Flag dimensions/position — centered under each team name
+  const flagW=92, flagH=64;
+  const homeCx=295, awayCx=905, flagY=360;
+  const homeFlagImg = homeFlag ? `<image href="${homeFlag}" x="${homeCx-flagW/2}" y="${flagY}" width="${flagW}" height="${flagH}" preserveAspectRatio="xMidYMid meet"/>` : '';
+  const awayFlagImg = awayFlag ? `<image href="${awayFlag}" x="${awayCx-flagW/2}" y="${flagY}" width="${flagW}" height="${flagH}" preserveAspectRatio="xMidYMid meet"/>` : '';
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#0d0d0d"/><stop offset="55%" stop-color="#141414"/><stop offset="100%" stop-color="#0a1f12"/></linearGradient>
@@ -1960,22 +1967,23 @@ function scoreCardSvg({ home, away, hs, as_, league, dateLabel }) {
   <rect width="${W}" height="${H}" fill="url(#bg)"/>
   <rect x="0" y="0" width="${W}" height="8" fill="url(#grn)"/>
   <rect x="0" y="${H-8}" width="${W}" height="8" fill="url(#grn)"/>
-  <text x="${W/2}" y="92" font-family="Arial,sans-serif" font-size="30" fill="#4ade80" text-anchor="middle" font-weight="700" letter-spacing="2">${ogEscape(league.toUpperCase())}</text>
-  <text x="${W/2}" y="132" font-family="Arial,sans-serif" font-size="22" fill="#999" text-anchor="middle">${ogEscape(dateLabel)}</text>
-  <text x="295" y="335" font-family="Arial,sans-serif" font-size="${hFont}" fill="#fff" text-anchor="middle" font-weight="800">${ogEscape(home)}</text>
-  <text x="905" y="335" font-family="Arial,sans-serif" font-size="${aFont}" fill="#fff" text-anchor="middle" font-weight="800">${ogEscape(away)}</text>
-  <rect x="510" y="265" width="180" height="110" rx="16" fill="#1c1c1c" stroke="url(#grn)" stroke-width="3"/>
-  <text x="${W/2}" y="345" font-family="Arial,sans-serif" font-size="64" fill="#4ade80" text-anchor="middle" font-weight="900">${hs} - ${as_}</text>
-  <text x="${W/2}" y="415" font-family="Arial,sans-serif" font-size="24" fill="#777" text-anchor="middle" font-weight="700" letter-spacing="2">FULL TIME</text>
-  <text x="${W/2-4}" y="558" font-family="Arial,sans-serif" font-size="40" fill="#ffffff" text-anchor="end" font-weight="900">Last</text>
-  <text x="${W/2+4}" y="558" font-family="Arial,sans-serif" font-size="40" fill="#4ade80" text-anchor="start" font-weight="900">Football</text>
-  <text x="${W/2}" y="596" font-family="Arial,sans-serif" font-size="19" fill="#666" text-anchor="middle" letter-spacing="4">LASTFOOTBALL.COM</text>
+  <text x="${W/2}" y="86" font-family="Arial,sans-serif" font-size="30" fill="#4ade80" text-anchor="middle" font-weight="700" letter-spacing="2">${ogEscape(league.toUpperCase())}</text>
+  <text x="${W/2}" y="124" font-family="Arial,sans-serif" font-size="22" fill="#999" text-anchor="middle">${ogEscape(dateLabel)}</text>
+  <text x="${homeCx}" y="320" font-family="Arial,sans-serif" font-size="${hFont}" fill="#fff" text-anchor="middle" font-weight="800">${ogEscape(home)}</text>
+  <text x="${awayCx}" y="320" font-family="Arial,sans-serif" font-size="${aFont}" fill="#fff" text-anchor="middle" font-weight="800">${ogEscape(away)}</text>
+  ${homeFlagImg}
+  ${awayFlagImg}
+  <rect x="510" y="255" width="180" height="110" rx="16" fill="#1c1c1c" stroke="url(#grn)" stroke-width="3"/>
+  <text x="${W/2}" y="335" font-family="Arial,sans-serif" font-size="64" fill="#4ade80" text-anchor="middle" font-weight="900">${hs} - ${as_}</text>
+  <text x="${W/2}" y="405" font-family="Arial,sans-serif" font-size="24" fill="#777" text-anchor="middle" font-weight="700" letter-spacing="2">FULL TIME</text>
+  <text x="${W/2-4}" y="560" font-family="Arial,sans-serif" font-size="40" fill="#ffffff" text-anchor="end" font-weight="900">Last</text>
+  <text x="${W/2+4}" y="560" font-family="Arial,sans-serif" font-size="40" fill="#4ade80" text-anchor="start" font-weight="900">Football</text>
+  <text x="${W/2}" y="598" font-family="Arial,sans-serif" font-size="19" fill="#666" text-anchor="middle" letter-spacing="4">LASTFOOTBALL.COM</text>
 </svg>`;
 }
 
 // Render and save a score-card PNG to dist/og/<slug>.png. Returns the public path or null.
-async function writeScoreCard({ slug, home, away, hs, as_, league, date }) {
-  const sharp = await getSharp();
+async function writeScoreCard({ slug, home, away, hs, as_, league, date, homeLogo, awayLogo }) {
   if (!sharp) return null;
   try {
     const here = path.dirname(new URL(import.meta.url).pathname);
@@ -1989,7 +1997,9 @@ async function writeScoreCard({ slug, home, away, hs, as_, league, date }) {
     if (fs.existsSync(outPath)) return `/og/${slug}.png`;  // immutable per finished match
     let dateLabel = '';
     try { dateLabel = new Date(date).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' }); } catch {}
-    const svg = scoreCardSvg({ home, away, hs, as_, league, dateLabel });
+    // Fetch flags (embedded as base64 so sharp can render them)
+    const [homeFlag, awayFlag] = await Promise.all([flagDataUri(homeLogo), flagDataUri(awayLogo)]);
+    const svg = scoreCardSvg({ home, away, hs, as_, league, dateLabel, homeFlag, awayFlag });
     await sharp(Buffer.from(svg)).png().toFile(outPath);
     return `/og/${slug}.png`;
   } catch (e) {
@@ -2001,7 +2011,6 @@ async function writeScoreCard({ slug, home, away, hs, as_, league, date }) {
 // Backfill score cards for existing match reports that have no featured_image yet,
 // then update the post row so OG tags and the news UI use the card.
 async function backfillScoreCards() {
-  const sharp = await getSharp();
   if (!sharp) return;
   try {
     const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
