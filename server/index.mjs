@@ -143,6 +143,30 @@ function backgroundJobsAllowed() {
   return true;
 }
 
+// Second (lower) quota tier for ESSENTIAL on-demand work: real user fetches that
+// miss cache (a freshly-viewed match/page) and the live pollers. These may spend
+// quota all the way down to USER_QUOTA_FLOOR — below the background reserve — so
+// the site stays interactive even after non-essential background jobs have paused.
+// We still keep a small floor so we never drive remaining to 0 (a hard 0 makes the
+// upstream return 429s). When the floor is hit, callers fall back to last-good data.
+const USER_QUOTA_FLOOR = 250;
+function userFetchAllowed() {
+  if (!quota.daily.limit) return true; // haven't learned the real limit yet — allow
+  return quota.daily.remaining > USER_QUOTA_FLOOR;
+}
+
+// ─── Background polling schedule (tunable) ──────────────────────────────────
+// The whole point of the refactor: upstream call volume is bounded by THESE
+// intervals, not by how many users are browsing. Adjust here, then check the
+// startup budget log to see the estimated daily total vs the 7,500 cap.
+const HOMEPAGE_POLL_MS    = 180 * 1000; // full homepage rebuild (live + today + WC + domestic, cache-first)
+const LIVE_DETAIL_POLL_MS = 180 * 1000; // refresh events+stats for *viewed* live matches (handoff: ~3 min)
+const MAX_LIVE_DETAIL     = 20;         // hard cap on live matches refreshed per detail-poll run
+
+// API-Football fixture.status.short codes that mean "in play" (per handoff).
+const LIVE_STATUSES = ['1H', '2H', 'HT', 'ET', 'P', 'BT'];
+function isLiveStatus(s) { return LIVE_STATUSES.includes(s); }
+
 function fetchWithHeaders(url, headers) {
   return new Promise((resolve, reject) => {
     https.get(url, { headers }, (res) => {
@@ -190,9 +214,19 @@ async function cachedUpstream(endpoint, params, ttl) {
   const cacheKey = endpoint + '?' + sortedKeys.map(k => k + '=' + params[k]).join('&');
   const hit = cacheGet(cacheKey);
   if (hit) return hit.data;
-  const data = await fetchUpstream(endpoint, params);
-  cacheSet(cacheKey, data, ttl || getTtl(endpoint, params));
-  return data;
+  // Cache miss. If we're at/below the user-fetch floor, don't spend a call — hand
+  // back the last good copy (or an empty API-shaped object). This never throws, so
+  // callers / routes that rely on it never crash when quota is exhausted.
+  if (!userFetchAllowed()) {
+    return lastGood.get(cacheKey)?.data ?? { response: [] };
+  }
+  try {
+    const data = await fetchUpstream(endpoint, params);
+    cacheSet(cacheKey, data, ttl || getTtl(endpoint, params));
+    return data;
+  } catch (err) {
+    return lastGood.get(cacheKey)?.data ?? { response: [] };
+  }
 }
 
 async function revalidate(cacheKey, endpoint, params, ttl) {
@@ -580,29 +614,33 @@ const server = http.createServer(async (req, res) => {
       const tz = 'Asia/Kathmandu';
       const cacheKey = 'agg_homepage:' + tz;
 
-      // Fresh cache hit → serve immediately
+      // CACHE-ONLY for users. The background homepage loop (HOMEPAGE_POLL_MS) is the
+      // ONLY thing that rebuilds this aggregate, so call volume is bounded by the
+      // poll schedule, never by traffic. We intentionally do NOT kick off a rebuild
+      // on user requests: that used to fire a fresh build (incl. a live-fixtures
+      // call) on every stale hit during peak hours, draining the quota — and it also
+      // caused the "homepage needs a hard refresh" race when many requests stampeded
+      // a cold key at once.
       const hit = cacheGet(cacheKey);
       if (hit) {
         const isFresh = Date.now() < hit.freshUntil;
-        if (!isFresh && !inflight.has(cacheKey)) {
-          const p = buildHomepageData(tz).catch(() => {}).finally(() => inflight.delete(cacheKey));
-          inflight.set(cacheKey, p);
-        }
         return json(req, res, hit.data, { 'X-Cache': isFresh ? 'HIT' : 'STALE' });
       }
 
-      // No TTL cache → serve last-good instantly (never make the user wait / see empty)
+      // No TTL cache → serve last-good instantly (kept indefinitely; refreshed by the
+      // background loop). Never make the user wait or see empty widgets.
       const lg = lastGood.get(cacheKey);
       if (lg) {
-        if (!inflight.has(cacheKey)) {
-          const p = buildHomepageData(tz).catch(() => {}).finally(() => inflight.delete(cacheKey));
-          inflight.set(cacheKey, p);
-        }
         return json(req, res, lg.data, { 'X-Cache': 'LASTGOOD' });
       }
 
-      // Truly cold (first request ever, e.g. right after a fresh deploy with no snapshot)
-      // → build and wait, but coalesce concurrent requests so we build only once.
+      // Truly cold: no TTL cache AND no last-good AND no snapshot (e.g. first request
+      // right after a fresh deploy before the startup build finished). Do ONE
+      // coalesced build so the very first visitor still gets data — this is the cold
+      // path only, not a per-request kickoff. Skip the call if we're out of quota.
+      if (!userFetchAllowed()) {
+        return json(req, res, { live: [], today: [], scorers: {}, standings: {}, worldCupActive: false }, { 'X-Cache': 'EMPTY' });
+      }
       try {
         let p = inflight.get(cacheKey);
         if (!p) {
@@ -610,47 +648,44 @@ const server = http.createServer(async (req, res) => {
           inflight.set(cacheKey, p);
         }
         const result = await p;
-        return json(req, res, result);
+        return json(req, res, result, { 'X-Cache': 'COLD' });
       } catch (err) {
         console.error('Homepage aggregate error:', err);
-        return json(req, res, { live: [], today: [], scorers: {}, standings: {}, worldCupActive: false });
+        return json(req, res, { live: [], today: [], scorers: {}, standings: {}, worldCupActive: false }, { 'X-Cache': 'EMPTY' });
       }
     }
 
     // ─── Aggregated match detail (1 call instead of 4-7) ────────────────
     if (path === '/api/match') {
-      const fixtureId = params.get('id');
+      const fixtureId = url.searchParams.get('id');
       if (!fixtureId) return json(req, res, { error: 'Missing id' }, 400);
 
       const cacheKey = `agg_match_${fixtureId}`;
+      const EMPTY = { fixture: [], events: [], stats: [], lineups: [], players: [] };
+
+      // Cache hit → serve immediately. Live matches are kept fresh by the background
+      // liveDetailPoller (events+stats), finished matches are cached ~30 days. We do
+      // NOT re-burst the 5-call aggregate on every view anymore — that burst (one per
+      // match view, multiplied by every browsing user during peak) was the main quota
+      // drain.
       const hit = cacheGet(cacheKey);
-      if (hit) return json(req, res, hit.data);
+      if (hit) return json(req, res, hit.data, { 'X-Cache': 'HIT' });
 
+      // Cache miss + low quota → serve last-good (or empty) instead of bursting.
+      if (!userFetchAllowed()) {
+        const lg = lastGood.get(cacheKey);
+        return json(req, res, lg ? lg.data : EMPTY, { 'X-Cache': lg ? 'LASTGOOD' : 'EMPTY' });
+      }
+
+      // Cache miss + quota OK → build the aggregate once, cache it, and serve. The
+      // poller takes over keeping it fresh while the match is live.
       try {
-        const [fixture, events, stats, lineups, players] = await Promise.allSettled([
-          fetchUpstream('fixtures', { id: fixtureId }),
-          fetchUpstream('fixtures/events', { fixture: fixtureId }),
-          fetchUpstream('fixtures/statistics', { fixture: fixtureId }),
-          fetchUpstream('fixtures/lineups', { fixture: fixtureId }),
-          fetchUpstream('fixtures/players', { fixture: fixtureId }),
-        ]);
-
-        const result = {
-          fixture: fixture.status === 'fulfilled' ? fixture.value : [],
-          events: events.status === 'fulfilled' ? events.value : [],
-          stats: stats.status === 'fulfilled' ? stats.value : [],
-          lineups: lineups.status === 'fulfilled' ? lineups.value : [],
-          players: players.status === 'fulfilled' ? players.value : [],
-        };
-
-        // Cache 30s for live, 5min for finished
-        const statusShort = result.fixture?.response?.[0]?.fixture?.status?.short;
-        const isLive = ['1H', '2H', 'HT', 'ET', 'P', 'BT'].includes(statusShort);
-        cacheSet(cacheKey, result, { fresh: isLive ? 30 : 300, stale: isLive ? 60 : 600 });
-        return json(req, res, result);
+        const result = await fetchMatchAggregate(fixtureId);
+        return json(req, res, result, { 'X-Cache': 'MISS' });
       } catch (err) {
         console.error('Match aggregate error:', err);
-        return json(req, res, { fixture: [], events: [], stats: [], lineups: [], players: [] });
+        const lg = lastGood.get(cacheKey);
+        return json(req, res, lg ? lg.data : EMPTY, { 'X-Cache': lg ? 'LASTGOOD' : 'EMPTY' });
       }
     }
 
@@ -746,13 +781,27 @@ const server = http.createServer(async (req, res) => {
       const entry = cacheGet(cacheKey);
       if (entry) {
         const isFresh = Date.now() < entry.freshUntil;
-        if (!isFresh) {
+        // Background-revalidate a stale entry ONLY if we still have quota headroom.
+        // Otherwise just serve the stale copy — the pollers / quota reset will catch
+        // up. This stops a flood of stale hits during peak from each firing a call.
+        if (!isFresh && userFetchAllowed()) {
           revalidate(cacheKey, endpoint, params, ttl).catch(e => console.error('BG revalidate:', e));
         }
         return json(req, res, entry.data, {
           'X-Cache': isFresh ? 'HIT' : 'STALE',
           // Don't let the browser cache API data — the server memory cache provides speed,
           // and browser caching caused stale/empty data on soft SPA navigation.
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+        });
+      }
+
+      // True cache miss. If we're below the user floor, don't spend a call — serve
+      // last-good if we have it, else an empty API-shaped object. Never burst.
+      if (!userFetchAllowed()) {
+        const lg = lastGood.get(cacheKey);
+        return json(req, res, lg ? lg.data : { response: [] }, {
+          'X-Cache': lg ? 'DEGRADED' : 'EMPTY',
+          ...(lg ? { 'X-Data-Age': String(Math.round((Date.now() - lg.savedAt) / 1000)) } : {}),
           'Cache-Control': 'no-cache, no-store, must-revalidate',
         });
       }
@@ -774,7 +823,12 @@ const server = http.createServer(async (req, res) => {
             'Cache-Control': 'no-cache, no-store, must-revalidate',
           });
         }
-        throw apiErr;
+        // Nothing cached at all — return an empty shape rather than a 500 so the
+        // widget renders empty instead of erroring.
+        return json(req, res, { response: [] }, {
+          'X-Cache': 'EMPTY',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+        });
       }
     }
 
@@ -929,6 +983,55 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+// ─── Startup budget log (item 4) ────────────────────────────────────────────
+// Estimates the daily upstream call volume implied by the polling schedule and
+// compares it to the 7,500/day API-Football cap. This is the single most useful
+// dial after the refactor: if the estimate creeps toward the cap, widen the poll
+// intervals (HOMEPAGE_POLL_MS / LIVE_DETAIL_POLL_MS) or lower MAX_LIVE_DETAIL.
+// Numbers are steady-state estimates assuming pollers run all day; in reality the
+// circuit breaker pauses background jobs below the reserve, and the live pollers
+// only spend calls while matches are actually live, so real usage is lower.
+const DAILY_CAP = 7500;
+function logQuotaBudget() {
+  const runsPerDay = (intervalMs) => 86400000 / intervalMs;
+  // The live-detail poller and the homepage live call only spend on matches while
+  // they're actually in play. Model a realistic number of "live hours" per day
+  // rather than pretending matches run 24h. ~3 simultaneously *viewed* live matches
+  // is a sane average for this audience; the hard ceiling is MAX_LIVE_DETAIL.
+  const LIVE_HOURS_PER_DAY = 8;
+  const AVG_VIEWED_LIVE = 3;
+  const liveRunsPerDay = (LIVE_HOURS_PER_DAY * 3600000) / LIVE_DETAIL_POLL_MS;
+
+  const lines = [
+    ['homepage rebuild', Math.round(runsPerDay(HOMEPAGE_POLL_MS) * 2.5), 'live + today + WC standings (domestic cached 6h)'],
+    ['live detail',      Math.round(liveRunsPerDay * AVG_VIEWED_LIVE * 2), `~${AVG_VIEWED_LIVE} viewed live × 2 calls, ~${LIVE_HOURS_PER_DAY}h live/day`],
+    ['WC stats warm',    Math.round(runsPerDay(300 * 1000) * 3), 'standings + topscorers + topassists (WC only)'],
+    ['WC topstats',      Math.round(runsPerDay(300 * 1000) * 2), 'fixtures list + new finished (rest cached 30d, WC only)'],
+    ['match reports',    Math.round(runsPerDay(20 * 60 * 1000) * 3), 'WC + today + yesterday'],
+    ['fantasy scoring',  Math.round(runsPerDay(30 * 60 * 1000) * 9), '1 list + up to 8 fixtures/run (WC only)'],
+    ['prediction score', Math.round(runsPerDay(5 * 60 * 1000) * 1), 'only unscored finished matches'],
+  ];
+
+  let total = 0;
+  console.log('───────────────────────────────────────────────────────────');
+  console.log(`📊 API BUDGET ESTIMATE (cap ${DAILY_CAP}/day, reset 00:00 UTC)`);
+  for (const [name, perDay, note] of lines) {
+    total += perDay;
+    console.log(`   ${String(perDay).padStart(5)} /day  ${name.padEnd(17)} (${note})`);
+  }
+  const liveCeiling = Math.round(runsPerDay(LIVE_DETAIL_POLL_MS) * MAX_LIVE_DETAIL * 2);
+  console.log('   ─────');
+  console.log(`   ${String(total).padStart(5)} /day  ESTIMATED TOTAL  (~${Math.round((total / DAILY_CAP) * 100)}% of cap)`);
+  console.log(`   reserve for users: ${QUOTA_RESERVE} (bg pauses below this) | hard floor: ${USER_QUOTA_FLOOR}`);
+  console.log(`   live-detail absolute worst case (all ${MAX_LIVE_DETAIL} live & viewed, 24h): ${liveCeiling}/day — capped by circuit breaker`);
+  if (total > DAILY_CAP - QUOTA_RESERVE) {
+    console.warn(`   ⚠️ estimate exceeds (cap − reserve = ${DAILY_CAP - QUOTA_RESERVE}); widen poll intervals or lower MAX_LIVE_DETAIL.`);
+  } else {
+    console.log(`   ✅ within budget (cap − reserve = ${DAILY_CAP - QUOTA_RESERVE}).`);
+  }
+  console.log('───────────────────────────────────────────────────────────');
+}
+
 server.listen(PORT, '127.0.0.1', async () => {
   console.log(`LastFootball API running on http://127.0.0.1:${PORT}`);
   console.log(`Cache: ${MAX_ENTRIES} entries | Logos: ${MAX_LOGOS} entries`);
@@ -937,6 +1040,17 @@ server.listen(PORT, '127.0.0.1', async () => {
   await loadSnapshotsIntoCache();
   // Generate the homepage immediately so even a snapshot-less start is fast.
   buildHomepageData('Asia/Kathmandu').catch(() => {});
+  // Dedicated homepage refresh loop — the ONLY thing that rebuilds the homepage
+  // aggregate now (user requests are cache-only). Bounds homepage call volume to the
+  // poll interval regardless of traffic. Gated so it pauses when the budget is low.
+  setInterval(() => {
+    if (!backgroundJobsAllowed()) return;
+    buildHomepageData('Asia/Kathmandu').catch(() => {});
+  }, HOMEPAGE_POLL_MS);
+  // Live-detail poller — keeps *viewed* live matches (events+stats+score) fresh on a
+  // schedule instead of re-bursting on every view. Starts shortly after boot.
+  setTimeout(liveDetailPoller, 30 * 1000);
+  setInterval(liveDetailPoller, LIVE_DETAIL_POLL_MS);
   // Backfill score cards for existing reports (once, shortly after boot)
   setTimeout(() => { backfillScoreCards().catch(() => {}); }, 90 * 1000);
   // Start prediction scoring job
@@ -963,6 +1077,7 @@ server.listen(PORT, '127.0.0.1', async () => {
     if (!backgroundJobsAllowed()) return;
     try { const d = await computeWorldCupTopStats(); cacheSet('computed:wc-topstats', d, { fresh: 90, stale: 600 }); } catch {}
   }, 5 * 60 * 1000); // Every 5 minutes
+  logQuotaBudget();
 });
 
 // Compute WC top scorers / assists / cards directly from finished-match player
@@ -1040,6 +1155,113 @@ async function computeWorldCupTopStats() {
   }
 }
 
+// ─── Match-detail aggregate ─────────────────────────────────────────────────
+// Builds the full /api/match payload (fixture + events + stats + lineups + players)
+// with ONE upstream burst, then caches it. Used by the /api/match route on a cache
+// miss and by the live-detail poller for the first warm of a match. The cache TTL is
+// long enough for live matches that the entry survives between poll runs (so the
+// poller keeps treating it as "viewed" and refreshing it); finished matches are
+// cached ~30 days since their data is immutable.
+async function fetchMatchAggregate(fixtureId) {
+  const cacheKey = `agg_match_${fixtureId}`;
+  const [fixture, events, stats, lineups, players] = await Promise.allSettled([
+    fetchUpstream('fixtures', { id: String(fixtureId) }),
+    fetchUpstream('fixtures/events', { fixture: String(fixtureId) }),
+    fetchUpstream('fixtures/statistics', { fixture: String(fixtureId) }),
+    fetchUpstream('fixtures/lineups', { fixture: String(fixtureId) }),
+    fetchUpstream('fixtures/players', { fixture: String(fixtureId) }),
+  ]);
+  const result = {
+    fixture: fixture.status === 'fulfilled' ? fixture.value : [],
+    events: events.status === 'fulfilled' ? events.value : [],
+    stats: stats.status === 'fulfilled' ? stats.value : [],
+    lineups: lineups.status === 'fulfilled' ? lineups.value : [],
+    players: players.status === 'fulfilled' ? players.value : [],
+  };
+  const statusShort = result.fixture?.response?.[0]?.fixture?.status?.short;
+  const isLive = isLiveStatus(statusShort);
+  const FINISHED_TTL = { fresh: 2592000, stale: 2592000 }; // ~30d — immutable
+  // Live: keep fresh a little longer than the poll interval so the entry stays in
+  // cache between runs and the poller keeps it warm.
+  const liveSecs = Math.ceil(LIVE_DETAIL_POLL_MS / 1000);
+  const LIVE_TTL = { fresh: liveSecs, stale: liveSecs * 2 };
+  cacheSet(cacheKey, result, isLive ? LIVE_TTL : FINISHED_TTL);
+  return result;
+}
+
+// Background live-detail poller. Refreshes the score (from the already-fetched live
+// list — free), events, and stats for live matches that a user has actually viewed
+// (i.e. have an agg_match_* cache entry), capped at MAX_LIVE_DETAIL. This replaces
+// the old behaviour where every viewer of a live match re-triggered a 5-call burst
+// every ~30s; now call volume is bounded to (viewed live matches × 2) per run.
+async function liveDetailPoller() {
+  if (!backgroundJobsAllowed()) return; // yields to the reserve when budget is low
+  try {
+    // Live fixture list comes from the homepage poll's cached `fixtures?live=all`.
+    const tz = 'Asia/Kathmandu';
+    const liveKey = 'fixtures?live=all&timezone=' + tz;
+    let liveResp = cacheGet(liveKey)?.data || lastGood.get(liveKey)?.data;
+    // Fallback: pull the live array out of the homepage snapshot aggregate.
+    if (!liveResp) {
+      const agg = cacheGet('agg_homepage:' + tz)?.data || lastGood.get('agg_homepage:' + tz)?.data;
+      liveResp = agg?.live;
+    }
+    const liveList = liveResp?.response || [];
+    if (!liveList.length) return;
+
+    // Only refresh matches that are BOTH live AND already cached (viewed at least
+    // once). We never pre-warm matches nobody is looking at.
+    const candidates = [];
+    for (const f of liveList) {
+      const fid = f?.fixture?.id;
+      if (!fid) continue;
+      if (!isLiveStatus(f?.fixture?.status?.short)) continue;
+      if (!cacheGet(`agg_match_${fid}`) && !lastGood.get(`agg_match_${fid}`)) continue;
+      candidates.push({ fid, live: f });
+      if (candidates.length >= MAX_LIVE_DETAIL) break;
+    }
+    if (!candidates.length) return;
+
+    const liveSecs = Math.ceil(LIVE_DETAIL_POLL_MS / 1000);
+    const LIVE_TTL = { fresh: liveSecs, stale: liveSecs * 2 };
+
+    for (const { fid, live } of candidates) {
+      if (!backgroundJobsAllowed()) break; // re-check between matches
+      const cacheKey = `agg_match_${fid}`;
+      const prev = cacheGet(cacheKey)?.data || lastGood.get(cacheKey)?.data || {};
+      try {
+        // Two calls per live match: the moving parts. Lineups/players (heavier and
+        // far more stable mid-match) are kept from the first full aggregate; the
+        // score/status comes from the live-list object we already have (free).
+        const [events, stats] = await Promise.allSettled([
+          fetchUpstream('fixtures/events', { fixture: String(fid) }),
+          fetchUpstream('fixtures/statistics', { fixture: String(fid) }),
+        ]);
+        // Splice the fresh live fixture object into the existing fixture payload so
+        // the detail page shows the current score without a separate fixtures?id call.
+        let fixturePayload = prev.fixture;
+        if (fixturePayload?.response?.[0]) {
+          fixturePayload = { ...fixturePayload, response: [{ ...fixturePayload.response[0], ...live }] };
+        } else {
+          fixturePayload = { get: 'fixtures', parameters: { id: String(fid) }, response: [live] };
+        }
+        const merged = {
+          fixture: fixturePayload,
+          events: events.status === 'fulfilled' ? events.value : (prev.events || []),
+          stats: stats.status === 'fulfilled' ? stats.value : (prev.stats || []),
+          lineups: prev.lineups || [],
+          players: prev.players || [],
+        };
+        cacheSet(cacheKey, merged, LIVE_TTL);
+      } catch {
+        // leave the previous cached aggregate in place on failure
+      }
+    }
+  } catch (e) {
+    console.error('liveDetailPoller error:', e.message);
+  }
+}
+
 // Build the aggregated homepage payload for a given timezone (cached + warmable).
 async function buildHomepageData(tz) {
   const cacheKey = 'agg_homepage:' + tz;
@@ -1068,19 +1290,24 @@ async function buildHomepageData(tz) {
   // the WC — cache them for 6h so warming doesn't refetch them every few minutes.
   const domesticTtl = { fresh: 21600, stale: 43200 };
 
-  // Live fixtures: poll fast (20s) ONLY when matches are actually live. When nothing
-  // is live, cache for 5 min so we don't burn calls polling an empty result.
+  // Live fixtures: this runs only from background pollers now (the user homepage
+  // route never triggers a build), so its frequency is bounded by HOMEPAGE_POLL_MS.
+  // Cache fresh for ~the poll interval when matches are live; longer when idle.
   const liveKey = 'fixtures?live=all&timezone=' + tz;
   let liveData;
   const liveHit = cacheGet(liveKey);
   if (liveHit) {
     liveData = liveHit.data;
+  } else if (!userFetchAllowed()) {
+    // Out of budget — reuse the last known live list rather than spending a call.
+    liveData = lastGood.get(liveKey)?.data || { response: [] };
   } else {
     try {
       liveData = await fetchUpstream('fixtures', { live: 'all', timezone: tz });
       const hasLive = (liveData?.response || []).length > 0;
-      cacheSet(liveKey, liveData, hasLive ? { fresh: 20, stale: 40 } : { fresh: 300, stale: 600 });
-    } catch { liveData = { response: [] }; }
+      const liveSecs = Math.ceil(HOMEPAGE_POLL_MS / 1000);
+      cacheSet(liveKey, liveData, hasLive ? { fresh: liveSecs, stale: liveSecs } : { fresh: 300, stale: 600 });
+    } catch { liveData = lastGood.get(liveKey)?.data || { response: [] }; }
   }
 
   const [todayMatches, ...rest] = await Promise.allSettled([
@@ -1184,12 +1411,10 @@ async function warmWorldCupStats() {
       // ignore individual failures (quota, transient)
     }
   }
-  // Warm the homepage aggregate. buildHomepageData now uses cache-first fetching,
-  // so this only spends fresh API calls on the few things that actually expired
-  // (live + today fixtures + WC stats), NOT the domestic leagues every time.
-  // Warm the homepage aggregate for the primary audience timezone only (Nepal).
-  // buildHomepageData is cache-first, so this mostly reuses cached data.
-  try { await buildHomepageData('Asia/Kathmandu'); } catch {}
+  // NOTE: the homepage aggregate is rebuilt by its own dedicated background loop
+  // (HOMEPAGE_POLL_MS) — we deliberately don't call buildHomepageData here too, to
+  // avoid double-spending live/today calls. The fresh WC standings/scorers warmed
+  // above are picked up by that loop on its next run (cache-first).
 }
 
 // ─── Fantasy Points Engine (FPL-style) ──────────────────────────────────────
@@ -2127,6 +2352,7 @@ function supabaseQueryWithKey(table, params = '', method = 'GET', body = null, k
 // ─── Prediction Scoring ─────────────────────────────────────────────────────
 
 async function scorePredictions() {
+  if (!backgroundJobsAllowed()) return; // non-essential — yields to the reserve
   try {
     // Get unscored predictions
     const predictions = await supabaseQuery('predictions', 'points=is.null&select=*');
