@@ -124,7 +124,7 @@ const quota = {
 // quota for real user traffic so background work can NEVER exhaust the limit.
 // Real user requests are NOT gated by this — they always run (and fall back to
 // cached/last-good data if the API itself is exhausted).
-const QUOTA_RESERVE = 1500; // always leave this many calls for live user traffic
+const QUOTA_RESERVE = 2500; // always leave this many calls for live user traffic
 let _breakerLogged = false;
 function backgroundJobsAllowed() {
   // If we haven't seen a quota header yet, allow (we'll learn the real number fast)
