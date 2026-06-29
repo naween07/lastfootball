@@ -2174,6 +2174,41 @@ async function writeSitemapFile() {
 function ogEscape(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function ogFitFont(name, base, maxChars){ if(name.length<=maxChars) return base; return Math.max(30, Math.floor(base*maxChars/name.length)); }
 
+// National-team name → ISO flag code (flagcdn). Lets us show a flag on the score
+// card even when only the team NAME is known (the backfill path has no logo URL).
+// Home nations use flagcdn's gb-* subdivision codes.
+const TEAM_FLAG_ISO = {
+  'argentina':'ar','jordan':'jo','south africa':'za','canada':'ca','algeria':'dz','austria':'at',
+  'colombia':'co','portugal':'pt','congo dr':'cd','dr congo':'cd','uzbekistan':'uz','croatia':'hr',
+  'ghana':'gh','panama':'pa','england':'gb-eng','scotland':'gb-sct','wales':'gb-wls',
+  'northern ireland':'gb-nir','egypt':'eg','iran':'ir','new zealand':'nz','belgium':'be',
+  'uruguay':'uy','spain':'es','cape verde islands':'cv','cape verde':'cv','saudi arabia':'sa',
+  'senegal':'sn','iraq':'iq','norway':'no','france':'fr','turkiye':'tr','turkey':'tr','usa':'us',
+  'united states':'us','paraguay':'py','australia':'au','japan':'jp','sweden':'se','tunisia':'tn',
+  'netherlands':'nl','ecuador':'ec','germany':'de','curacao':'cw','ivory coast':'ci',
+  'cote divoire':'ci','south korea':'kr','korea republic':'kr','czechia':'cz','czech republic':'cz',
+  'mexico':'mx','morocco':'ma','haiti':'ht','brazil':'br','switzerland':'ch',
+  'bosnia herzegovina':'ba','bosnia and herzegovina':'ba','qatar':'qa','italy':'it','denmark':'dk',
+  'poland':'pl','serbia':'rs','nigeria':'ng','cameroon':'cm','mali':'ml','ukraine':'ua','greece':'gr',
+  'chile':'cl','peru':'pe','costa rica':'cr','honduras':'hn','jamaica':'jm','venezuela':'ve',
+  'bolivia':'bo','republic of ireland':'ie','ireland':'ie','slovakia':'sk','slovenia':'si',
+  'hungary':'hu','romania':'ro','china':'cn','china pr':'cn','united arab emirates':'ae','uae':'ae',
+  'oman':'om','bahrain':'bh','kuwait':'kw','syria':'sy','lebanon':'lb','palestine':'ps','india':'in',
+  'thailand':'th','vietnam':'vn','indonesia':'id','malaysia':'my','philippines':'ph',
+  'north korea':'kp','korea dpr':'kp','kenya':'ke','uganda':'ug','tanzania':'tz','zambia':'zm',
+  'angola':'ao','mozambique':'mz','gabon':'ga','burkina faso':'bf','guinea':'gn','benin':'bj',
+  'togo':'tg','sudan':'sd','libya':'ly','mauritania':'mr','niger':'ne','comoros':'km',
+  'madagascar':'mg','botswana':'bw','namibia':'na','equatorial guinea':'gq','gambia':'gm',
+};
+function flagUrlForTeam(name) {
+  if (!name) return null;
+  const key = String(name).toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // strip accents (Türkiye, Curaçao)
+    .replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim(); // drop punctuation (& . -), collapse spaces
+  const code = TEAM_FLAG_ISO[key];
+  return code ? `https://flagcdn.com/w320/${code}.png` : null;
+}
+
 // Fetch a flag/logo image and return a base64 data URI (or null on failure)
 async function flagDataUri(url) {
   if (!url) return null;
@@ -2185,33 +2220,58 @@ async function flagDataUri(url) {
 }
 
 function scoreCardSvg({ home, away, hs, as_, league, dateLabel, homeFlag, awayFlag }) {
-  const W=1200, H=630;
-  const hFont=ogFitFont(home,52,12), aFont=ogFitFont(away,52,12);
-  // Flag dimensions/position — centered under each team name
-  const flagW=92, flagH=64;
-  const homeCx=295, awayCx=905, flagY=360;
-  const homeFlagImg = homeFlag ? `<image href="${homeFlag}" x="${homeCx-flagW/2}" y="${flagY}" width="${flagW}" height="${flagH}" preserveAspectRatio="xMidYMid meet"/>` : '';
-  const awayFlagImg = awayFlag ? `<image href="${awayFlag}" x="${awayCx-flagW/2}" y="${flagY}" width="${flagW}" height="${flagH}" preserveAspectRatio="xMidYMid meet"/>` : '';
+  const W = 1200, H = 630;
+  const NEON = '#39ff14';
+  const FONT = 'Arial, "Helvetica Neue", Helvetica, sans-serif';
+  const hFont = ogFitFont(String(home || ''), 46, 13);
+  const aFont = ogFitFont(String(away || ''), 46, 13);
+  const flagW = 184, flagH = 122, flagRx = 8;
+  const homeCx = 238, awayCx = 962, flagY = 196, nameY = 392;
+
+  // A flag tile (clipped + rounded + hairline border) or a neutral placeholder.
+  const flagTile = (img, cx, id) => {
+    const x = cx - flagW / 2;
+    if (!img) {
+      return `<rect x="${x}" y="${flagY}" width="${flagW}" height="${flagH}" rx="${flagRx}" fill="#1e1e1e" stroke="#ffffff" stroke-opacity="0.08"/>`;
+    }
+    return `<clipPath id="${id}"><rect x="${x}" y="${flagY}" width="${flagW}" height="${flagH}" rx="${flagRx}"/></clipPath>
+    <image href="${img}" x="${x}" y="${flagY}" width="${flagW}" height="${flagH}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${id})"/>
+    <rect x="${x}" y="${flagY}" width="${flagW}" height="${flagH}" rx="${flagRx}" fill="none" stroke="#ffffff" stroke-opacity="0.12"/>`;
+  };
+  // Two short flanking rules around a centred label.
+  const flank = (cx, y, half, color, op) =>
+    `<line x1="${cx - half - 46}" y1="${y}" x2="${cx - half - 14}" y2="${y}" stroke="${color}" stroke-opacity="${op}" stroke-width="2"/>` +
+    `<line x1="${cx + half + 14}" y1="${y}" x2="${cx + half + 46}" y2="${y}" stroke="${color}" stroke-opacity="${op}" stroke-width="2"/>`;
+
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#0d0d0d"/><stop offset="55%" stop-color="#141414"/><stop offset="100%" stop-color="#0a1f12"/></linearGradient>
-    <linearGradient id="grn" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#4ade80"/><stop offset="100%" stop-color="#22c55e"/></linearGradient>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#1b1b1b"/><stop offset="100%" stop-color="#0b0b0b"/></linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="72"/></filter>
   </defs>
   <rect width="${W}" height="${H}" fill="url(#bg)"/>
-  <rect x="0" y="0" width="${W}" height="8" fill="url(#grn)"/>
-  <rect x="0" y="${H-8}" width="${W}" height="8" fill="url(#grn)"/>
-  <text x="${W/2}" y="86" font-family="Arial,sans-serif" font-size="30" fill="#4ade80" text-anchor="middle" font-weight="700" letter-spacing="2">${ogEscape(league.toUpperCase())}</text>
-  <text x="${W/2}" y="124" font-family="Arial,sans-serif" font-size="22" fill="#999" text-anchor="middle">${ogEscape(dateLabel)}</text>
-  <text x="${homeCx}" y="320" font-family="Arial,sans-serif" font-size="${hFont}" fill="#fff" text-anchor="middle" font-weight="800">${ogEscape(home)}</text>
-  <text x="${awayCx}" y="320" font-family="Arial,sans-serif" font-size="${aFont}" fill="#fff" text-anchor="middle" font-weight="800">${ogEscape(away)}</text>
-  ${homeFlagImg}
-  ${awayFlagImg}
-  <rect x="510" y="255" width="180" height="110" rx="16" fill="#1c1c1c" stroke="url(#grn)" stroke-width="3"/>
-  <text x="${W/2}" y="335" font-family="Arial,sans-serif" font-size="64" fill="#4ade80" text-anchor="middle" font-weight="900">${hs} - ${as_}</text>
-  <text x="${W/2}" y="405" font-family="Arial,sans-serif" font-size="24" fill="#777" text-anchor="middle" font-weight="700" letter-spacing="2">FULL TIME</text>
-  <text x="${W/2-4}" y="560" font-family="Arial,sans-serif" font-size="40" fill="#ffffff" text-anchor="end" font-weight="900">Last</text>
-  <text x="${W/2+4}" y="560" font-family="Arial,sans-serif" font-size="40" fill="#4ade80" text-anchor="start" font-weight="900">Football</text>
-  <text x="${W/2}" y="598" font-family="Arial,sans-serif" font-size="19" fill="#666" text-anchor="middle" letter-spacing="4">LASTFOOTBALL.COM</text>
+  <circle cx="80" cy="36" r="150" fill="${NEON}" opacity="0.13" filter="url(#glow)"/>
+  <circle cx="1120" cy="600" r="150" fill="${NEON}" opacity="0.13" filter="url(#glow)"/>
+  <rect x="16" y="16" width="${W-32}" height="${H-32}" rx="22" fill="none" stroke="#2b2b2b" stroke-width="1.5"/>
+
+  <text x="${W/2}" y="92" font-family='${FONT}' font-size="40" fill="#ffffff" text-anchor="middle" font-weight="800" letter-spacing="6">${ogEscape(String(league || '').toUpperCase())}</text>
+  ${flank(W/2, 80, 170, NEON, 1)}
+  <text x="${W/2}" y="134" font-family='${FONT}' font-size="24" fill="${NEON}" text-anchor="middle" font-weight="600" letter-spacing="1">${ogEscape(dateLabel)}</text>
+
+  ${flagTile(homeFlag, homeCx, 'hf')}
+  ${flagTile(awayFlag, awayCx, 'af')}
+  <text x="${homeCx}" y="${nameY}" font-family='${FONT}' font-size="${hFont}" fill="#ffffff" text-anchor="middle" font-weight="800" letter-spacing="1">${ogEscape(String(home || '').toUpperCase())}</text>
+  <text x="${awayCx}" y="${nameY}" font-family='${FONT}' font-size="${aFont}" fill="#ffffff" text-anchor="middle" font-weight="800" letter-spacing="1">${ogEscape(String(away || '').toUpperCase())}</text>
+
+  <text x="556" y="312" font-family='${FONT}' font-size="124" fill="#ffffff" text-anchor="end" font-weight="900">${ogEscape(String(hs))}</text>
+  <text x="${W/2}" y="300" font-family='${FONT}' font-size="84" fill="#777777" text-anchor="middle" font-weight="300">-</text>
+  <text x="644" y="312" font-family='${FONT}' font-size="124" fill="#ffffff" text-anchor="start" font-weight="900">${ogEscape(String(as_))}</text>
+  <text x="${W/2}" y="372" font-family='${FONT}' font-size="22" fill="${NEON}" text-anchor="middle" font-weight="700" letter-spacing="4">FULL TIME</text>
+  ${flank(W/2, 365, 72, '#888888', 0.6)}
+
+  <line x1="170" y1="506" x2="1030" y2="506" stroke="#ffffff" stroke-opacity="0.06" stroke-width="2"/>
+  <text x="${W/2-5}" y="566" font-family='${FONT}' font-size="42" fill="#ffffff" text-anchor="end" font-weight="900">Last</text>
+  <text x="${W/2+5}" y="566" font-family='${FONT}' font-size="42" fill="${NEON}" text-anchor="start" font-weight="900">Football</text>
+  <text x="${W/2}" y="600" font-family='${FONT}' font-size="18" fill="#666666" text-anchor="middle" letter-spacing="4">LASTFOOTBALL.COM</text>
 </svg>`;
 }
 
@@ -2248,8 +2308,12 @@ async function writeScoreCard({ slug, home, away, hs, as_, league, date, homeLog
     if (fs.existsSync(outPath)) return `/og/${slug}.png`;  // immutable per finished match
     let dateLabel = '';
     try { dateLabel = new Date(date).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' }); } catch {}
-    // Fetch flags (embedded as base64 so sharp can render them)
-    const [homeFlag, awayFlag] = await Promise.all([flagDataUri(homeLogo), flagDataUri(awayLogo)]);
+    // Fetch flags (embedded as base64 so sharp can render them). Prefer an explicit
+    // logo URL (live path passes the API-Football flag); otherwise derive a flag from
+    // the team name via flagcdn so backfilled cards (which have no logo) still show one.
+    const homeUrl = homeLogo || flagUrlForTeam(home);
+    const awayUrl = awayLogo || flagUrlForTeam(away);
+    const [homeFlag, awayFlag] = await Promise.all([flagDataUri(homeUrl), flagDataUri(awayUrl)]);
     const svg = scoreCardSvg({ home, away, hs, as_, league, dateLabel, homeFlag, awayFlag });
     await sharp(Buffer.from(svg)).png().toFile(outPath);
     return `/og/${slug}.png`;
