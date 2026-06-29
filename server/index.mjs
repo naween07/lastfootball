@@ -2215,9 +2215,25 @@ function scoreCardSvg({ home, away, hs, as_, league, dateLabel, homeFlag, awayFl
 </svg>`;
 }
 
+// A valid football score is a non-negative integer — accepted as a number or a
+// digit-string. This is the guard that makes it IMPOSSIBLE to bake "undefined"/"NaN"
+// into a card again, regardless of what a caller passes.
+function validScore(v) {
+  return v !== undefined && v !== null && /^\d+$/.test(String(v).trim());
+}
+
 // Render and save a score-card PNG to dist/og/<slug>.png. Returns the public path or null.
 async function writeScoreCard({ slug, home, away, hs, as_, league, date, homeLogo, awayLogo }) {
   if (!sharp) return null;
+  // Refuse to render a card with a missing/invalid score. The old transitional code
+  // interpolated undefined scores as "undefined - undefined" and the existsSync guard
+  // below then froze that broken PNG forever. Bailing here means no broken file is
+  // ever written; the backfill (which derives the score from the slug) regenerates a
+  // correct card on a later pass, so this self-heals.
+  if (!validScore(hs) || !validScore(as_)) {
+    console.warn(`[OG] skip card ${slug}: invalid score hs=${JSON.stringify(hs)} as_=${JSON.stringify(as_)}`);
+    return null;
+  }
   try {
     // IMPORTANT: store cards OUTSIDE dist/ — `vite build` wipes dist/ on every build,
     // which would delete all generated cards. This persistent dir survives rebuilds.
