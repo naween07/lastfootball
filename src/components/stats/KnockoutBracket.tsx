@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { fetchLeagueFixtures, fetchLeagueRounds } from '@/services/footballApi';
 import { Match } from '@/types/football';
-import { Loader2, Trophy, ChevronDown } from 'lucide-react';
+import { Loader2, Trophy } from 'lucide-react';
 import OptimizedImage from '../OptimizedImage';
 import { cn } from '@/lib/utils';
 
@@ -145,221 +145,171 @@ export default function KnockoutBracket({ leagueId, season }: KnockoutBracketPro
     <div className="text-center py-12 text-muted-foreground text-sm">No knockout rounds available.</div>
   );
 
-  // Reverse: Final at top → earlier rounds below
-  const rev = [...rounds].reverse();
-
-  return (
-    <div className="py-4 px-2 sm:px-4">
-      {rev.map((round, ri) => (
-        <RoundSection key={round.label} round={round} isFirst={ri === 0} />
-      ))}
-    </div>
-  );
+  return <HorizontalBracket rounds={rounds} />;
 }
 
-// ─── Round Section ──────────────────────────────────────────────────────────
-function RoundSection({ round, isFirst }: { round: RoundData; isFirst: boolean }) {
-  const isFinal = round.label === 'Final';
-  const [expanded, setExpanded] = useState(true);
+// ─── Horizontal bracket ───────────────────────────────────────────────────────
+// Deterministic coordinates: every tie's vertical centre is computed in JS so the
+// SVG connector lines line up exactly (no DOM measuring). Rounds run left→right,
+// earliest to Final; connectors are POSITIONAL (feeders 2i & 2i+1 of the previous
+// round feed tie i of the next). Result/winner logic is untouched — penalties and
+// extra time still resolve via the tie's winnerId / decidedBy.
+const CARD_W = 240;
+const CARD_H = 96;
+const GAP_Y = 16;
+const COL_GAP = 64;
+const LABEL_H = 26;
+
+function HorizontalBracket({ rounds }: { rounds: RoundData[] }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState(0);
+  const ordered = rounds; // already ascending by round order
+
+  const centers: number[][] = [];
+  ordered.forEach((round, r) => {
+    if (r === 0) {
+      centers[r] = round.ties.map((_, i) => i * (CARD_H + GAP_Y) + CARD_H / 2);
+    } else {
+      centers[r] = round.ties.map((_, i) => {
+        const a = centers[r - 1][2 * i];
+        const b = centers[r - 1][2 * i + 1];
+        if (a != null && b != null) return (a + b) / 2;
+        if (a != null) return a;
+        return i * (CARD_H + GAP_Y) + CARD_H / 2;
+      });
+    }
+  });
+
+  const rowsFirst = centers[0]?.length || 1;
+  const bodyH = Math.max(rowsFirst * (CARD_H + GAP_Y), CARD_H + GAP_Y);
+  const canvasW = ordered.length * (CARD_W + COL_GAP);
+  const canvasH = LABEL_H + bodyH;
+
+  const conns: string[] = [];
+  for (let r = 1; r < ordered.length; r++) {
+    const xPrevR = (r - 1) * (CARD_W + COL_GAP) + CARD_W;
+    const xCurL = r * (CARD_W + COL_GAP);
+    const mx = (xPrevR + xCurL) / 2;
+    ordered[r].ties.forEach((_, i) => {
+      const yC = LABEL_H + centers[r][i];
+      [centers[r - 1][2 * i], centers[r - 1][2 * i + 1]].forEach(yF => {
+        if (yF == null) return;
+        conns.push(`M ${xPrevR} ${LABEL_H + yF} H ${mx} V ${yC} H ${xCurL}`);
+      });
+    });
+  }
+
+  const jumpTo = (r: number) => {
+    setActive(r);
+    scrollRef.current?.scrollTo({ left: Math.max(0, r * (CARD_W + COL_GAP) - 12), behavior: 'smooth' });
+  };
 
   return (
-    <div className="mb-1">
-      {/* Round header */}
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className={cn(
-          'w-full flex items-center justify-center gap-2 py-3 transition-colors',
-          isFinal ? '' : 'hover:bg-secondary/30 rounded-lg'
-        )}
-      >
-        {isFinal && <Trophy className="w-4 h-4 text-amber-400" />}
-        <span className={cn(
-          'text-xs font-bold uppercase tracking-widest',
-          isFinal ? 'text-amber-400' : 'text-muted-foreground'
-        )}>
-          {round.label}
-        </span>
-        {!isFinal && (
-          <span className="text-[10px] text-muted-foreground/50 ml-1">({round.ties.length})</span>
-        )}
-        <ChevronDown className={cn(
-          'w-3.5 h-3.5 text-muted-foreground/40 transition-transform',
-          !expanded && '-rotate-90'
-        )} />
-      </button>
+    <div className="py-3">
+      {/* Round tabs */}
+      <div className="flex gap-2 overflow-x-auto px-2 pb-3">
+        {ordered.map((round, r) => (
+          <button
+            key={round.label}
+            onClick={() => jumpTo(r)}
+            className={cn(
+              'whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold border transition-colors',
+              active === r
+                ? 'border-[#39ff14] text-[#39ff14] bg-[#39ff14]/10'
+                : 'border-border/60 text-muted-foreground hover:bg-secondary/40'
+            )}
+          >
+            {round.label}
+          </button>
+        ))}
+      </div>
 
-      {/* Ties grid */}
-      {expanded && (
-        <div className={cn(
-          'grid gap-2 pb-4',
-          isFinal ? 'grid-cols-1 max-w-xs mx-auto' :
-          round.ties.length <= 2 ? 'grid-cols-1 sm:grid-cols-2 max-w-lg mx-auto' :
-          'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4'
-        )}>
-          {round.ties.map(tie => (
-            isFinal
-              ? <FinalCard key={tie.id} tie={tie} />
-              : <TieCard key={tie.id} tie={tie} />
+      {/* Scrollable bracket canvas */}
+      <div ref={scrollRef} className="overflow-x-auto px-2">
+        <div className="relative" style={{ width: canvasW, height: canvasH + 8 }}>
+          <svg className="absolute inset-0 pointer-events-none" width={canvasW} height={canvasH + 8}>
+            {conns.map((d, i) => (
+              <path key={i} d={d} fill="none" stroke="#333" strokeWidth={1.5} />
+            ))}
+          </svg>
+
+          {ordered.map((round, r) => (
+            <div
+              key={'lbl' + round.label}
+              className="absolute text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70"
+              style={{ left: r * (CARD_W + COL_GAP), top: 0, width: CARD_W }}
+            >
+              {round.label}
+            </div>
           ))}
+
+          {ordered.map((round, r) =>
+            round.ties.map((tie, i) => (
+              <BracketCard
+                key={tie.id + '-' + r}
+                tie={tie}
+                isFinal={round.label === 'Final'}
+                left={r * (CARD_W + COL_GAP)}
+                top={LABEL_H + centers[r][i] - CARD_H / 2}
+              />
+            ))
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
-// ─── Tie Card ───────────────────────────────────────────────────────────────
-function TieCard({ tie }: { tie: TieData }) {
-  const w1 = tie.winnerId === tie.team1.id;
-  const w2 = tie.winnerId === tie.team2.id;
-  const has2 = !!tie.leg2;
-
-  return (
-    <div className="bg-card rounded-lg border border-border/50 overflow-hidden">
-      {/* Header with leg labels */}
-      {tie.decided && has2 && (
-        <div className="flex items-center px-3 py-1 bg-secondary/30 border-b border-border/30">
-          <span className="flex-1" />
-          <div className="flex items-center gap-0 tabular-nums">
-            <span className="text-[8px] text-muted-foreground/60 w-[22px] text-center uppercase">1st</span>
-            <span className="text-[8px] text-muted-foreground/60 w-[22px] text-center uppercase">2nd</span>
-            <span className="text-[8px] text-muted-foreground/60 w-[26px] text-center uppercase font-bold">Agg</span>
-          </div>
-        </div>
-      )}
-
-      {/* Winner on top */}
-      {(() => {
-        if (tie.decided && w2) {
-          return (<>
-            <TeamRow team={tie.team2} s1={tie.leg1[1]} s2={has2 ? tie.leg2![1] : null} agg={tie.agg?.[1] ?? null} won={true} lost={false} decided={true} has2={has2} />
-            <div className="h-px bg-border/20 mx-2" />
-            <TeamRow team={tie.team1} s1={tie.leg1[0]} s2={has2 ? tie.leg2![0] : null} agg={tie.agg?.[0] ?? null} won={false} lost={true} decided={true} has2={has2} />
-          </>);
-        }
-        return (<>
-          <TeamRow team={tie.team1} s1={tie.leg1[0]} s2={has2 ? tie.leg2![0] : null} agg={tie.agg?.[0] ?? null} won={w1} lost={w2} decided={tie.decided} has2={has2} />
-          <div className="h-px bg-border/20 mx-2" />
-          <TeamRow team={tie.team2} s1={tie.leg1[1]} s2={has2 ? tie.leg2![1] : null} agg={tie.agg?.[1] ?? null} won={w2} lost={w1} decided={tie.decided} has2={has2} />
-        </>);
-      })()}
-
-      {/* How a level knockout tie was settled */}
-      {tie.decided && tie.decidedBy === 'pens' && (
-        <div className="text-center py-1 bg-[#39ff14]/[0.05] border-t border-[#39ff14]/15">
-          <span className="text-[9px] font-bold text-[#39ff14] uppercase tracking-wider">
-            Won on penalties{tie.pen1 != null && tie.pen2 != null ? ` ${Math.max(tie.pen1, tie.pen2)}-${Math.min(tie.pen1, tie.pen2)}` : ''}
-          </span>
-        </div>
-      )}
-      {tie.decided && tie.decidedBy === 'aet' && (
-        <div className="text-center py-1 bg-secondary/20 border-t border-border/20">
-          <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">After extra time</span>
-        </div>
-      )}
-
-      {/* Date for undecided ties */}
-      {!tie.decided && (
-        <div className="text-center py-1.5 bg-secondary/20 border-t border-border/20">
-          <span className="text-[10px] text-muted-foreground">{tie.dateLabel}</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function TeamRow({ team, s1, s2, agg, won, lost, decided, has2 }: {
-  team: TieData['team1']; s1: number | null; s2: number | null;
-  agg: number | null; won: boolean; lost: boolean; decided: boolean; has2: boolean;
+function BracketRow({ team, score, won, lost, decided }: {
+  team: TieData['team1']; score: number | null; won: boolean; lost: boolean; decided: boolean;
 }) {
   return (
     <div className={cn(
-      'flex items-center gap-2 px-3 py-2 transition-colors border-l-2 border-transparent',
-      won && decided ? 'bg-[#39ff14]/[0.06] border-l-[#39ff14]' : '',
-      lost && decided ? 'bg-red-500/[0.03]' : '',
+      'flex items-center gap-2 px-2.5 h-[30px] border-l-2 border-transparent',
+      won ? 'bg-[#39ff14]/[0.06] border-l-[#39ff14]' : lost ? 'bg-red-500/[0.03]' : ''
     )}>
-      {/* Team logo + name */}
-      <Lg src={team.logo} sz={18} />
+      <Lg src={team.logo} sz={16} />
       <span className={cn(
-        'text-[13px] flex-1 truncate',
-        won && decided ? 'font-bold text-[#39ff14]' : '',
-        lost && decided ? 'text-red-400/80 line-through decoration-red-400/40' : '',
-        !decided ? 'text-foreground' : '',
-      )}>
-        {team.name}
-      </span>
-
-      {/* Scores */}
-      {decided ? (
-        <div className="flex items-center tabular-nums gap-0">
-          <span className={cn(
-            'text-[13px] font-semibold w-[22px] text-center',
-            won ? 'text-[#39ff14]' : 'text-red-400/50'
-          )}>{s1}</span>
-          {has2 && (
-            <span className={cn(
-              'text-[13px] font-semibold w-[22px] text-center',
-              won ? 'text-[#39ff14]' : 'text-red-400/50'
-            )}>{s2}</span>
-          )}
-          {agg !== null && (
-            <span className={cn(
-              'text-[13px] font-black w-[26px] text-center rounded-md py-0.5',
-              won ? 'text-[#39ff14] bg-[#39ff14]/10' : 'text-red-400/40',
-            )}>{agg}</span>
-          )}
-        </div>
-      ) : null}
+        'text-[12.5px] flex-1 truncate',
+        won ? 'font-bold text-[#39ff14]' : lost ? 'text-red-400/80 line-through decoration-red-400/40' : 'text-foreground'
+      )}>{team.name || '—'}</span>
+      {decided && (
+        <span className={cn(
+          'text-[12.5px] font-bold tabular-nums',
+          won ? 'text-[#39ff14]' : lost ? 'text-red-400/50' : 'text-muted-foreground'
+        )}>{score}</span>
+      )}
     </div>
   );
 }
 
-// ─── Final Card ─────────────────────────────────────────────────────────────
-function FinalCard({ tie }: { tie: TieData }) {
+function BracketCard({ tie, left, top, isFinal }: { tie: TieData; left: number; top: number; isFinal: boolean }) {
   const w1 = tie.winnerId === tie.team1.id;
   const w2 = tie.winnerId === tie.team2.id;
+  const isPens = tie.decided && tie.decidedBy === 'pens';
+  const statusText = !tie.decided
+    ? (tie.dateLabel || 'TBD')
+    : isPens
+      ? `Pens ${Math.max(tie.pen1 ?? 0, tie.pen2 ?? 0)}-${Math.min(tie.pen1 ?? 0, tie.pen2 ?? 0)}`
+      : tie.decidedBy === 'aet' ? 'After extra time' : 'Full time';
 
   return (
-    <div className="relative bg-gradient-to-b from-amber-500/[0.06] to-transparent border-2 border-amber-500/20 rounded-xl overflow-hidden">
-      {/* Final header */}
-      {tie.decided ? (
-        <div className="flex items-center justify-center gap-1.5 py-2 bg-amber-500/[0.06]">
-          <Trophy className="w-3.5 h-3.5 text-amber-400" />
-          <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest">Champion</span>
-        </div>
-      ) : (
-        <div className="flex items-center justify-center gap-1.5 py-2 bg-secondary/30">
-          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{tie.dateLabel || 'TBD'}</span>
-        </div>
-      )}
-
-      {/* Winner on top, loser below */}
-      {(() => {
-        const winner = w1 ? tie.team1 : w2 ? tie.team2 : tie.team1;
-        const loser = w1 ? tie.team2 : w2 ? tie.team1 : tie.team2;
-        const winnerScore = w1 ? tie.leg1[0] : w2 ? tie.leg1[1] : tie.leg1[0];
-        const loserScore = w1 ? tie.leg1[1] : w2 ? tie.leg1[0] : tie.leg1[1];
-        const hasWinner = w1 || w2;
-        return (<>
-          <div className={cn('flex items-center gap-3 px-4 py-3', hasWinner && tie.decided ? 'bg-primary/[0.04]' : '')}>
-            <Lg src={winner.logo} sz={28} />
-            <span className={cn('text-sm flex-1 truncate', hasWinner && tie.decided ? 'font-bold text-foreground' : 'text-muted-foreground')}>{winner.name}</span>
-            {tie.decided && (<span className={cn('text-xl font-black tabular-nums', hasWinner ? 'text-foreground' : 'text-muted-foreground')}>{winnerScore}</span>)}
-          </div>
-          <div className="h-px bg-border/20 mx-3" />
-          <div className={cn('flex items-center gap-3 px-4 py-3', tie.decided ? 'opacity-40' : '')}>
-            <Lg src={loser.logo} sz={28} />
-            <span className={cn('text-sm flex-1 truncate', 'text-muted-foreground')}>{loser.name}</span>
-            {tie.decided && (<span className={cn('text-xl font-black tabular-nums text-muted-foreground')}>{loserScore}</span>)}
-          </div>
-        </>);
-      })()}
-
-      {/* Aggregate for two-legged */}
-      {tie.agg && (
-        <div className="text-center py-1.5 bg-secondary/20 border-t border-border/20">
-          <span className="text-[10px] text-muted-foreground">Aggregate: {tie.agg[0]} - {tie.agg[1]}</span>
-        </div>
-      )}
+    <div
+      className={cn('absolute rounded-lg border overflow-hidden bg-card', isFinal ? 'border-amber-500/40' : 'border-border/60')}
+      style={{ left, top, width: CARD_W, height: CARD_H }}
+    >
+      <div className="flex items-center gap-1.5 px-2.5 h-[18px] bg-secondary/20">
+        {isFinal && <Trophy className="w-3 h-3 text-amber-400 flex-shrink-0" />}
+        <span className={cn('text-[9.5px] uppercase tracking-wide font-semibold', isFinal ? 'text-amber-400' : 'text-muted-foreground/70')}>
+          {isFinal ? 'Final' : (tie.decided ? 'Result' : 'Upcoming')}
+        </span>
+      </div>
+      <BracketRow team={tie.team1} score={tie.leg1[0]} won={w1 && tie.decided} lost={w2 && tie.decided} decided={tie.decided} />
+      <div className="h-px bg-border/20" />
+      <BracketRow team={tie.team2} score={tie.leg1[1]} won={w2 && tie.decided} lost={w1 && tie.decided} decided={tie.decided} />
+      <div className={cn('text-center h-[16px] leading-[16px]', isPens ? 'bg-[#39ff14]/[0.05]' : 'bg-secondary/10')}>
+        <span className={cn('text-[8.5px] font-bold uppercase tracking-wide', isPens ? 'text-[#39ff14]' : 'text-muted-foreground/70')}>{statusText}</span>
+      </div>
     </div>
   );
 }
