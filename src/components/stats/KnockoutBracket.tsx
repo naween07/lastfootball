@@ -17,6 +17,9 @@ interface TieData {
   agg: [number, number] | null;
   winnerId: number | null;
   decided: boolean;
+  decidedBy?: 'ft' | 'aet' | 'pens';
+  pen1?: number | null;
+  pen2?: number | null;
   dateLabel: string;
 }
 
@@ -83,14 +86,24 @@ function buildTies(matches: Match[]): TieData[] {
         if (last.status === 'PEN') wid = last.homeScore! > last.awayScore! ? last.homeTeam.id : last.awayTeam.id;
       }
     } else if (done && legs.length === 1) {
-      if ((f.homeScore ?? 0) > (f.awayScore ?? 0)) wid = t1.id;
+      // Single-leg knockout (World Cup): trust the API winner flag, then the penalty
+      // shootout, then regulation/ET goals. This is what makes a 1-1 settled on
+      // penalties resolve to a real winner instead of looking like a draw.
+      if (f.homeWinner) wid = t1.id;
+      else if (f.awayWinner) wid = t2.id;
+      else if (f.penaltyHome != null && f.penaltyAway != null && f.penaltyHome !== f.penaltyAway)
+        wid = f.penaltyHome > f.penaltyAway ? t1.id : t2.id;
+      else if ((f.homeScore ?? 0) > (f.awayScore ?? 0)) wid = t1.id;
       else if ((f.awayScore ?? 0) > (f.homeScore ?? 0)) wid = t2.id;
     }
+
+    const decidedBy = f.status === 'PEN' ? 'pens' : f.status === 'AET' ? 'aet' : 'ft';
 
     return {
       id: [t1.id, t2.id].sort().join('-'),
       team1: t1, team2: t2,
       leg1: l1, leg2: l2, agg, winnerId: wid, decided: done,
+      decidedBy, pen1: f.penaltyHome ?? null, pen2: f.penaltyAway ?? null,
       dateLabel: legs.map(l => fmtD(l.date)).filter(Boolean).join(' · '),
     };
   });
@@ -230,6 +243,20 @@ function TieCard({ tie }: { tie: TieData }) {
         </>);
       })()}
 
+      {/* How a level knockout tie was settled */}
+      {tie.decided && tie.decidedBy === 'pens' && (
+        <div className="text-center py-1 bg-[#39ff14]/[0.05] border-t border-[#39ff14]/15">
+          <span className="text-[9px] font-bold text-[#39ff14] uppercase tracking-wider">
+            Won on penalties{tie.pen1 != null && tie.pen2 != null ? ` ${Math.max(tie.pen1, tie.pen2)}-${Math.min(tie.pen1, tie.pen2)}` : ''}
+          </span>
+        </div>
+      )}
+      {tie.decided && tie.decidedBy === 'aet' && (
+        <div className="text-center py-1 bg-secondary/20 border-t border-border/20">
+          <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">After extra time</span>
+        </div>
+      )}
+
       {/* Date for undecided ties */}
       {!tie.decided && (
         <div className="text-center py-1.5 bg-secondary/20 border-t border-border/20">
@@ -246,17 +273,17 @@ function TeamRow({ team, s1, s2, agg, won, lost, decided, has2 }: {
 }) {
   return (
     <div className={cn(
-      'flex items-center gap-2 px-3 py-2 transition-colors',
-      won && decided ? 'bg-primary/[0.04]' : '',
+      'flex items-center gap-2 px-3 py-2 transition-colors border-l-2 border-transparent',
+      won && decided ? 'bg-[#39ff14]/[0.06] border-l-[#39ff14]' : '',
+      lost && decided ? 'bg-red-500/[0.03]' : '',
     )}>
       {/* Team logo + name */}
       <Lg src={team.logo} sz={18} />
       <span className={cn(
         'text-[13px] flex-1 truncate',
-        won && decided ? 'font-bold text-foreground' : '',
-        lost && decided ? 'text-muted-foreground/50' : '',
+        won && decided ? 'font-bold text-[#39ff14]' : '',
+        lost && decided ? 'text-red-400/80 line-through decoration-red-400/40' : '',
         !decided ? 'text-foreground' : '',
-        !won && !lost && decided ? 'text-muted-foreground' : '',
       )}>
         {team.name}
       </span>
@@ -266,18 +293,18 @@ function TeamRow({ team, s1, s2, agg, won, lost, decided, has2 }: {
         <div className="flex items-center tabular-nums gap-0">
           <span className={cn(
             'text-[13px] font-semibold w-[22px] text-center',
-            won ? 'text-foreground' : 'text-muted-foreground/40'
+            won ? 'text-[#39ff14]' : 'text-red-400/50'
           )}>{s1}</span>
           {has2 && (
             <span className={cn(
               'text-[13px] font-semibold w-[22px] text-center',
-              won ? 'text-foreground' : 'text-muted-foreground/40'
+              won ? 'text-[#39ff14]' : 'text-red-400/50'
             )}>{s2}</span>
           )}
           {agg !== null && (
             <span className={cn(
               'text-[13px] font-black w-[26px] text-center rounded-md py-0.5',
-              won ? 'text-primary bg-primary/10' : 'text-muted-foreground/30',
+              won ? 'text-[#39ff14] bg-[#39ff14]/10' : 'text-red-400/40',
             )}>{agg}</span>
           )}
         </div>

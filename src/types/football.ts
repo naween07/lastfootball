@@ -49,6 +49,12 @@ export interface Match {
   homeScore: number | null;
   awayScore: number | null;
   status: MatchStatus;
+  // Knockout tie-breakers: penalty shootout score and the side API-Football marks as
+  // the winner. Needed so a 1-1 settled on penalties shows a winner, not a "draw".
+  penaltyHome?: number | null;
+  penaltyAway?: number | null;
+  homeWinner?: boolean | null;
+  awayWinner?: boolean | null;
   minute?: string;
   date: string;
   time: string;

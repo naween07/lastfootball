@@ -92,6 +92,10 @@ function mapFixtureToMatch(fixture: any): Match {
     awayTeam: mapTeam(t.away),
     homeScore: g.home,
     awayScore: g.away,
+    penaltyHome: fixture.score?.penalty?.home ?? null,
+    penaltyAway: fixture.score?.penalty?.away ?? null,
+    homeWinner: t.home?.winner ?? null,
+    awayWinner: t.away?.winner ?? null,
     status: mapStatus(statusShort),
     minute: mapMinute(statusShort, f.status?.elapsed, f.status?.extra),
     date: f.date ? new Date(f.date).toLocaleDateString("en-CA") : "", // YYYY-MM-DD in local TZ
