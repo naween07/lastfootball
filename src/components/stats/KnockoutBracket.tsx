@@ -154,11 +154,11 @@ export default function KnockoutBracket({ leagueId, season }: KnockoutBracketPro
 // earliest to Final; connectors are POSITIONAL (feeders 2i & 2i+1 of the previous
 // round feed tie i of the next). Result/winner logic is untouched — penalties and
 // extra time still resolve via the tie's winnerId / decidedBy.
-const CARD_W = 240;
-const CARD_H = 96;
-const GAP_Y = 16;
-const COL_GAP = 64;
-const LABEL_H = 26;
+const CARD_W = 284;
+const CARD_H = 108;
+const GAP_Y = 18;
+const COL_GAP = 72;
+const LABEL_H = 28;
 
 function HorizontalBracket({ rounds }: { rounds: RoundData[] }) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -254,7 +254,7 @@ function HorizontalBracket({ rounds }: { rounds: RoundData[] }) {
       </div>
 
       {/* Scrollable bracket canvas */}
-      <div ref={scrollRef} className="overflow-x-auto px-2">
+      <div ref={scrollRef} className="overflow-x-auto px-2" style={{ scrollSnapType: 'x proximity', scrollPaddingLeft: 8 }}>
         <div className="relative" style={{ width: canvasW, height: canvasH + 8 }}>
           <svg className="absolute inset-0 pointer-events-none" width={canvasW} height={canvasH + 8}>
             {conns.map((d, i) => (
@@ -266,7 +266,7 @@ function HorizontalBracket({ rounds }: { rounds: RoundData[] }) {
             <div
               key={'lbl' + round.label}
               className="absolute text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70"
-              style={{ left: r * (CARD_W + COL_GAP), top: 0, width: CARD_W }}
+              style={{ left: r * (CARD_W + COL_GAP), top: 0, width: CARD_W, scrollSnapAlign: 'start' }}
             >
               {round.label}
             </div>
@@ -289,55 +289,69 @@ function HorizontalBracket({ rounds }: { rounds: RoundData[] }) {
   );
 }
 
-function BracketRow({ team, score, won, lost, decided }: {
-  team: TieData['team1']; score: number | null; won: boolean; lost: boolean; decided: boolean;
+function BracketRow({ team, scoreText, won, lost }: {
+  team: TieData['team1']; scoreText: string; won: boolean; lost: boolean;
 }) {
   return (
     <div className={cn(
-      'flex items-center gap-2 px-2.5 h-[30px] border-l-2 border-transparent',
+      'flex items-center gap-2 px-3 h-[34px] border-l-2 border-transparent',
       won ? 'bg-[#39ff14]/[0.06] border-l-[#39ff14]' : lost ? 'bg-red-500/[0.03]' : ''
     )}>
-      <Lg src={team.logo} sz={16} />
+      <Lg src={team.logo} sz={18} />
       <span className={cn(
-        'text-[12.5px] flex-1 truncate',
+        'text-[13.5px] flex-1 truncate',
         won ? 'font-bold text-[#39ff14]' : lost ? 'text-red-400/80 line-through decoration-red-400/40' : 'text-foreground'
       )}>{team.name || '—'}</span>
-      {decided && (
-        <span className={cn(
-          'text-[12.5px] font-bold tabular-nums',
-          won ? 'text-[#39ff14]' : lost ? 'text-red-400/50' : 'text-muted-foreground'
-        )}>{score}</span>
-      )}
+      <span className={cn(
+        'text-[14px] font-bold tabular-nums',
+        won ? 'text-[#39ff14]' : lost ? 'text-red-400/50' : 'text-muted-foreground'
+      )}>{scoreText}</span>
     </div>
   );
 }
 
 function BracketCard({ tie, left, top, isFinal }: { tie: TieData; left: number; top: number; isFinal: boolean }) {
-  const w1 = tie.winnerId === tie.team1.id;
-  const w2 = tie.winnerId === tie.team2.id;
+  const w1 = tie.decided && tie.winnerId === tie.team1.id;
+  const w2 = tie.decided && tie.winnerId === tie.team2.id;
+  const has2 = !!tie.leg2;                          // two-legged tie (Champions/Europa League)
   const isPens = tie.decided && tie.decidedBy === 'pens';
-  const statusText = !tie.decided
-    ? (tie.dateLabel || 'TBD')
-    : isPens
-      ? `Pens ${Math.max(tie.pen1 ?? 0, tie.pen2 ?? 0)}-${Math.min(tie.pen1 ?? 0, tie.pen2 ?? 0)}`
-      : tie.decidedBy === 'aet' ? 'After extra time' : 'Full time';
+
+  // Score per team: aggregate for two-legged ties, match score for single-leg.
+  // Penalty shootouts (single-leg, e.g. the final) append the shootout score in parens.
+  let s1 = '', s2 = '';
+  if (tie.decided) {
+    if (has2 && tie.agg) { s1 = String(tie.agg[0]); s2 = String(tie.agg[1]); }
+    else {
+      s1 = tie.leg1[0] != null ? String(tie.leg1[0]) : '';
+      s2 = tie.leg1[1] != null ? String(tie.leg1[1]) : '';
+      if (isPens && tie.pen1 != null && tie.pen2 != null) { s1 += ` (${tie.pen1})`; s2 += ` (${tie.pen2})`; }
+    }
+  }
+
+  const headerText = isFinal ? 'Final' : has2 ? 'Aggregate' : !tie.decided ? 'Upcoming' : 'Result';
+
+  // Bottom strip: per-leg breakdown for two-legged ties, otherwise how it was settled.
+  let strip = '', stripNeon = false;
+  if (!tie.decided) strip = tie.dateLabel || 'TBD';
+  else if (isPens) { strip = `Won on penalties`; stripNeon = true; }
+  else if (tie.decidedBy === 'aet') strip = 'After extra time';
+  else if (has2 && tie.leg2) strip = `1st ${tie.leg1[0]}\u2013${tie.leg1[1]} · 2nd ${tie.leg2[0]}\u2013${tie.leg2[1]}`;
+  else strip = 'Full time';
 
   return (
     <div
-      className={cn('absolute rounded-lg border overflow-hidden bg-card', isFinal ? 'border-amber-500/40' : 'border-border/60')}
-      style={{ left, top, width: CARD_W, height: CARD_H }}
+      className={cn('absolute rounded-xl border overflow-hidden bg-card', isFinal ? 'border-amber-500/50' : 'border-border/60')}
+      style={{ left, top, width: CARD_W, height: CARD_H, scrollSnapAlign: 'start' }}
     >
-      <div className="flex items-center gap-1.5 px-2.5 h-[18px] bg-secondary/20">
+      <div className={cn('flex items-center gap-1.5 px-3 h-[20px]', isFinal ? 'bg-amber-500/10' : 'bg-secondary/25')}>
         {isFinal && <Trophy className="w-3 h-3 text-amber-400 flex-shrink-0" />}
-        <span className={cn('text-[9.5px] uppercase tracking-wide font-semibold', isFinal ? 'text-amber-400' : 'text-muted-foreground/70')}>
-          {isFinal ? 'Final' : (tie.decided ? 'Result' : 'Upcoming')}
-        </span>
+        <span className={cn('text-[10px] font-bold uppercase tracking-wider', isFinal ? 'text-amber-400' : 'text-muted-foreground/70')}>{headerText}</span>
       </div>
-      <BracketRow team={tie.team1} score={tie.leg1[0]} won={w1 && tie.decided} lost={w2 && tie.decided} decided={tie.decided} />
-      <div className="h-px bg-border/20" />
-      <BracketRow team={tie.team2} score={tie.leg1[1]} won={w2 && tie.decided} lost={w1 && tie.decided} decided={tie.decided} />
-      <div className={cn('text-center h-[16px] leading-[16px]', isPens ? 'bg-[#39ff14]/[0.05]' : 'bg-secondary/10')}>
-        <span className={cn('text-[8.5px] font-bold uppercase tracking-wide', isPens ? 'text-[#39ff14]' : 'text-muted-foreground/70')}>{statusText}</span>
+      <BracketRow team={tie.team1} scoreText={s1} won={w1} lost={w2} />
+      <div className="h-px bg-border/15" />
+      <BracketRow team={tie.team2} scoreText={s2} won={w2} lost={w1} />
+      <div className={cn('flex items-center justify-center h-[18px] px-2', (isPens || stripNeon) ? 'bg-[#39ff14]/[0.05]' : 'bg-secondary/10')}>
+        <span className={cn('text-[9px] font-semibold uppercase tracking-wide truncate', stripNeon ? 'text-[#39ff14]' : 'text-muted-foreground/70')}>{strip}</span>
       </div>
     </div>
   );
