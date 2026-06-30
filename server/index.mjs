@@ -1533,6 +1533,29 @@ function statVal(teamStats, type) {
 const VAR = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 // Build a premium, data-driven match report applying journalistic translation rules.
+// Resolve the TRUE outcome of a finished match, accounting for knockout ties that
+// go to extra time or penalties. API-Football keeps `goals` as the score after 90
+// (and after ET), so a penalty shootout leaves goals level (e.g. 1-1) even though a
+// winner exists. The decisive info lives in status.short (AET/PEN), score.penalty,
+// and teams.*.winner. Returns the side that actually advanced.
+function decideMatch(f) {
+  const st = f.fixture?.status?.short;                 // FT | AET | PEN
+  const hs = f.goals?.home, as_ = f.goals?.away;       // score incl. ET, excl. pens
+  const ph = f.score?.penalty?.home, pa = f.score?.penalty?.away;
+  const wentPens = st === 'PEN' || (ph != null && pa != null);
+  const wentAET = st === 'AET' || st === 'PEN';        // PEN implies ET was played
+  let winnerSide = null;                               // 'home' | 'away' | null (true draw)
+  if (f.teams?.home?.winner === true) winnerSide = 'home';
+  else if (f.teams?.away?.winner === true) winnerSide = 'away';
+  else if (wentPens && ph != null && pa != null && ph !== pa) winnerSide = ph > pa ? 'home' : 'away';
+  else if (hs != null && as_ != null && hs !== as_) winnerSide = hs > as_ ? 'home' : 'away';
+  return {
+    statusShort: st, hs, as_, penHome: ph, penAway: pa,
+    wentPens, wentAET, winnerSide,
+    isDraw: winnerSide === null,                       // only a draw if nobody advanced
+  };
+}
+
 async function buildPremiumReport(f) {
   const home = f.teams?.home?.name, away = f.teams?.away?.name;
   const hs = f.goals?.home, as_ = f.goals?.away;
@@ -1540,10 +1563,15 @@ async function buildPremiumReport(f) {
   const fid = f.fixture?.id;
   const comp = f.league?.name || 'the match';
   const round = f.league?.round || '';
-  const isDraw = hs === as_;
-  const homeWon = hs > as_;
+  const D = decideMatch(f);
+  const isDraw = D.isDraw;
+  const homeWon = D.winnerSide === 'home';
   const winner = homeWon ? home : away, loser = homeWon ? away : home;
   const winScore = homeWon ? hs : as_, loseScore = homeWon ? as_ : hs;
+  const wentPens = D.wentPens, wentAET = D.wentAET;
+  const penWin = homeWon ? D.penHome : D.penAway, penLose = homeWon ? D.penAway : D.penHome;
+  // suffix for winner-context prose, e.g. " on penalties (4-3)" / " after extra time"
+  const decisionTag = wentPens ? ` on penalties (${penWin}-${penLose})` : (wentAET ? ' after extra time' : '');
   const margin = Math.abs(hs - as_), total = hs + as_;
   const date = f.fixture?.date ? new Date(f.fixture.date).toISOString() : new Date().toISOString();
   const venue = f.fixture?.venue?.name ? `${f.fixture.venue.name}${f.fixture.venue.city ? ', ' + f.fixture.venue.city : ''}` : null;
@@ -1626,6 +1654,7 @@ async function buildPremiumReport(f) {
   const braceHero = scorers.find(s => s.count === 2);
   let title;
   if (hatTrickHero) title = `${hatTrickHero.name.split(' ').slice(-1)[0].toUpperCase()} HAT-TRICK FIRES ${winner.toUpperCase()} PAST ${loser.toUpperCase()}`;
+  else if (wentPens) title = `${winner.toUpperCase()} BEAT ${loser.toUpperCase()} ON PENALTIES AFTER ${hs}-${as_} DEADLOCK`;
   else if (isDraw && total === 0) title = `${home.toUpperCase()} AND ${away.toUpperCase()} PLAY OUT GOALLESS STALEMATE`;
   else if (isDraw) title = `HONOURS EVEN AS ${home.toUpperCase()} AND ${away.toUpperCase()} SHARE ${total} GOALS`;
   else if (margin >= 3) title = `${winner.toUpperCase()} RUN RIOT IN ${winScore}-${loseScore} ROUT OF ${loser.toUpperCase()}`;
@@ -1635,20 +1664,23 @@ async function buildPremiumReport(f) {
   // ── SUBTITLE ──
   let subtitle;
   if (hatTrickHero) subtitle = `${hatTrickHero.name} steals the show with a treble as ${winner} dispatch ${loser} ${winScore}-${loseScore} in the ${comp}.`;
+  else if (wentPens) subtitle = `${winner} hold their nerve to beat ${loser} ${penWin}-${penLose} on penalties after a ${hs}-${as_}${wentAET ? ' extra-time' : ''} stalemate in the ${comp}.`;
   else if (isDraw && total === 0) subtitle = `${home} and ${away} cancel each other out in a tense, goalless ${comp} encounter.`;
   else if (isDraw) subtitle = `${home} and ${away} trade blows in an absorbing ${hs}-${as_} draw that leaves the ${comp} group finely poised.`;
-  else if (margin >= 3) subtitle = `A ruthless ${winner} dismantle ${loser} ${winScore}-${loseScore} to lay down a serious marker in the ${comp}.`;
-  else subtitle = `${winner} dig deep to overcome a stubborn ${loser} ${winScore}-${loseScore} in a hard-fought ${comp} clash.`;
+  else if (margin >= 3) subtitle = `A ruthless ${winner} dismantle ${loser} ${winScore}-${loseScore}${decisionTag} to lay down a serious marker in the ${comp}.`;
+  else subtitle = `${winner} dig deep to overcome a stubborn ${loser} ${winScore}-${loseScore}${decisionTag} in a hard-fought ${comp} clash.`;
 
   // ── BODY ──
   const paras = [];
-  const arc = isDraw && total === 0
+  const arc = wentPens
+    ? `${winner} ${penWin}-${penLose} ${loser} on penalties. After ${hs}-${as_} could not separate the sides${venue ? ` at ${venue}` : ''}${wentAET ? ' even after extra time' : ''}, it was ${winner} who held their composure from twelve yards to advance in the ${comp}.`
+    : isDraw && total === 0
     ? `${VAR(['Stalemate', 'Deadlock', 'A war of attrition'])}. ${home} and ${away} played out a goalless draw${venue ? ` at ${venue}` : ''}, a ${comp} contest that promised much but ultimately produced a cagey, chess-like affair where defensive discipline trumped attacking ambition.`
     : isDraw
     ? `${home} ${hs}-${as_} ${away}. The two sides could not be separated${venue ? ` at ${venue}` : ''} in a ${total >= 4 ? 'breathless, end-to-end' : 'tightly-fought'} ${comp} encounter, the kind of contest that ebbed and flowed and left both benches living on their nerves until the final whistle.`
     : margin >= 3
-    ? `${winner} were imperious. A commanding ${winScore}-${loseScore} victory over ${loser}${venue ? ` at ${venue}` : ''} announced their intentions in this ${comp} campaign, the result rarely in doubt once the floodgates opened.`
-    : `${winner} found a way. A hard-earned ${winScore}-${loseScore} win over ${loser}${venue ? ` at ${venue}` : ''} may not have been pretty, but in tournament football it is results, not aesthetics, that matter — and ${winner} banked three precious points.`;
+    ? `${winner} were imperious. A commanding ${winScore}-${loseScore} victory over ${loser}${decisionTag}${venue ? ` at ${venue}` : ''} announced their intentions in this ${comp} campaign, the result rarely in doubt once the floodgates opened.`
+    : `${winner} found a way. A hard-earned ${winScore}-${loseScore} win over ${loser}${decisionTag}${venue ? ` at ${venue}` : ''} may not have been pretty, but in tournament football it is results, not aesthetics, that matter — and ${winner} march on.`;
   paras.push(arc + (round ? ` This was a ${round} fixture with real weight attached.` : ''));
 
   // Attacking analysis
@@ -1756,6 +1788,11 @@ async function buildPremiumReport(f) {
   return {
     title, subtitle, body, slug, league: comp, home, away, date,
     metaDesc, tags, imageAlt, isFeatured: f.league?.id === 1,
+    // Score + flags + knockout decision — needed by the score card. (These were
+    // previously omitted, so the live path passed undefined scores to the card.)
+    hs, as_,
+    homeLogo: f.teams?.home?.logo, awayLogo: f.teams?.away?.logo,
+    statusShort: D.statusShort, penHome: D.penHome, penAway: D.penAway, winnerSide: D.winnerSide,
   };
 }
 
@@ -1856,7 +1893,7 @@ async function generateMatchReports() {
       const r = await buildPremiumReport(f);
       if (!r) continue;
       // Generate a branded score-card OG image for social sharing
-      const cardPath = await writeScoreCard({ slug: r.slug, home: r.home, away: r.away, hs: r.hs, as_: r.as_, league: r.league, date: r.date, homeLogo: r.homeLogo, awayLogo: r.awayLogo });
+      const cardPath = await writeScoreCard({ slug: r.slug, home: r.home, away: r.away, hs: r.hs, as_: r.as_, league: r.league, date: r.date, homeLogo: r.homeLogo, awayLogo: r.awayLogo, statusShort: r.statusShort, penHome: r.penHome, penAway: r.penAway, winnerSide: r.winnerSide });
       const ogImage = cardPath ? `https://lastfootball.com${cardPath}` : null;
       const jsonLd = generateJsonLd({ type: 'NewsArticle', title: r.title, description: r.subtitle, slug: r.slug, author: 'LastFootball', image: ogImage, published: r.date });
       const row = {
@@ -2219,7 +2256,7 @@ async function flagDataUri(url) {
   } catch { return null; }
 }
 
-function scoreCardSvg({ home, away, hs, as_, league, dateLabel, homeFlag, awayFlag }) {
+function scoreCardSvg({ home, away, hs, as_, league, dateLabel, homeFlag, awayFlag, statusShort, penHome, penAway, winnerSide }) {
   const W = 1200, H = 630;
   const NEON = '#39ff14';
   const FONT = 'Arial, "Helvetica Neue", Helvetica, sans-serif';
@@ -2227,6 +2264,15 @@ function scoreCardSvg({ home, away, hs, as_, league, dateLabel, homeFlag, awayFl
   const aFont = ogFitFont(String(away || ''), 46, 13);
   const flagW = 184, flagH = 122, flagRx = 8;
   const homeCx = 238, awayCx = 962, flagY = 196, nameY = 392;
+
+  // Result line: a knockout decided by ET/pens is NOT "FULL TIME". Show how it ended,
+  // include the shootout score when present, and tint the advancing team's name green.
+  const penStr = (penHome != null && penAway != null) ? ` ${penHome}-${penAway}` : '';
+  const statusLabel = statusShort === 'PEN' ? `PENALTIES${penStr}`
+    : statusShort === 'AET' ? 'AFTER EXTRA TIME'
+    : 'FULL TIME';
+  const homeColor = winnerSide === 'home' ? NEON : '#ffffff';
+  const awayColor = winnerSide === 'away' ? NEON : '#ffffff';
 
   // A flag tile (clipped + rounded + hairline border) or a neutral placeholder.
   const flagTile = (img, cx, id) => {
@@ -2259,14 +2305,14 @@ function scoreCardSvg({ home, away, hs, as_, league, dateLabel, homeFlag, awayFl
 
   ${flagTile(homeFlag, homeCx, 'hf')}
   ${flagTile(awayFlag, awayCx, 'af')}
-  <text x="${homeCx}" y="${nameY}" font-family='${FONT}' font-size="${hFont}" fill="#ffffff" text-anchor="middle" font-weight="800" letter-spacing="1">${ogEscape(String(home || '').toUpperCase())}</text>
-  <text x="${awayCx}" y="${nameY}" font-family='${FONT}' font-size="${aFont}" fill="#ffffff" text-anchor="middle" font-weight="800" letter-spacing="1">${ogEscape(String(away || '').toUpperCase())}</text>
+  <text x="${homeCx}" y="${nameY}" font-family='${FONT}' font-size="${hFont}" fill="${homeColor}" text-anchor="middle" font-weight="800" letter-spacing="1">${ogEscape(String(home || '').toUpperCase())}</text>
+  <text x="${awayCx}" y="${nameY}" font-family='${FONT}' font-size="${aFont}" fill="${awayColor}" text-anchor="middle" font-weight="800" letter-spacing="1">${ogEscape(String(away || '').toUpperCase())}</text>
 
   <text x="556" y="312" font-family='${FONT}' font-size="124" fill="#ffffff" text-anchor="end" font-weight="900">${ogEscape(String(hs))}</text>
   <text x="${W/2}" y="300" font-family='${FONT}' font-size="84" fill="#777777" text-anchor="middle" font-weight="300">-</text>
   <text x="644" y="312" font-family='${FONT}' font-size="124" fill="#ffffff" text-anchor="start" font-weight="900">${ogEscape(String(as_))}</text>
-  <text x="${W/2}" y="372" font-family='${FONT}' font-size="22" fill="${NEON}" text-anchor="middle" font-weight="700" letter-spacing="4">FULL TIME</text>
-  ${flank(W/2, 365, 72, '#888888', 0.6)}
+  <text x="${W/2}" y="372" font-family='${FONT}' font-size="22" fill="${NEON}" text-anchor="middle" font-weight="700" letter-spacing="4">${ogEscape(statusLabel)}</text>
+  ${statusLabel.length <= 10 ? flank(W/2, 365, 72, '#888888', 0.6) : ''}
 
   <line x1="170" y1="506" x2="1030" y2="506" stroke="#ffffff" stroke-opacity="0.06" stroke-width="2"/>
   <text x="${W/2-5}" y="566" font-family='${FONT}' font-size="42" fill="#ffffff" text-anchor="end" font-weight="900">Last</text>
@@ -2283,7 +2329,7 @@ function validScore(v) {
 }
 
 // Render and save a score-card PNG to dist/og/<slug>.png. Returns the public path or null.
-async function writeScoreCard({ slug, home, away, hs, as_, league, date, homeLogo, awayLogo }) {
+async function writeScoreCard({ slug, home, away, hs, as_, league, date, homeLogo, awayLogo, statusShort, penHome, penAway, winnerSide }) {
   if (!sharp) return null;
   // Refuse to render a card with a missing/invalid score. The old transitional code
   // interpolated undefined scores as "undefined - undefined" and the existsSync guard
@@ -2314,7 +2360,7 @@ async function writeScoreCard({ slug, home, away, hs, as_, league, date, homeLog
     const homeUrl = homeLogo || flagUrlForTeam(home);
     const awayUrl = awayLogo || flagUrlForTeam(away);
     const [homeFlag, awayFlag] = await Promise.all([flagDataUri(homeUrl), flagDataUri(awayUrl)]);
-    const svg = scoreCardSvg({ home, away, hs, as_, league, dateLabel, homeFlag, awayFlag });
+    const svg = scoreCardSvg({ home, away, hs, as_, league, dateLabel, homeFlag, awayFlag, statusShort, penHome, penAway, winnerSide });
     await sharp(Buffer.from(svg)).png().toFile(outPath);
     return `/og/${slug}.png`;
   } catch (e) {
