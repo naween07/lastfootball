@@ -165,26 +165,56 @@ function HorizontalBracket({ rounds }: { rounds: RoundData[] }) {
   const [active, setActive] = useState(0);
   const ordered = rounds; // already ascending by round order
 
-  const centers: number[][] = [];
-  ordered.forEach((round, r) => {
-    if (r === 0) {
-      centers[r] = round.ties.map((_, i) => i * (CARD_H + GAP_Y) + CARD_H / 2);
-    } else {
-      centers[r] = round.ties.map((_, i) => {
-        const a = centers[r - 1][2 * i];
-        const b = centers[r - 1][2 * i + 1];
-        if (a != null && b != null) return (a + b) / 2;
-        if (a != null) return a;
-        return i * (CARD_H + GAP_Y) + CARD_H / 2;
-      });
-    }
+  // Winner's team id → tie index, per round (decided ties only).
+  const winnerIdx = ordered.map(round => {
+    const m = new Map<number, number>();
+    round.ties.forEach((t, i) => { if (t.decided && t.winnerId != null) m.set(t.winnerId, i); });
+    return m;
   });
 
-  const rowsFirst = centers[0]?.length || 1;
-  const bodyH = Math.max(rowsFirst * (CARD_H + GAP_Y), CARD_H + GAP_Y);
+  // Feeders by TEAM IDENTITY, not position: a tie is fed by the previous-round tie
+  // whose winner is one of its teams. Handles byes (no feeder = team entered this
+  // round) and non-halving formats (Champions League league phase, play-offs) that
+  // a positional 2i/2i+1 assumption gets wrong. Clean brackets (World Cup) are
+  // unchanged because each winner traces back to exactly its pair.
+  const feeders: number[][][] = ordered.map((round, r) => {
+    if (r === 0) return round.ties.map(() => []);
+    const prev = winnerIdx[r - 1];
+    return round.ties.map(t => {
+      const fs: number[] = [];
+      [t.team1.id, t.team2.id].forEach(id => {
+        const fi = prev.get(id);
+        if (fi != null && !fs.includes(fi)) fs.push(fi);
+      });
+      return fs;
+    });
+  });
+
+  // Vertical centre per tie: average of its feeders (so it sits between them), with a
+  // forward pass that enforces order + a minimum gap so cards never overlap. Ties with
+  // no feeder (first round, or byes) stack sequentially.
+  const centers: number[][] = [];
+  ordered.forEach((round, r) => {
+    const arr: number[] = [];
+    let prevBottom = -Infinity;
+    round.ties.forEach((_, i) => {
+      const fs = feeders[r][i];
+      let desired: number;
+      if (r > 0 && fs.length) desired = fs.reduce((s, f) => s + centers[r - 1][f], 0) / fs.length;
+      else if (i === 0) desired = CARD_H / 2;
+      else desired = prevBottom + GAP_Y + CARD_H / 2;
+      const c = i === 0 ? desired : Math.max(desired, prevBottom + GAP_Y + CARD_H / 2);
+      arr.push(c);
+      prevBottom = c + CARD_H / 2;
+    });
+    centers.push(arr);
+  });
+
+  const bodyH = Math.max(CARD_H + GAP_Y, ...centers.map(col => (col.length ? col[col.length - 1] + CARD_H / 2 : 0)));
   const canvasW = ordered.length * (CARD_W + COL_GAP);
   const canvasH = LABEL_H + bodyH;
 
+  // Connectors follow the same team-identity feeders.
   const conns: string[] = [];
   for (let r = 1; r < ordered.length; r++) {
     const xPrevR = (r - 1) * (CARD_W + COL_GAP) + CARD_W;
@@ -192,9 +222,8 @@ function HorizontalBracket({ rounds }: { rounds: RoundData[] }) {
     const mx = (xPrevR + xCurL) / 2;
     ordered[r].ties.forEach((_, i) => {
       const yC = LABEL_H + centers[r][i];
-      [centers[r - 1][2 * i], centers[r - 1][2 * i + 1]].forEach(yF => {
-        if (yF == null) return;
-        conns.push(`M ${xPrevR} ${LABEL_H + yF} H ${mx} V ${yC} H ${xCurL}`);
+      feeders[r][i].forEach(f => {
+        conns.push(`M ${xPrevR} ${LABEL_H + centers[r - 1][f]} H ${mx} V ${yC} H ${xCurL}`);
       });
     });
   }
