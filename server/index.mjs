@@ -1121,8 +1121,13 @@ async function computeWorldCupTopStats() {
       const cacheKey = `fixplayers:${fid}`;
       let stats;
       const cached = cacheGet(cacheKey);
+      const lg = cached ? null : lastGood.get(cacheKey);
       if (cached) {
         stats = cached.data;
+      } else if (lg) {
+        // Evicted from the TTL cache but retained in last-good. Finished-match stats are
+        // immutable, so reuse it — never re-spend a call for data that can't change.
+        stats = lg.data;
       } else {
         // Limit new fetches per run to avoid a quota spike when many matches finish at once
         if (fetchedThisRun >= 12) continue;
@@ -1131,6 +1136,10 @@ async function computeWorldCupTopStats() {
           fetchedThisRun++;
           // Cache for ~30 days — finished match data is immutable
           cacheSet(cacheKey, stats, { fresh: 2592000, stale: 2592000 });
+          // Persist so a server restart reloads it from the DB (zero API cost) instead
+          // of re-spending a call per finished match. These snapshots never go stale —
+          // a played match's player stats don't change.
+          if (stats?.response?.length) saveSnapshot(cacheKey, stats);
         } catch { continue; }
       }
 
@@ -1398,19 +1407,25 @@ async function loadSnapshotsIntoCache() {
     if (Array.isArray(rows)) {
       for (const r of rows) {
         if (!r.key || !r.data) continue;
-        // Seed both the TTL cache (short fresh, so it refreshes soon) and lastGood
+        // Immutable finished-match data (fixplayers:*) never changes, so load it with a
+        // long TTL — it should never expire and re-trigger an API call. Everything else
+        // gets a short fresh window so the background loop refreshes it soon.
+        const immutable = r.key.startsWith('fixplayers:');
+        const freshMs = immutable ? 2592000 * 1000 : 30 * 1000;
+        const staleMs = immutable ? 2592000 * 1000 : 3600 * 1000;
         cache.set(r.key, {
           data: r.data,
           fetchedAt: Date.now(),
-          freshUntil: Date.now() + 30 * 1000,   // treat as slightly stale → triggers bg refresh
-          staleUntil: Date.now() + 3600 * 1000, // but usable for an hour
+          freshUntil: Date.now() + freshMs,
+          staleUntil: Date.now() + staleMs,
         });
         lastGood.set(r.key, { data: r.data, savedAt: Date.parse(r.updated_at) || Date.now() });
         if (r.key.startsWith('agg_homepage:')) {
           homepageAgg = { data: r.data, at: Date.parse(r.updated_at) || Date.now() };
         }
       }
-      console.log(`[SNAPSHOT] Loaded ${rows.length} snapshot(s) into cache on startup`);
+      const fpCount = rows.filter(r => r.key?.startsWith('fixplayers:')).length;
+      console.log(`[SNAPSHOT] Loaded ${rows.length} snapshot(s) into cache on startup (${fpCount} fixplayers)`);
     }
   } catch (e) {
     console.error('[SNAPSHOT] load error:', e.message);
