@@ -190,27 +190,33 @@ function HorizontalBracket({ rounds }: { rounds: RoundData[] }) {
     });
   });
 
-  // Vertical centre per tie: average of its feeders (so it sits between them), with a
-  // forward pass that enforces order + a minimum gap so cards never overlap. Ties with
-  // no feeder (first round, or byes) stack sequentially.
-  const centers: number[][] = [];
-  ordered.forEach((round, r) => {
-    const arr: number[] = [];
-    let prevBottom = -Infinity;
-    round.ties.forEach((_, i) => {
-      const fs = feeders[r][i];
-      let desired: number;
-      if (r > 0 && fs.length) desired = fs.reduce((s, f) => s + centers[r - 1][f], 0) / fs.length;
-      else if (i === 0) desired = CARD_H / 2;
-      else desired = prevBottom + GAP_Y + CARD_H / 2;
-      const c = i === 0 ? desired : Math.max(desired, prevBottom + GAP_Y + CARD_H / 2);
-      arr.push(c);
-      prevBottom = c + CARD_H / 2;
-    });
-    centers.push(arr);
-  });
+  // Position as a real tree. Post-order from the roots (latest round): a tie's children
+  // are its feeders, so we place all children first, then centre the parent on the
+  // vertical span of its children. Leaves (play-off ties, or byes with no feeder) get
+  // stacked in the order the tree visits them — which keeps each subtree contiguous, so
+  // branches never cross and the whole thing reads as a left→right pyramid. A one-child
+  // node (an R16 tie fed by a single play-off winner) sits level with its child; a
+  // two-child node sits between them (the classic bracket fork).
+  const centers: (number | null)[][] = ordered.map(round => round.ties.map(() => null));
+  let leafSlot = 0;
+  const place = (r: number, i: number): number => {
+    const cached = centers[r][i];
+    if (cached != null) return cached;
+    const ch = feeders[r]?.[i] ?? [];
+    let y: number;
+    if (ch.length) {
+      const ys = ch.map(c => place(r - 1, c));
+      y = (Math.min(...ys) + Math.max(...ys)) / 2;
+    } else {
+      y = leafSlot * (CARD_H + GAP_Y) + CARD_H / 2;
+      leafSlot++;
+    }
+    centers[r][i] = y;
+    return y;
+  };
+  for (let r = ordered.length - 1; r >= 0; r--) ordered[r].ties.forEach((_, i) => place(r, i));
 
-  const bodyH = Math.max(CARD_H + GAP_Y, ...centers.map(col => (col.length ? col[col.length - 1] + CARD_H / 2 : 0)));
+  const bodyH = Math.max(CARD_H + GAP_Y, leafSlot * (CARD_H + GAP_Y));
   const canvasW = ordered.length * (CARD_W + COL_GAP);
   const canvasH = LABEL_H + bodyH;
 
@@ -221,9 +227,9 @@ function HorizontalBracket({ rounds }: { rounds: RoundData[] }) {
     const xCurL = r * (CARD_W + COL_GAP);
     const mx = (xPrevR + xCurL) / 2;
     ordered[r].ties.forEach((_, i) => {
-      const yC = LABEL_H + centers[r][i];
+      const yC = LABEL_H + (centers[r][i] ?? 0);
       feeders[r][i].forEach(f => {
-        conns.push(`M ${xPrevR} ${LABEL_H + centers[r - 1][f]} H ${mx} V ${yC} H ${xCurL}`);
+        conns.push(`M ${xPrevR} ${LABEL_H + (centers[r - 1][f] ?? 0)} H ${mx} V ${yC} H ${xCurL}`);
       });
     });
   }
@@ -279,7 +285,7 @@ function HorizontalBracket({ rounds }: { rounds: RoundData[] }) {
                 tie={tie}
                 isFinal={round.label === 'Final'}
                 left={r * (CARD_W + COL_GAP)}
-                top={LABEL_H + centers[r][i] - CARD_H / 2}
+                top={LABEL_H + (centers[r][i] ?? 0) - CARD_H / 2}
               />
             ))
           )}
