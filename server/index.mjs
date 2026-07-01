@@ -90,6 +90,17 @@ function cacheGet(key) {
 // exhausted) so the site never serves empty data / skeletons.
 const lastGood = new Map();
 
+// The homepage aggregate, pinned OUTSIDE the evictable LRU cache. The homepage is the
+// most-requested payload, but it was stored only in `cache`/`lastGood` — both capped and
+// evicted oldest-first — and because a JS Map keeps a re-`set` key in its original slot,
+// the poll refreshing it every 3 min never moved it out of the eviction line. Under
+// traffic it got evicted, dropping the endpoint into a cold path that (a) ignored the
+// fresh DB snapshot and (b) could return empty when quota-gated — the "homepage needs a
+// hard refresh" bug. Holding the latest good aggregate here means eviction can never
+// blank it, and the endpoint can always answer instantly with zero API cost.
+let homepageAgg = null;      // { data, at }
+let _homepageSnapLoadAt = 0; // throttle for on-demand DB snapshot reads
+
 function cacheSet(key, data, ttl) {
   const now = Date.now();
   if (cache.size >= MAX_ENTRIES) {
@@ -627,17 +638,28 @@ const server = http.createServer(async (req, res) => {
         return json(req, res, hit.data, { 'X-Cache': isFresh ? 'HIT' : 'STALE' });
       }
 
-      // No TTL cache → serve last-good instantly (kept indefinitely; refreshed by the
-      // background loop). Never make the user wait or see empty widgets.
+      // Not in the (evictable) TTL cache → serve the pinned aggregate. It lives outside
+      // the LRU and is refreshed by the background poll, so eviction can never blank the
+      // homepage. This is the core fix for "widgets empty until hard refresh".
+      if (homepageAgg?.data) {
+        return json(req, res, homepageAgg.data, { 'X-Cache': 'PINNED' });
+      }
+
+      // Degraded fallback: last-good copy kept indefinitely.
       const lg = lastGood.get(cacheKey);
       if (lg) {
         return json(req, res, lg.data, { 'X-Cache': 'LASTGOOD' });
       }
 
-      // Truly cold: no TTL cache AND no last-good AND no snapshot (e.g. first request
-      // right after a fresh deploy before the startup build finished). Do ONE
-      // coalesced build so the very first visitor still gets data — this is the cold
-      // path only, not a per-request kickoff. Skip the call if we're out of quota.
+      // Cold: pull the persisted DB snapshot (zero API cost) before considering a build.
+      const snap = await loadHomepageSnapshotOnce(cacheKey);
+      if (snap) {
+        return json(req, res, snap, { 'X-Cache': 'SNAPSHOT' });
+      }
+
+      // Truly cold (no cache, no pin, no last-good, no snapshot — e.g. first request on a
+      // brand-new deploy before the startup build finished). One coalesced build if we
+      // have budget, else empty.
       if (!userFetchAllowed()) {
         return json(req, res, { live: [], today: [], scorers: {}, standings: {}, worldCupActive: false }, { 'X-Cache': 'EMPTY' });
       }
@@ -1350,6 +1372,7 @@ async function buildHomepageData(tz) {
   // Persist a snapshot so a server restart can serve instant data with no API call.
   // Only snapshot if we actually got meaningful data (avoid storing empties).
   if (result.worldCupActive || (result.live?.response?.length) || (result.today?.response?.length)) {
+    homepageAgg = { data: result, at: Date.now() }; // pin the freshest GOOD aggregate
     saveSnapshot(cacheKey, result);
   }
   return result;
@@ -1383,12 +1406,40 @@ async function loadSnapshotsIntoCache() {
           staleUntil: Date.now() + 3600 * 1000, // but usable for an hour
         });
         lastGood.set(r.key, { data: r.data, savedAt: Date.parse(r.updated_at) || Date.now() });
+        if (r.key.startsWith('agg_homepage:')) {
+          homepageAgg = { data: r.data, at: Date.parse(r.updated_at) || Date.now() };
+        }
       }
       console.log(`[SNAPSHOT] Loaded ${rows.length} snapshot(s) into cache on startup`);
     }
   } catch (e) {
     console.error('[SNAPSHOT] load error:', e.message);
   }
+}
+
+// Cold-path only: pull the persisted homepage snapshot straight from the DB (zero API
+// cost). Throttled to once per 30s so a burst of cold requests can't hammer Postgres.
+async function loadHomepageSnapshotOnce(cacheKey) {
+  const now = Date.now();
+  if (now - _homepageSnapLoadAt < 30000) return homepageAgg?.data || null;
+  _homepageSnapLoadAt = now;
+  try {
+    const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+    const rows = await supabaseQueryWithKey(
+      'cache_snapshots',
+      `select=data,updated_at&key=eq.${encodeURIComponent(cacheKey)}`,
+      'GET', null, SVC
+    );
+    const row = Array.isArray(rows) ? rows[0] : null;
+    if (row?.data) {
+      homepageAgg = { data: row.data, at: Date.parse(row.updated_at) || now };
+      cacheSet(cacheKey, row.data, { fresh: 60, stale: 300 });
+      return row.data;
+    }
+  } catch (e) {
+    console.error('[SNAPSHOT] homepage on-demand load error:', e.message);
+  }
+  return homepageAgg?.data || null;
 }
 
 // Proactively refresh WC standings + top scorers so the cache is always fresh.

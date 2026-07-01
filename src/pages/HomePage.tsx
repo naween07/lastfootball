@@ -31,6 +31,9 @@ export default function HomePage() {
 
   useEffect(() => {
     let cancelled = false;
+    let running = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
     const load = async (attempt = 1) => {
       try {
         const [homeData, newsData] = await Promise.allSettled([
@@ -56,19 +59,40 @@ export default function HomePage() {
 
         if (newsData.status === 'fulfilled' && newsData.value.data) setNews(newsData.value.data);
 
-        // If data came back empty (rare — server now serves cached/last-good), retry
-        // quickly so the page fills without the user needing to refresh.
+        // If data came back empty, retry with backoff so the page fills without a manual
+        // refresh. Keep `running` true across the retry chain so focus/interval triggers
+        // don't stack a second chain on top.
         if (!gotData && attempt <= 6 && !cancelled) {
           const delays = [500, 1000, 1500, 2500, 3500, 5000];
-          setTimeout(() => { if (!cancelled) load(attempt + 1); }, delays[attempt - 1] || 5000);
+          retryTimer = setTimeout(() => { if (!cancelled) load(attempt + 1); }, delays[attempt - 1] || 5000);
           if (attempt === 1) setLoading(false); // stop the full-page spinner; widgets show their own state
           return;
         }
       } catch {}
+      running = false;
       if (!cancelled) setLoading(false);
     };
-    load();
-    return () => { cancelled = true; };
+
+    const run = () => { if (!running && !cancelled) { running = true; load(1); } };
+
+    run(); // initial load
+
+    // Self-heal without a manual refresh: re-fetch when the tab regains focus/visibility
+    // and on a light 90s interval. /api/homepage is cache-only on the server (it never
+    // triggers an API-Football call), so this costs nothing against the quota — it just
+    // re-reads the server's cache and refreshes live scores.
+    const onVisible = () => { if (document.visibilityState === 'visible') run(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    const interval = setInterval(() => { if (document.visibilityState === 'visible') run(); }, 90_000);
+
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
   }, []);
 
   const upcomingMatches = useMemo(() =>
