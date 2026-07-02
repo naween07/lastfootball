@@ -224,6 +224,65 @@ async function sendPushEvents(events) {
   }
 }
 
+// ─── LF Momentum ────────────────────────────────────────────────────────────
+// Signature metric: a per-match dominance time series, sampled from the SAME
+// statistics payloads the liveDetailPoller already fetches every 3 minutes for
+// viewed live matches — zero additional API-Football calls. Each sample is the
+// home side's share (0-100) of a weighted attacking-output score. Memory-only:
+// history starts when the first viewer opens a live match and survives until
+// ~80 newer matches displace it (or a restart). The client falls back to a
+// static dominance bar when no series exists.
+const momentumHistory = new Map(); // fixtureId → [{ m: minute, h: homeShare0to100 }]
+const MOMENTUM_MAX_SAMPLES = 150;
+const MOMENTUM_MAX_MATCHES = 80;
+
+function momentumStatVal(teamStats, type) {
+  const s = (teamStats?.statistics || []).find((x) => x.type === type);
+  let v = s?.value;
+  if (v == null) return 0;
+  if (typeof v === 'string') v = parseFloat(v.replace('%', ''));
+  return Number.isFinite(v) ? v : 0;
+}
+
+function computeDominance(statsPayload, homeTeamId) {
+  const resp = statsPayload?.response;
+  if (!Array.isArray(resp) || resp.length < 2) return null;
+  let homeStats = resp[0], awayStats = resp[1];
+  if (homeTeamId && resp[1]?.team?.id === homeTeamId) { homeStats = resp[1]; awayStats = resp[0]; }
+  const score = (t) =>
+    9 * momentumStatVal(t, 'expected_goals') +
+    3 * momentumStatVal(t, 'Shots on Goal') +
+    1 * momentumStatVal(t, 'Total Shots') +
+    0.06 * momentumStatVal(t, 'Ball Possession') +
+    0.6 * momentumStatVal(t, 'Corner Kicks');
+  const h = score(homeStats), a = score(awayStats);
+  if (h + a <= 0) return { h: 50 };
+  return { h: Math.round((100 * h) / (h + a)) };
+}
+
+function recordMomentumSample(fixtureId, statsPayload, elapsedMin, homeTeamId) {
+  const fid = Number(fixtureId);
+  if (!fid) return;
+  const d = computeDominance(statsPayload, homeTeamId);
+  if (!d) return;
+  let arr = momentumHistory.get(fid);
+  if (!arr) {
+    if (momentumHistory.size >= MOMENTUM_MAX_MATCHES) {
+      momentumHistory.delete(momentumHistory.keys().next().value);
+    }
+    arr = [];
+    momentumHistory.set(fid, arr);
+  }
+  const m = Number.isFinite(elapsedMin) && elapsedMin > 0
+    ? elapsedMin
+    : (arr.length ? arr[arr.length - 1].m + 3 : 1);
+  const last = arr[arr.length - 1];
+  if (last && last.m === m) { last.h = d.h; return; } // same minute → update in place
+  if (last && m < last.m) return;                     // guard against clock going backwards
+  arr.push({ m, h: d.h });
+  if (arr.length > MOMENTUM_MAX_SAMPLES) arr.shift();
+}
+
 // The homepage aggregate, pinned OUTSIDE the evictable LRU cache. The homepage is the
 // most-requested payload, but it was stored only in `cache`/`lastGood` — both capped and
 // evicted oldest-first — and because a JS Map keeps a re-`set` key in its original slot,
@@ -857,6 +916,13 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    // ─── LF Momentum series (memory read — zero upstream cost) ──────────
+    if (path === '/api/momentum') {
+      const fid = Number(url.searchParams.get('id'));
+      if (!fid) return json(req, res, { error: 'Missing id' }, 400);
+      return json(req, res, { samples: momentumHistory.get(fid) || [] });
+    }
+
     // ─── Web push subscription endpoints ────────────────────────────────
     if (path === '/api/push/vapid-key' && req.method === 'GET') {
       if (!vapidKeys) return error(req, res, 503, 'Push not configured');
@@ -1388,6 +1454,14 @@ async function fetchMatchAggregate(fixtureId) {
   };
   const statusShort = result.fixture?.response?.[0]?.fixture?.status?.short;
   const isLive = isLiveStatus(statusShort);
+  // LF Momentum: seed the series on first view of a live match (poller extends it).
+  if (isLive && result.stats?.response?.length) {
+    recordMomentumSample(
+      Number(fixtureId), result.stats,
+      result.fixture?.response?.[0]?.fixture?.status?.elapsed,
+      result.fixture?.response?.[0]?.teams?.home?.id
+    );
+  }
   const FINISHED_TTL = { fresh: 2592000, stale: 2592000 }; // ~30d — immutable
   // Live: keep fresh a little longer than the poll interval so the entry stays in
   // cache between runs and the poller keeps it warm.
@@ -1445,6 +1519,10 @@ async function liveDetailPoller() {
           fetchUpstream('fixtures/events', { fixture: String(fid) }),
           fetchUpstream('fixtures/statistics', { fixture: String(fid) }),
         ]);
+        // LF Momentum: sample dominance from the stats we just fetched (free).
+        if (stats.status === 'fulfilled') {
+          recordMomentumSample(fid, stats.value, live?.fixture?.status?.elapsed, live?.teams?.home?.id);
+        }
         // Splice the fresh live fixture object into the existing fixture payload so
         // the detail page shows the current score without a separate fixtures?id call.
         let fixturePayload = prev.fixture;

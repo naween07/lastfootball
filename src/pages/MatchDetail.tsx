@@ -11,6 +11,7 @@ import MatchReactions from '@/components/MatchReactions';
 import HeadToHead from '@/components/HeadToHead';
 import MatchInsights from '@/components/MatchInsights';
 import OptimizedImage from '@/components/OptimizedImage';
+import LFMomentum, { MomentumSample } from '@/components/LFMomentum';
 import { fetchMatchDetails, fetchMatchPlayers } from '@/services/footballApi';
 import { useState, useEffect, useMemo } from 'react';
 import { Match, MatchPlayerData, MatchEvent } from '@/types/football';
@@ -18,10 +19,22 @@ import { cn } from '@/lib/utils';
 
 type Tab = 'overview' | 'lineups' | 'stats' | 'shots' | 'h2h' | 'commentary';
 
+async function fetchMomentum(id: number): Promise<MomentumSample[]> {
+  try {
+    const res = await fetch(`/api/momentum?id=${id}`);
+    if (!res.ok) return [];
+    const d = await res.json();
+    return Array.isArray(d.samples) ? d.samples : [];
+  } catch {
+    return [];
+  }
+}
+
 export default function MatchDetail() {
   const { id } = useParams<{ id: string }>();
   const [match, setMatch] = useState<Match | null>(null);
   const [playerData, setPlayerData] = useState<MatchPlayerData[]>([]);
+  const [momentum, setMomentum] = useState<MomentumSample[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('overview');
 
@@ -42,6 +55,9 @@ export default function MatchDetail() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
+
+    // LF Momentum series (server memory read — free)
+    fetchMomentum(Number(id)).then(s => { if (active) setMomentum(s); });
 
     // Poll for live updates — only if match is in progress
     const LIVE_STATUSES = new Set(['LIVE', '1H', '2H', 'HT']);
@@ -67,6 +83,7 @@ export default function MatchDetail() {
             // If match just finished, next interval will skip the fetch
           })
           .catch(console.error);
+        fetchMomentum(Number(id)).then(s => { if (active && s.length) setMomentum(s); });
 
         return prev;
       });
@@ -122,7 +139,7 @@ export default function MatchDetail() {
       <TabBar match={match} tab={tab} setTab={setTab} />
 
       <main className="container py-4 md:py-6 pb-20 md:pb-6 max-w-3xl">
-        {tab === 'overview' && <OverviewTab match={match} onJumpTo={setTab} />}
+        {tab === 'overview' && <OverviewTab match={match} momentum={momentum} onJumpTo={setTab} />}
         {tab === 'lineups' && match.lineups && (
           <Card>
             <LineupView
@@ -358,12 +375,14 @@ function TabBar({ match, tab, setTab }: { match: Match; tab: Tab; setTab: (t: Ta
 }
 
 /* ─────────── Overview tab ─────────── */
-function OverviewTab({ match, onJumpTo }: { match: Match; onJumpTo: (t: Tab) => void }) {
+function OverviewTab({ match, momentum, onJumpTo }: { match: Match; momentum: MomentumSample[]; onJumpTo: (t: Tab) => void }) {
   const isFuture = match.status === 'NS';
   const topEvents = useMemo(() => match.events?.slice(0, 8) || [], [match.events]);
 
   return (
     <div className="space-y-4">
+      {!isFuture && <LFMomentum samples={momentum} match={match} />}
+
       <Card padded>
         <SectionTitle>Match info</SectionTitle>
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
