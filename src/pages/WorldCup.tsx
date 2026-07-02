@@ -5,10 +5,11 @@ import SEOHead from '@/components/SEOHead';
 import OptimizedImage from '@/components/OptimizedImage';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { Trophy, Calendar, MapPin, Users, Clock, ChevronRight, Check } from 'lucide-react';
+import { Trophy, Calendar, MapPin, Users, Clock, ChevronRight, Check, Zap, Swords } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import Flag from '@/components/Flag';
+import KnockoutBracket from '@/components/stats/KnockoutBracket';
 
 const WC_START = new Date('2026-06-11T19:00:00Z').getTime();
 const WC_END = new Date('2026-07-19T19:00:00Z').getTime();
@@ -90,6 +91,8 @@ const GROUPS: { name: string; teams: { name: string; code: string; flag: string 
 ];
 
 const ALL_TEAMS = GROUPS.flatMap(g => g.teams);
+const LIVE_STATUSES = new Set(['1H', '2H', 'HT', 'ET', 'BT', 'P', 'LIVE', 'INT']);
+const KNOCKOUT_ORDER = ['Round of 32', 'Round of 16', 'Quarter-finals', 'Semi-finals', '3rd Place Final', 'Final'];
 
 export default function WorldCup() {
   const { user } = useAuth();
@@ -98,6 +101,85 @@ export default function WorldCup() {
   const [enrolling, setEnrolling] = useState(false);
   const [countdown, setCountdown] = useState(getCountdown());
   const [enrollCount, setEnrollCount] = useState(0);
+
+  // ── Live tournament data — the SAME server-cached calls /stats and
+  // /worldcup/fixtures use, so every World Cup surface updates together.
+  const [wcFixtures, setWcFixtures] = useState<any[]>([]);
+  const [wcStandings, setWcStandings] = useState<any[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const { callApi } = await import('@/services/footballApi');
+        const [fx, st] = await Promise.allSettled([
+          callApi('fixtures', { league: '1', season: '2026' }),
+          callApi('standings', { league: '1', season: '2026' }),
+        ]);
+        if (!active) return;
+        if (fx.status === 'fulfilled' && fx.value?.length) setWcFixtures(fx.value);
+        if (st.status === 'fulfilled' && st.value?.length) setWcStandings(st.value);
+      } catch { /* keep whatever we had */ }
+    };
+    load();
+    const t = setInterval(load, 120_000); // server cache hit — no upstream cost
+    return () => { active = false; clearInterval(t); };
+  }, []);
+
+  // Group tables, normalized. API standings arrive either as
+  // [{league:{standings:[[rows],[rows],...]}}] or already as [[rows],...].
+  const liveGroups = useMemo(() => {
+    const raw: any = wcStandings;
+    if (!raw?.length) return [] as any[][];
+    if (Array.isArray(raw[0])) return raw as any[][];
+    const s = raw[0]?.league?.standings;
+    return Array.isArray(s) ? s : [];
+  }, [wcStandings]);
+
+  const liveNow = useMemo(
+    () => wcFixtures.filter((f: any) => LIVE_STATUSES.has(f.fixture?.status?.short)),
+    [wcFixtures]
+  );
+
+  // Current stage = round of the live match, else the next upcoming, else last played.
+  const currentStage = useMemo(() => {
+    if (liveNow[0]) return liveNow[0].league?.round || null;
+    if (!wcFixtures.length) return null;
+    const now = Date.now();
+    const upcoming = wcFixtures
+      .filter((f: any) => new Date(f.fixture?.date).getTime() > now)
+      .sort((a: any, b: any) => +new Date(a.fixture.date) - +new Date(b.fixture.date))[0];
+    if (upcoming) return upcoming.league?.round || null;
+    const past = wcFixtures
+      .filter((f: any) => new Date(f.fixture?.date).getTime() <= now)
+      .sort((a: any, b: any) => +new Date(b.fixture.date) - +new Date(a.fixture.date))[0];
+    return past?.league?.round || null;
+  }, [wcFixtures, liveNow]);
+
+  // First/last match date per knockout round — drives the Key Dates timeline.
+  const roundDates = useMemo(() => {
+    const map = new Map<string, { min: number; max: number; done: boolean; total: number; played: number }>();
+    for (const f of wcFixtures) {
+      const r = f.league?.round;
+      if (!r) continue;
+      const t = new Date(f.fixture?.date).getTime();
+      if (!Number.isFinite(t)) continue;
+      const finished = ['FT', 'AET', 'PEN'].includes(f.fixture?.status?.short);
+      const e = map.get(r) || { min: t, max: t, done: true, total: 0, played: 0 };
+      e.min = Math.min(e.min, t); e.max = Math.max(e.max, t);
+      e.total++; if (finished) e.played++;
+      e.done = e.done && finished;
+      map.set(r, e);
+    }
+    return map;
+  }, [wcFixtures]);
+
+  const todayWC = useMemo(() => {
+    const today = new Date().toDateString();
+    return wcFixtures
+      .filter((f: any) => new Date(f.fixture?.date).toDateString() === today)
+      .sort((a: any, b: any) => +new Date(a.fixture.date) - +new Date(b.fixture.date));
+  }, [wcFixtures]);
 
   useEffect(() => {
     const timer = setInterval(() => setCountdown(getCountdown()), 1000);
@@ -194,8 +276,8 @@ export default function WorldCup() {
               48 teams. 104 matches. 16 stadiums across USA, Canada & Mexico.
             </p>
 
-            {/* Countdown */}
-            {countdown && (
+            {/* Countdown before kickoff → live tournament state once underway */}
+            {countdown ? (
               <div className="flex items-center justify-center gap-3 sm:gap-5 mb-8">
                 <CountdownUnit value={countdown.days} label="Days" />
                 <span className="text-2xl text-amber-400/50 font-light">:</span>
@@ -204,6 +286,23 @@ export default function WorldCup() {
                 <CountdownUnit value={countdown.mins} label="Minutes" />
                 <span className="text-2xl text-amber-400/50 font-light">:</span>
                 <CountdownUnit value={countdown.secs} label="Seconds" />
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center justify-center gap-3 mb-8">
+                {currentStage && (
+                  <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#39ff14]/10 border border-[#39ff14]/25">
+                    <Swords className="w-4 h-4 text-[#39ff14]" />
+                    <span className="text-sm font-black text-[#39ff14] uppercase tracking-wider">{currentStage}</span>
+                  </span>
+                )}
+                {liveNow.length > 0 && (
+                  <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-red-500/10 border border-red-500/25">
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                    <span className="text-sm font-bold text-red-400 uppercase tracking-wider">
+                      {liveNow.length} live now
+                    </span>
+                  </span>
+                )}
               </div>
             )}
 
@@ -295,39 +394,159 @@ export default function WorldCup() {
           </div>
         </section>
 
+        {/* Live & today's matches — from the same fixtures feed as /stats */}
+        {(liveNow.length > 0 || todayWC.length > 0) && (
+          <section className="container max-w-5xl mx-auto px-4 pt-8">
+            <h2 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
+              <Zap className="w-5 h-5 text-[#39ff14]" />
+              {liveNow.length > 0 ? 'Live Now' : "Today's Matches"}
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {(liveNow.length > 0 ? liveNow : todayWC).slice(0, 6).map((f: any) => {
+                const st = f.fixture?.status?.short;
+                const isLive = LIVE_STATUSES.has(st);
+                const done = ['FT', 'AET', 'PEN'].includes(st);
+                return (
+                  <Link
+                    key={f.fixture.id}
+                    to={`/match/${f.fixture.id}`}
+                    className="bg-card border border-border/60 rounded-xl px-4 py-3 flex items-center gap-3 hover:border-border transition-colors"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[13px] font-semibold text-foreground truncate">{f.teams?.home?.name}</span>
+                        <span className={cn('text-sm font-bold tabular-nums', isLive ? 'text-[#39ff14]' : 'text-foreground')}>
+                          {f.goals?.home ?? ''}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[13px] font-semibold text-foreground truncate">{f.teams?.away?.name}</span>
+                        <span className={cn('text-sm font-bold tabular-nums', isLive ? 'text-[#39ff14]' : 'text-foreground')}>
+                          {f.goals?.away ?? ''}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0 w-16">
+                      {isLive ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-400 uppercase">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                          {f.fixture?.status?.elapsed ? `${f.fixture.status.elapsed}'` : 'Live'}
+                        </span>
+                      ) : done ? (
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase">{st === 'PEN' ? 'Pens' : st === 'AET' ? 'AET' : 'FT'}</span>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground">
+                          {new Date(f.fixture.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* Knockout bracket — the SAME component and data as /stats, so the two
+            pages can never drift apart again. */}
+        <section className="container max-w-6xl mx-auto px-4 pt-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+              <Swords className="w-5 h-5 text-amber-400" />
+              Knockout Bracket
+            </h2>
+            <Link to="/worldcup/fixtures" className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5">
+              All fixtures <ChevronRight className="w-3 h-3" />
+            </Link>
+          </div>
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <KnockoutBracket leagueId={1} season={2026} />
+          </div>
+        </section>
+
         {/* Groups */}
         <section className="container max-w-5xl mx-auto px-4 py-8">
           <h2 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
             <Trophy className="w-5 h-5 text-amber-400" />
-            Group Stage
+            Group Stage {liveGroups.length > 0 && <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider bg-secondary/50 px-2 py-0.5 rounded">Final tables</span>}
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-            {GROUPS.map(group => (
-              <div key={group.name} className="bg-card border border-border/50 rounded-xl overflow-hidden">
-                <div className="px-3 py-2 bg-secondary/30 border-b border-border/30">
-                  <span className="text-xs font-bold text-foreground uppercase tracking-wider">Group {group.name}</span>
+          {liveGroups.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              {liveGroups.map((rows: any[], gi: number) => {
+                const gname = rows[0]?.group || `Group ${gi + 1}`;
+                return (
+                  <div key={gname} className="bg-card border border-border/50 rounded-xl overflow-hidden">
+                    <div className="px-3 py-2 bg-secondary/30 border-b border-border/30 flex items-center justify-between">
+                      <span className="text-xs font-bold text-foreground uppercase tracking-wider">{gname}</span>
+                      <span className="text-[9px] text-muted-foreground uppercase tracking-widest flex gap-2.5"><span className="w-4 text-center">P</span><span className="w-5 text-center">GD</span><span className="w-6 text-center">Pts</span></span>
+                    </div>
+                    <div className="p-1.5">
+                      {rows.map((r: any) => {
+                        const code = ALL_TEAMS.find(t => t.name === r.team?.name)?.code;
+                        const inner = (
+                          <>
+                            <span className={cn(
+                              'w-4 text-center text-[10px] font-bold rounded',
+                              r.rank <= 2 ? 'text-[#39ff14]' : r.rank === 3 ? 'text-amber-400' : 'text-muted-foreground/60'
+                            )}>{r.rank}</span>
+                            {r.team?.logo
+                              ? <img src={r.team.logo} alt="" className="w-5 h-5 object-contain" loading="lazy" />
+                              : code ? <Flag code={code} size={20} /> : <span className="w-5" />}
+                            <span className="text-[12.5px] font-medium text-foreground flex-1 truncate">{r.team?.name}</span>
+                            <span className="text-[11px] text-muted-foreground tabular-nums flex gap-2.5">
+                              <span className="w-4 text-center">{r.all?.played ?? 0}</span>
+                              <span className="w-5 text-center">{r.goalsDiff > 0 ? `+${r.goalsDiff}` : r.goalsDiff ?? 0}</span>
+                              <span className={cn('w-6 text-center font-bold', r.rank <= 2 ? 'text-[#39ff14]' : 'text-foreground')}>{r.points ?? 0}</span>
+                            </span>
+                          </>
+                        );
+                        const cls = cn(
+                          'flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors',
+                          r.rank <= 2 ? 'bg-[#39ff14]/[0.04]' : '',
+                          code && selectedTeam === code ? 'ring-1 ring-primary/30' : ''
+                        );
+                        return code ? (
+                          <Link key={r.team?.id || r.team?.name} to={`/worldcup/team/${code.toLowerCase()}`} className={cn(cls, 'hover:bg-secondary/30')}>
+                            {inner}
+                          </Link>
+                        ) : (
+                          <div key={r.team?.id || r.team?.name} className={cls}>{inner}</div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {GROUPS.map(group => (
+                <div key={group.name} className="bg-card border border-border/50 rounded-xl overflow-hidden">
+                  <div className="px-3 py-2 bg-secondary/30 border-b border-border/30">
+                    <span className="text-xs font-bold text-foreground uppercase tracking-wider">Group {group.name}</span>
+                  </div>
+                  <div className="p-2">
+                    {group.teams.map((team) => (
+                      <Link
+                        key={team.code}
+                        to={`/worldcup/team/${team.code.toLowerCase()}`}
+                        className={cn(
+                          'flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-secondary/30 transition-colors',
+                          selectedTeam === team.code && 'bg-primary/5',
+                        )}
+                      >
+                        <Flag code={team.code} size={24} />
+                        <span className="text-[13px] font-medium text-foreground flex-1 hover:text-primary transition-colors">{team.name}</span>
+                        {selectedTeam === team.code && (
+                          <span className="text-[9px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded">YOUR TEAM</span>
+                        )}
+                      </Link>
+                    ))}
+                  </div>
                 </div>
-                <div className="p-2">
-                  {group.teams.map((team, i) => (
-                    <Link
-                      key={team.code}
-                      to={`/worldcup/team/${team.code.toLowerCase()}`}
-                      className={cn(
-                        'flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-secondary/30 transition-colors',
-                        selectedTeam === team.code && 'bg-primary/5',
-                      )}
-                    >
-                      <Flag code={team.code} size={24} />
-                      <span className="text-[13px] font-medium text-foreground flex-1 hover:text-primary transition-colors">{team.name}</span>
-                      {selectedTeam === team.code && (
-                        <span className="text-[9px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded">YOUR TEAM</span>
-                      )}
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </section>
 
         {/* Key dates */}
@@ -337,18 +556,35 @@ export default function WorldCup() {
             Key Dates
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-            {[
-              { date: 'June 11', event: 'Opening Match', detail: 'Mexico vs South Africa', venue: 'Estadio Azteca, Mexico City' },
-              { date: 'June 28', event: 'Round of 32 Begins', detail: 'Knockout stage starts', venue: 'Multiple venues' },
-              { date: 'July 9–11', event: 'Quarter-finals', detail: '8 teams remaining', venue: 'Multiple venues' },
-              { date: 'July 19', event: 'The Final', detail: 'Championship match', venue: 'MetLife Stadium, New Jersey' },
-            ].map(d => (
-              <div key={d.event} className="bg-card border border-border/50 rounded-xl p-4">
+            {(roundDates.size > 0
+              ? KNOCKOUT_ORDER.filter(r => roundDates.has(r)).map(r => {
+                  const d = roundDates.get(r)!;
+                  const fmt = (t: number) => new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                  const dateLabel = fmt(d.min) === fmt(d.max) ? fmt(d.min) : `${fmt(d.min)} – ${fmt(d.max)}`;
+                  const status = d.done ? 'Completed' : d.played > 0 ? 'In progress' : 'Upcoming';
+                  return { date: dateLabel, event: r, detail: `${d.played}/${d.total} played`, venue: status };
+                })
+              : [
+                  { date: 'June 11', event: 'Opening Match', detail: 'Mexico vs South Africa', venue: 'Estadio Azteca, Mexico City' },
+                  { date: 'June 28', event: 'Round of 32 Begins', detail: 'Knockout stage starts', venue: 'Multiple venues' },
+                  { date: 'July 9–11', event: 'Quarter-finals', detail: '8 teams remaining', venue: 'Multiple venues' },
+                  { date: 'July 19', event: 'The Final', detail: 'Championship match', venue: 'MetLife Stadium, New Jersey' },
+                ]
+            ).map(d => (
+              <div key={d.event} className={cn(
+                'bg-card border rounded-xl p-4',
+                d.venue === 'In progress' ? 'border-[#39ff14]/40' : 'border-border/50'
+              )}>
                 <div className="text-xs font-bold text-amber-400 mb-1">{d.date}</div>
                 <div className="text-sm font-bold text-foreground mb-0.5">{d.event}</div>
                 <div className="text-[11px] text-muted-foreground">{d.detail}</div>
-                <div className="text-[10px] text-muted-foreground/60 mt-1 flex items-center gap-1">
-                  <MapPin className="w-2.5 h-2.5" /> {d.venue}
+                <div className={cn(
+                  'text-[10px] mt-1 flex items-center gap-1',
+                  d.venue === 'In progress' ? 'text-[#39ff14] font-bold uppercase' : d.venue === 'Completed' ? 'text-muted-foreground/60 uppercase font-semibold' : 'text-muted-foreground/60'
+                )}>
+                  {d.venue === 'In progress' || d.venue === 'Completed' || d.venue === 'Upcoming'
+                    ? d.venue
+                    : (<><MapPin className="w-2.5 h-2.5" /> {d.venue}</>)}
                 </div>
               </div>
             ))}
