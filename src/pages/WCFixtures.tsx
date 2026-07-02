@@ -5,6 +5,7 @@ import SEOHead from '@/components/SEOHead';
 import Flag from '@/components/Flag';
 import { Trophy, Calendar, MapPin, Clock, ChevronRight, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import KnockoutBracket from '@/components/stats/KnockoutBracket';
 
 // ─── Tournament Data ────────────────────────────────────────────────────────
 const WC_START = new Date('2026-06-11T19:00:00Z').getTime();
@@ -217,7 +218,8 @@ export default function WCFixtures() {
           <h1 className="text-3xl sm:text-4xl font-black text-foreground mb-2">Match Schedule</h1>
           <p className="text-sm text-muted-foreground">June 11 – July 19, 2026 · USA · Mexico · Canada</p>
 
-          {/* Countdown */}
+          {/* Countdown (pre-tournament only) */}
+          {WC_START > Date.now() && (
           <div className="mt-4 flex gap-3">
             {[
               { val: countdown.days, label: 'DAYS' },
@@ -231,6 +233,7 @@ export default function WCFixtures() {
               </div>
             ))}
           </div>
+          )}
         </div>
       </section>
 
@@ -327,39 +330,75 @@ export default function WCFixtures() {
               </div>
             ))}
 
-            {/* Knockout rounds */}
+            {/* Knockout rounds — real fixtures from the API; TBD only for undrawn slots */}
             <div className="mt-8">
               <h2 className="text-lg font-black text-foreground mb-4 flex items-center gap-2">
                 <Zap className="w-5 h-5 text-primary" /> KNOCKOUT STAGE
               </h2>
-              {KNOCKOUT_ROUNDS.map(round => (
-                <div key={round.name} className="mb-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: round.color }} />
-                    <span className="text-[11px] uppercase tracking-widest font-bold" style={{ color: round.color }}>{round.name}</span>
-                    <span className="text-[10px] text-muted-foreground/60">· {round.startDate}</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                    {Array.from({ length: round.matches }).map((_, i) => (
-                      <div key={i} className="bg-card border border-border rounded-lg p-3 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 rounded-full bg-secondary border border-border flex items-center justify-center">
-                            <span className="text-[8px] text-muted-foreground/60">?</span>
+              {KNOCKOUT_ROUNDS.map(round => {
+                const real = apiFixtures
+                  .filter((f: any) => (f.league?.round || '') === round.name
+                    || (round.name === 'Quarter-finals' && /quarter/i.test(f.league?.round || ''))
+                    || (round.name === 'Semi-finals' && /semi/i.test(f.league?.round || '')))
+                  .sort((a: any, b: any) => +new Date(a.fixture?.date) - +new Date(b.fixture?.date));
+                return (
+                  <div key={round.name} className="mb-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: round.color }} />
+                      <span className="text-[11px] uppercase tracking-widest font-bold" style={{ color: round.color }}>{round.name}</span>
+                      <span className="text-[10px] text-muted-foreground/60">· {round.startDate}</span>
+                      {real.length > 0 && <span className="text-[10px] text-muted-foreground/60">· {real.filter((f: any) => ['FT','AET','PEN'].includes(f.fixture?.status?.short)).length}/{round.matches} played</span>}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                      {real.length > 0 ? real.map((f: any) => {
+                        const st = f.fixture?.status?.short;
+                        const done = ['FT', 'AET', 'PEN'].includes(st);
+                        const isLive = ['1H', '2H', 'HT', 'ET', 'BT', 'P', 'LIVE', 'INT'].includes(st);
+                        const winner = f.teams?.home?.winner ? 'h' : f.teams?.away?.winner ? 'a' : null;
+                        return (
+                          <Link key={f.fixture.id} to={`/match/${f.fixture.id}`} className="bg-card border border-border rounded-lg p-3 flex items-center justify-between hover:border-border/80 transition-colors">
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              {f.teams?.home?.logo && <img src={f.teams.home.logo} alt="" className="w-6 h-6 object-contain" loading="lazy" />}
+                              <span className={cn('text-xs truncate', winner === 'h' ? 'font-bold text-[#39ff14]' : done && winner === 'a' ? 'text-muted-foreground line-through decoration-red-400/40' : 'text-foreground')}>{f.teams?.home?.name}</span>
+                            </div>
+                            <div className="px-2 text-center flex-shrink-0">
+                              {done || isLive ? (
+                                <span className={cn('text-xs font-bold tabular-nums', isLive ? 'text-[#39ff14]' : 'text-foreground')}>
+                                  {f.goals?.home ?? 0} - {f.goals?.away ?? 0}
+                                  {st === 'PEN' && f.score?.penalty ? <span className="text-[9px] text-muted-foreground ml-1">({f.score.penalty.home}-{f.score.penalty.away}p)</span> : null}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-muted-foreground">{new Date(f.fixture.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                              )}
+                              {isLive && <div className="text-[8px] font-bold text-red-400 uppercase">Live</div>}
+                            </div>
+                            <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
+                              <span className={cn('text-xs truncate text-right', winner === 'a' ? 'font-bold text-[#39ff14]' : done && winner === 'h' ? 'text-muted-foreground line-through decoration-red-400/40' : 'text-foreground')}>{f.teams?.away?.name}</span>
+                              {f.teams?.away?.logo && <img src={f.teams.away.logo} alt="" className="w-6 h-6 object-contain" loading="lazy" />}
+                            </div>
+                          </Link>
+                        );
+                      }) : Array.from({ length: round.matches }).map((_, i) => (
+                        <div key={i} className="bg-card border border-border rounded-lg p-3 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-full bg-secondary border border-border flex items-center justify-center">
+                              <span className="text-[8px] text-muted-foreground/60">?</span>
+                            </div>
+                            <span className="text-xs text-muted-foreground/80">TBD</span>
                           </div>
-                          <span className="text-xs text-muted-foreground/80">TBD</span>
-                        </div>
-                        <span className="text-[10px] font-bold text-muted-foreground/40">vs</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground/80">TBD</span>
-                          <div className="w-6 h-6 rounded-full bg-secondary border border-border flex items-center justify-center">
-                            <span className="text-[8px] text-muted-foreground/60">?</span>
+                          <span className="text-[10px] font-bold text-muted-foreground/40">vs</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground/80">TBD</span>
+                            <div className="w-6 h-6 rounded-full bg-secondary border border-border flex items-center justify-center">
+                              <span className="text-[8px] text-muted-foreground/60">?</span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -443,35 +482,9 @@ export default function WCFixtures() {
         {/* ─── BRACKET TAB ───────────────────────────────────────────── */}
         {activeTab === 'bracket' && (
           <div>
-            <p className="text-xs text-muted-foreground/80 mb-4">The knockout bracket will be populated after the group stage concludes.</p>
-            <div className="flex gap-3 overflow-x-auto no-scrollbar pb-4">
-              {KNOCKOUT_ROUNDS.map((round, ri) => (
-                <div key={round.name} className="flex-shrink-0" style={{ width: ri === 4 ? '180px' : '160px' }}>
-                  <div className="text-center mb-3">
-                    <span className="text-[10px] uppercase tracking-widest font-bold" style={{ color: round.color }}>{round.shortName}</span>
-                  </div>
-                  <div className="space-y-2" style={{ paddingTop: `${ri * 24}px` }}>
-                    {Array.from({ length: round.matches }).map((_, i) => (
-                      <div
-                        key={i}
-                        className="bg-card border border-border rounded-lg p-2"
-                        style={{ marginBottom: `${ri * 16}px` }}
-                      >
-                        <div className="flex items-center gap-1.5 py-1 border-b border-border/50">
-                          <div className="w-4 h-4 rounded-full bg-secondary" />
-                          <span className="text-[10px] text-muted-foreground/80 flex-1">TBD</span>
-                          <span className="text-[10px] font-bold text-muted-foreground/40">-</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 py-1">
-                          <div className="w-4 h-4 rounded-full bg-secondary" />
-                          <span className="text-[10px] text-muted-foreground/80 flex-1">TBD</span>
-                          <span className="text-[10px] font-bold text-muted-foreground/40">-</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              {/* The SAME bracket component /stats and /worldcup use — one data path. */}
+              <KnockoutBracket leagueId={1} season={2026} />
             </div>
 
             {/* Final venue highlight */}
