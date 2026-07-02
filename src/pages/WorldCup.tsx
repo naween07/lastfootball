@@ -181,6 +181,33 @@ export default function WorldCup() {
       .sort((a: any, b: any) => +new Date(a.fixture.date) - +new Date(b.fixture.date));
   }, [wcFixtures]);
 
+  // Roadmap tracker stages: Opening Match + each knockout round, with real dates,
+  // per-round progress and status (done / active / upcoming).
+  const roadmap = useMemo(() => {
+    if (!wcFixtures.length) return [] as any[];
+    const fmt = (t: number) => new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const items: any[] = [];
+    const allTimes = wcFixtures.map((f: any) => new Date(f.fixture?.date).getTime()).filter(Number.isFinite);
+    const groupPlayed = wcFixtures.some((f: any) =>
+      (f.league?.round || '').toLowerCase().includes('group') && ['FT', 'AET', 'PEN'].includes(f.fixture?.status?.short));
+    if (allTimes.length) {
+      items.push({ name: 'Opening Match', date: fmt(Math.min(...allTimes)), status: groupPlayed ? 'done' : 'up', sub: 'Estadio Azteca', final: false });
+    }
+    for (const r of KNOCKOUT_ORDER) {
+      const d = roundDates.get(r);
+      if (!d) continue;
+      const status = d.done ? 'done' : d.played > 0 ? 'active' : 'up';
+      items.push({
+        name: r,
+        date: fmt(d.min) === fmt(d.max) ? fmt(d.min) : `${fmt(d.min)}–${fmt(d.max)}`,
+        status,
+        sub: status === 'up' ? 'Upcoming' : `${d.played}/${d.total} played`,
+        final: r === 'Final',
+      });
+    }
+    return items;
+  }, [wcFixtures, roundDates]);
+
   useEffect(() => {
     const timer = setInterval(() => setCountdown(getCountdown()), 1000);
     return () => clearInterval(timer);
@@ -262,6 +289,14 @@ export default function WorldCup() {
           }} />
 
           <div className="relative container max-w-5xl mx-auto px-4 py-12 sm:py-16 text-center">
+            {!countdown && currentStage && (
+              <div className="mb-3">
+                <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-red-500/10 border border-red-500/25">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                  <span className="text-[10px] font-bold text-red-400 uppercase tracking-[0.2em]">Tournament in progress</span>
+                </span>
+              </div>
+            )}
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 mb-6">
               <Trophy className="w-4 h-4 text-amber-400" />
               <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">FIFA World Cup 2026™</span>
@@ -549,46 +584,72 @@ export default function WorldCup() {
           )}
         </section>
 
-        {/* Key dates */}
+        {/* Tournament Roadmap */}
         <section className="container max-w-5xl mx-auto px-4 pb-8">
           <h2 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
             <Calendar className="w-5 h-5 text-amber-400" />
-            Key Dates
+            Tournament <span className="text-[#39ff14]">Roadmap</span>
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-            {(roundDates.size > 0
-              ? KNOCKOUT_ORDER.filter(r => roundDates.has(r)).map(r => {
-                  const d = roundDates.get(r)!;
-                  const fmt = (t: number) => new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                  const dateLabel = fmt(d.min) === fmt(d.max) ? fmt(d.min) : `${fmt(d.min)} – ${fmt(d.max)}`;
-                  const status = d.done ? 'Completed' : d.played > 0 ? 'In progress' : 'Upcoming';
-                  return { date: dateLabel, event: r, detail: `${d.played}/${d.total} played`, venue: status };
-                })
-              : [
-                  { date: 'June 11', event: 'Opening Match', detail: 'Mexico vs South Africa', venue: 'Estadio Azteca, Mexico City' },
-                  { date: 'June 28', event: 'Round of 32 Begins', detail: 'Knockout stage starts', venue: 'Multiple venues' },
-                  { date: 'July 9–11', event: 'Quarter-finals', detail: '8 teams remaining', venue: 'Multiple venues' },
-                  { date: 'July 19', event: 'The Final', detail: 'Championship match', venue: 'MetLife Stadium, New Jersey' },
-                ]
-            ).map(d => (
-              <div key={d.event} className={cn(
-                'bg-card border rounded-xl p-4',
-                d.venue === 'In progress' ? 'border-[#39ff14]/40' : 'border-border/50'
-              )}>
-                <div className="text-xs font-bold text-amber-400 mb-1">{d.date}</div>
-                <div className="text-sm font-bold text-foreground mb-0.5">{d.event}</div>
-                <div className="text-[11px] text-muted-foreground">{d.detail}</div>
-                <div className={cn(
-                  'text-[10px] mt-1 flex items-center gap-1',
-                  d.venue === 'In progress' ? 'text-[#39ff14] font-bold uppercase' : d.venue === 'Completed' ? 'text-muted-foreground/60 uppercase font-semibold' : 'text-muted-foreground/60'
-                )}>
-                  {d.venue === 'In progress' || d.venue === 'Completed' || d.venue === 'Upcoming'
-                    ? d.venue
-                    : (<><MapPin className="w-2.5 h-2.5" /> {d.venue}</>)}
-                </div>
+          {roadmap.length > 0 ? (
+            <div className="relative">
+              {/* connector line behind the cards */}
+              <div className="absolute left-2 right-2 top-[54px] h-0.5 bg-border/40 hidden md:block" />
+              <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 relative">
+                {roadmap.map((st: any) => (
+                  <div
+                    key={st.name}
+                    className={cn(
+                      'flex-shrink-0 w-[158px] rounded-xl border p-3.5 bg-card relative',
+                      st.status === 'active'
+                        ? 'border-[#39ff14] bg-[#0f1a0f] shadow-[0_0_18px_rgba(57,255,20,0.15)]'
+                        : st.final
+                          ? 'border-amber-500/50'
+                          : 'border-border/50'
+                    )}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className={cn(
+                        'text-[11px] font-extrabold tabular-nums',
+                        st.status === 'active' ? 'text-[#39ff14]' : st.final ? 'text-amber-400' : 'text-muted-foreground'
+                      )}>{st.date}</span>
+                      {st.status === 'done' && (
+                        <span className="w-4 h-4 rounded-full bg-[#39ff14]/10 flex items-center justify-center">
+                          <Check className="w-2.5 h-2.5 text-[#39ff14]" />
+                        </span>
+                      )}
+                      {st.status === 'active' && <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />}
+                    </div>
+                    <div className={cn(
+                      'text-sm font-bold leading-tight',
+                      st.status === 'active' ? 'text-white' : st.status === 'done' ? 'text-muted-foreground' : 'text-foreground'
+                    )}>{st.name}</div>
+                    <div className={cn(
+                      'text-[11px] mt-1',
+                      st.status === 'active' ? 'text-[#39ff14] font-semibold' : 'text-muted-foreground/70'
+                    )}>{st.sub}</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { date: 'June 11', event: 'Opening Match', detail: 'Mexico vs South Africa', venue: 'Estadio Azteca, Mexico City' },
+                { date: 'June 28', event: 'Round of 32 Begins', detail: 'Knockout stage starts', venue: 'Multiple venues' },
+                { date: 'July 9–11', event: 'Quarter-finals', detail: '8 teams remaining', venue: 'Multiple venues' },
+                { date: 'July 19', event: 'The Final', detail: 'Championship match', venue: 'MetLife Stadium, New Jersey' },
+              ].map(d => (
+                <div key={d.event} className="bg-card border border-border/50 rounded-xl p-4">
+                  <div className="text-xs font-bold text-amber-400 mb-1">{d.date}</div>
+                  <div className="text-sm font-bold text-foreground mb-0.5">{d.event}</div>
+                  <div className="text-[11px] text-muted-foreground">{d.detail}</div>
+                  <div className="text-[10px] text-muted-foreground/60 mt-1 flex items-center gap-1">
+                    <MapPin className="w-2.5 h-2.5" /> {d.venue}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         {/* Stadiums */}
