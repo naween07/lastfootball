@@ -122,7 +122,7 @@ export default function WorldCup() {
       } catch { /* keep whatever we had */ }
     };
     load();
-    const t = setInterval(load, 120_000); // server cache hit — no upstream cost
+    const t = setInterval(load, 180_000); // matches server freshness — cache hit, no upstream cost
     return () => { active = false; clearInterval(t); };
   }, []);
 

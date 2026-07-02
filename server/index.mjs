@@ -49,6 +49,11 @@ function getTtl(endpoint, params) {
       if (date === today) return { fresh: 60, stale: 120 };      // Today — 1min
       return { fresh: 600, stale: 1800 };                         // Future — 10min
     }
+    // Full-season league queries (worldcup hub, stats fixtures): heavy responses that
+    // only change on kickoffs/goals/FT. 3min fresh caps upstream cost at ~20/h per
+    // league no matter how many visitors poll — was 60s, which let hub traffic
+    // refetch every minute and roughly doubled daily burn.
+    if (params.league && params.season) return { fresh: 180, stale: 900 };
     return { fresh: 60, stale: 120 };
   }
   
@@ -59,7 +64,7 @@ function getTtl(endpoint, params) {
   if (endpoint === 'players/squads') return { fresh: 86400, stale: 172800 }; // 24h fresh, 48h stale
   
   // Standings — near-real-time during the tournament (live group-stage swings)
-  if (endpoint === 'standings') return { fresh: 60, stale: 600 }; // 1min fresh, 10min stale
+  if (endpoint === 'standings') return { fresh: 300, stale: 3600 }; // 5min fresh — standings only move at full time
   
   // Player stats (top scorers etc.) — near-real-time during the tournament
   if (endpoint.startsWith('players/')) return { fresh: 60, stale: 600 };
