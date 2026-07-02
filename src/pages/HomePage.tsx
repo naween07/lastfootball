@@ -6,9 +6,11 @@ import OptimizedImage from '@/components/OptimizedImage';
 import { fetchHomepageData, PlayerStat } from '@/services/footballApi';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { useFavorites } from '@/hooks/useFavorites';
 import { Match } from '@/types/football';
-import { ArrowRight, Zap, Calendar, Trophy, Newspaper, ChevronRight, Target } from 'lucide-react';
+import { ArrowRight, Zap, Calendar, Trophy, Newspaper, ChevronRight, Target, Star, Bell } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { pushSupported, pushPermission, getPushSubscription, enablePush } from '@/lib/push';
 
 interface NewsItem {
   id: string;
@@ -121,6 +123,27 @@ export default function HomePage() {
 
   // Featured match = biggest live match or first upcoming
   const featuredMatch = liveMatches[0] || upcomingMatches[0] || recentResults[0];
+
+  // Matches involving the user's favorite teams: live first, then upcoming by
+  // kickoff, then finished. Data comes from the same homepage payload — no extra
+  // fetches for personalization.
+  const { favoriteTeamIds } = useFavorites();
+  const myTeamMatches = useMemo(() => {
+    if (!favoriteTeamIds.length) return [] as Match[];
+    const fav = new Set(favoriteTeamIds);
+    const seen = new Set<number>();
+    const mine = [...liveMatches, ...todayMatches].filter(m => {
+      if (seen.has(m.id)) return false;
+      seen.add(m.id);
+      return fav.has(m.homeTeam.id) || fav.has(m.awayTeam.id);
+    });
+    const rank = (m: Match) =>
+      (m.status === 'LIVE' || m.status === '1H' || m.status === '2H' || m.status === 'HT') ? 0
+        : (m.status === 'NS' || (m.status as string) === 'TBD') ? 1 : 2;
+    return mine
+      .sort((a, b) => rank(a) - rank(b) || new Date(`${a.date}T${a.time || '00:00'}`).getTime() - new Date(`${b.date}T${b.time || '00:00'}`).getTime())
+      .slice(0, 6);
+  }, [favoriteTeamIds, liveMatches, todayMatches]);
 
   return (
     <>
@@ -271,6 +294,37 @@ export default function HomePage() {
             </DashboardCard>
           </div>
         </section>
+
+        {/* ─── YOUR TEAMS (favorites) ──────────────────────────────────── */}
+        {favoriteTeamIds.length > 0 && (
+          <section className="container max-w-6xl mx-auto px-4 pt-4">
+            <div className="bg-card border border-border/60 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Star className="w-4 h-4 text-[#39ff14]" />
+                  <h2 className="text-sm font-black text-foreground uppercase tracking-wide">Your Teams</h2>
+                </div>
+                <div className="flex items-center gap-2">
+                  <HomeAlertsPill teamIds={favoriteTeamIds} />
+                  <Link to="/favorites" className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5">
+                    Manage <ChevronRight className="w-3 h-3" />
+                  </Link>
+                </div>
+              </div>
+              {myTeamMatches.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+                  {myTeamMatches.map(m => (
+                    m.status === 'NS' || (m.status as string) === 'TBD'
+                      ? <MiniFixture key={m.id} match={m} />
+                      : <MiniMatch key={m.id} match={m} />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground py-2">No matches for your teams today.</p>
+              )}
+            </div>
+          </section>
+        )}
 
         {/* ─── PREDICT & WIN BANNER ────────────────────────────────────── */}
         <section className="container max-w-6xl mx-auto px-4 pb-4">
@@ -476,6 +530,35 @@ function DashboardCard({
 }
 
 // ─── Mini Match Row (live/result) ───────────────────────────────────────────
+// ─── Goal alerts pill (Your Teams header) ────────────────────────────────────
+function HomeAlertsPill({ teamIds }: { teamIds: number[] }) {
+  const [state, setState] = useState<'hidden' | 'off' | 'on'>('hidden');
+
+  useEffect(() => {
+    if (!pushSupported() || pushPermission() === 'denied') return;
+    getPushSubscription().then(sub => {
+      setState(sub && Notification.permission === 'granted' ? 'on' : 'off');
+    });
+  }, []);
+
+  if (state === 'hidden') return null;
+  if (state === 'on') {
+    return (
+      <span className="flex items-center gap-1 text-[10px] font-bold text-[#39ff14] uppercase tracking-wide">
+        <Bell className="w-3 h-3" /> Alerts on
+      </span>
+    );
+  }
+  return (
+    <button
+      onClick={async () => { const ok = await enablePush(teamIds); if (ok) setState('on'); }}
+      className="flex items-center gap-1 px-2 py-1 rounded-md bg-[#39ff14]/10 text-[#39ff14] text-[10px] font-bold uppercase tracking-wide hover:bg-[#39ff14]/20 transition-colors"
+    >
+      <Bell className="w-3 h-3" /> Goal alerts
+    </button>
+  );
+}
+
 function MiniMatch({ match }: { match: Match }) {
   const isLive = match.status === 'LIVE' || match.status === '1H' || match.status === '2H' || match.status === 'HT';
   return (

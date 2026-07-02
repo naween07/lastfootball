@@ -90,6 +90,140 @@ function cacheGet(key) {
 // exhausted) so the site never serves empty data / skeletons.
 const lastGood = new Map();
 
+// ─── Web Push (goal / full-time alerts) ─────────────────────────────────────
+// Uses the `web-push` npm package (VAPID + RFC 8291 payload encryption). Imported
+// dynamically so the server still boots if it isn't installed yet — push simply
+// stays disabled with a clear log line instead of crashing the whole API.
+let webpush = null;
+try {
+  webpush = (await import('web-push')).default;
+} catch {
+  console.warn('[PUSH] web-push not installed — push disabled. Run: npm install web-push');
+}
+
+// VAPID keys persist in .vapid.json (gitignored) so subscriptions survive restarts
+// and deploys. Generated once on first boot.
+const VAPID_FILE = path.join(process.cwd(), '.vapid.json');
+let vapidKeys = null;
+function initPush() {
+  if (!webpush) return;
+  try {
+    if (fs.existsSync(VAPID_FILE)) {
+      vapidKeys = JSON.parse(fs.readFileSync(VAPID_FILE, 'utf8'));
+    } else {
+      vapidKeys = webpush.generateVAPIDKeys();
+      fs.writeFileSync(VAPID_FILE, JSON.stringify(vapidKeys));
+      console.log('[PUSH] Generated new VAPID keys → .vapid.json');
+    }
+    webpush.setVapidDetails('mailto:admin@lastfootball.com', vapidKeys.publicKey, vapidKeys.privateKey);
+    console.log('[PUSH] Web push initialized');
+  } catch (e) {
+    console.error('[PUSH] init failed:', e.message);
+    vapidKeys = null;
+  }
+}
+
+// Goal/FT detection: derived from the SAME live+today payloads the homepage poll
+// already fetches every HOMEPAGE_POLL_MS — zero additional API-Football calls.
+// State is per-process; after a restart the first poll just seeds it (no spam).
+const liveScoreState = new Map(); // fixtureId → { h, a, home, away, homeId, awayId }
+
+async function detectLiveEventsAndNotify(liveData, todayData) {
+  if (!vapidKeys) return;
+  const events = [];
+  const current = new Map();
+
+  for (const f of (liveData?.response || [])) {
+    const fid = f.fixture?.id;
+    if (!fid) continue;
+    const h = f.goals?.home ?? 0, a = f.goals?.away ?? 0;
+    const homeId = f.teams?.home?.id, awayId = f.teams?.away?.id;
+    const home = f.teams?.home?.name || 'Home', away = f.teams?.away?.name || 'Away';
+    current.set(fid, { h, a, home, away, homeId, awayId });
+
+    const prev = liveScoreState.get(fid);
+    if (prev && (h > prev.h || a > prev.a)) {
+      const scorer = h > prev.h ? home : away;
+      const min = f.fixture?.status?.elapsed;
+      events.push({
+        teamIds: [homeId, awayId].filter(Boolean),
+        title: `⚽ GOAL — ${scorer}`,
+        body: `${home} ${h} - ${a} ${away}${min ? ` (${min}')` : ''}`,
+        url: `/match/${fid}`,
+        tag: `goal-${fid}-${h}-${a}`,
+      });
+    }
+  }
+
+  // Full time: a fixture we were tracking left the live list → confirm via today's
+  // fixtures (which carry the final status/score) before notifying.
+  const todayById = new Map();
+  for (const f of (todayData?.response || [])) {
+    const fid = f.fixture?.id;
+    if (fid) todayById.set(fid, f);
+  }
+  for (const [fid, prev] of liveScoreState) {
+    if (current.has(fid)) continue;
+    const t = todayById.get(fid);
+    const st = t?.fixture?.status?.short;
+    if (st === 'FT' || st === 'AET' || st === 'PEN') {
+      const h = t.goals?.home ?? prev.h, a = t.goals?.away ?? prev.a;
+      const suffix = st === 'PEN' ? ' (pens)' : st === 'AET' ? ' (AET)' : '';
+      events.push({
+        teamIds: [prev.homeId, prev.awayId].filter(Boolean),
+        title: `🏁 Full time${suffix}`,
+        body: `${prev.home} ${h} - ${a} ${prev.away}`,
+        url: `/match/${fid}`,
+        tag: `ft-${fid}`,
+      });
+    }
+  }
+
+  liveScoreState.clear();
+  for (const [k, v] of current) liveScoreState.set(k, v);
+
+  if (events.length) await sendPushEvents(events);
+}
+
+async function sendPushEvents(events) {
+  try {
+    const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+    const allTeamIds = [...new Set(events.flatMap(e => e.teamIds))];
+    if (!allTeamIds.length) return;
+    // PostgREST array-overlap: subscriptions whose team_ids intersect the event teams.
+    const subs = await supabaseQueryWithKey(
+      'push_subscriptions',
+      `team_ids=ov.{${allTeamIds.join(',')}}&select=endpoint,keys,team_ids`,
+      'GET', null, SVC
+    );
+    if (!Array.isArray(subs) || !subs.length) return;
+
+    let sent = 0, pruned = 0;
+    for (const s of subs) {
+      const relevant = events.filter(e => e.teamIds.some(id => s.team_ids?.includes(id)));
+      for (const e of relevant) {
+        try {
+          await webpush.sendNotification(
+            { endpoint: s.endpoint, keys: s.keys },
+            JSON.stringify({ title: e.title, body: e.body, url: e.url, tag: e.tag }),
+            { TTL: 600 }
+          );
+          sent++;
+        } catch (err) {
+          if (err?.statusCode === 404 || err?.statusCode === 410) {
+            pruned++;
+            supabaseQueryWithKey('push_subscriptions', 'endpoint=eq.' + encodeURIComponent(s.endpoint), 'DELETE', null, SVC).catch(() => {});
+            break; // expired/unsubscribed endpoint — stop sending to it
+          }
+        }
+      }
+    }
+    if (sent || pruned) console.log(`[PUSH] sent ${sent}, pruned ${pruned} dead subscription(s)`);
+  } catch (e) {
+    console.error('[PUSH] send error:', e.message);
+  }
+}
+
 // The homepage aggregate, pinned OUTSIDE the evictable LRU cache. The homepage is the
 // most-requested payload, but it was stored only in `cache`/`lastGood` — both capped and
 // evicted oldest-first — and because a JS Map keeps a re-`set` key in its original slot,
@@ -723,6 +857,48 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    // ─── Web push subscription endpoints ────────────────────────────────
+    if (path === '/api/push/vapid-key' && req.method === 'GET') {
+      if (!vapidKeys) return error(req, res, 503, 'Push not configured');
+      return json(req, res, { key: vapidKeys.publicKey });
+    }
+    if (path === '/api/push/subscribe' && req.method === 'POST') {
+      if (!vapidKeys) return error(req, res, 503, 'Push not configured');
+      try {
+        const b = JSON.parse((await readBody(req)) || '{}');
+        const sub = b.subscription;
+        if (!sub?.endpoint || !sub?.keys?.p256dh || !sub?.keys?.auth) {
+          return error(req, res, 400, 'Invalid subscription');
+        }
+        const teamIds = Array.isArray(b.teamIds)
+          ? [...new Set(b.teamIds.filter((n) => Number.isInteger(n)))].slice(0, 100)
+          : [];
+        const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+        await supabaseQueryWithKey('push_subscriptions', 'on_conflict=endpoint', 'POST', {
+          endpoint: sub.endpoint,
+          keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
+          team_ids: teamIds,
+          user_id: b.userId || null,
+          updated_at: new Date().toISOString(),
+        }, SVC);
+        return json(req, res, { ok: true, teams: teamIds.length });
+      } catch (e) {
+        console.error('[PUSH] subscribe error:', e.message);
+        return error(req, res, 500, 'Subscribe failed');
+      }
+    }
+    if (path === '/api/push/unsubscribe' && req.method === 'POST') {
+      try {
+        const b = JSON.parse((await readBody(req)) || '{}');
+        if (!b.endpoint) return error(req, res, 400, 'endpoint required');
+        const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+        await supabaseQueryWithKey('push_subscriptions', 'endpoint=eq.' + encodeURIComponent(b.endpoint), 'DELETE', null, SVC);
+        return json(req, res, { ok: true });
+      } catch {
+        return error(req, res, 500, 'Unsubscribe failed');
+      }
+    }
+
     if (path === '/api/quota') {
       // Count cache entries by type
       const cacheBreakdown = {};
@@ -1060,6 +1236,7 @@ server.listen(PORT, '127.0.0.1', async () => {
   // Load persisted snapshots FIRST (awaited) so the homepage cache is populated before
   // the first visitor arrives — no cold start, no empty widgets, no API call needed.
   await loadSnapshotsIntoCache();
+  initPush();
   // Generate the homepage immediately so even a snapshot-less start is fast.
   buildHomepageData('Asia/Kathmandu').catch(() => {});
   // Dedicated homepage refresh loop — the ONLY thing that rebuilds the homepage
@@ -1347,6 +1524,10 @@ async function buildHomepageData(tz) {
     ...leagues.map(l => cachedUpstream('standings', { league: String(l.id), season: l.season }, domesticTtl)),
   ]);
   const live = { status: 'fulfilled', value: liveData };
+
+  // Goal / full-time push notifications, derived from the live+today data this poll
+  // already fetched. Fire-and-forget so a push hiccup can never delay the homepage.
+  detectLiveEventsAndNotify(liveData, todayMatches.status === 'fulfilled' ? todayMatches.value : null).catch(() => {});
 
   const result = {
     live: live.status === 'fulfilled' ? live.value : [],

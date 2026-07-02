@@ -6,8 +6,64 @@ import OptimizedImage from '@/components/OptimizedImage';
 import { useFavorites } from '@/hooks/useFavorites';
 import { searchTeamsAndLeagues, fetchTeamFixtures, Match } from '@/services/footballApi';
 import { generateDailyReports, Article } from '@/services/articleGenerator';
-import { Star, Search, X, Loader2, Trophy, Calendar, Swords, Newspaper, ChevronRight, Plus } from 'lucide-react';
+import { Star, Search, X, Loader2, Trophy, Calendar, Swords, Newspaper, ChevronRight, Plus, Bell, BellOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { pushSupported, pushPermission, getPushSubscription, enablePush, disablePush, syncPushTeams } from '@/lib/push';
+
+// ─── Goal alerts (web push) toggle ───────────────────────────────────────────
+function GoalAlertsToggle({ teamIds }: { teamIds: number[] }) {
+  const [enabled, setEnabled] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  // Reflect the real subscription state on mount.
+  useEffect(() => {
+    if (!pushSupported()) return;
+    getPushSubscription().then(sub => setEnabled(!!sub && Notification.permission === 'granted'));
+  }, []);
+
+  // Keep the server's team list in sync when favourites change.
+  useEffect(() => {
+    if (enabled && teamIds.length > 0) syncPushTeams(teamIds);
+  }, [enabled, teamIds]);
+
+  if (!pushSupported()) return null;
+
+  const toggle = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (enabled) {
+        await disablePush();
+        setEnabled(false);
+      } else {
+        const ok = await enablePush(teamIds);
+        setEnabled(ok);
+        if (!ok && pushPermission() === 'denied') {
+          alert('Notifications are blocked for this site. Enable them in your browser settings to get goal alerts.');
+        }
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={toggle}
+      disabled={busy}
+      title={enabled ? 'Goal alerts on — tap to turn off' : 'Get goal & full-time alerts for your teams'}
+      className={cn(
+        'flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors',
+        enabled
+          ? 'bg-[#39ff14]/10 text-[#39ff14] hover:bg-[#39ff14]/20'
+          : 'bg-secondary/60 text-muted-foreground hover:bg-secondary'
+      )}
+    >
+      {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : enabled ? <Bell className="w-3.5 h-3.5" /> : <BellOff className="w-3.5 h-3.5" />}
+      {enabled ? 'Alerts On' : 'Goal Alerts'}
+    </button>
+  );
+}
 
 export default function Favorites() {
   const { favoriteTeamIds, isFavorite, toggleFavorite } = useFavorites();
@@ -90,13 +146,16 @@ export default function Favorites() {
               </p>
             </div>
           </div>
-          <button
-            onClick={() => setShowSearch(!showSearch)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Add Team
-          </button>
+          <div className="flex items-center gap-2">
+            <GoalAlertsToggle teamIds={favoriteTeamIds} />
+            <button
+              onClick={() => setShowSearch(!showSearch)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add Team
+            </button>
+          </div>
         </div>
       </div>
 
