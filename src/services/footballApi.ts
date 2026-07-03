@@ -197,14 +197,42 @@ export async function fetchRecentWorldCupMatches(): Promise<Match[]> {
   }
 }
 
+// One shared in-flight aggregate fetch per fixture so fetchMatchDetails and
+// fetchMatchPlayers (called together) cost a single HTTP request, not two.
+const _aggInflight = new Map<number, Promise<any>>();
+async function fetchMatchAggregateFromServer(fixtureId: number): Promise<any | null> {
+  const existing = _aggInflight.get(fixtureId);
+  if (existing) return existing;
+  const p = (async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/match?id=${fixtureId}`, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    } finally {
+      // brief share window so the paired calls coalesce, then clear
+      setTimeout(() => _aggInflight.delete(fixtureId), 2000);
+    }
+  })();
+  _aggInflight.set(fixtureId, p);
+  return p;
+}
+
 export async function fetchMatchDetails(fixtureId: number): Promise<Match | null> {
   try {
-    const [fixtures, events, stats, lineups] = await Promise.all([
-      callApi("fixtures", { id: String(fixtureId) }),
-      callApi("fixtures/events", { fixture: String(fixtureId) }),
-      callApi("fixtures/statistics", { fixture: String(fixtureId) }),
-      callApi("fixtures/lineups", { fixture: String(fixtureId) }),
-    ]);
+    // Single aggregated request. The server keeps this cache-only for users (the
+    // background poller refreshes live matches), so match views never trigger
+    // upstream API calls — the old 4-endpoint fan-out burned ~100 calls/hour per
+    // watched live fixture and exhausted the daily quota on busy matchdays.
+    const agg = await fetchMatchAggregateFromServer(fixtureId);
+    if (!agg) return null;
+    const fixtures = agg.fixture?.response || [];
+    const events = agg.events?.response || [];
+    const stats = agg.stats?.response || [];
+    const lineups = agg.lineups?.response || [];
 
     if (!fixtures.length) return null;
 
@@ -257,7 +285,8 @@ export async function fetchMatchDetails(fixtureId: number): Promise<Match | null
 
 export async function fetchMatchPlayers(fixtureId: number): Promise<MatchPlayerData[]> {
   try {
-    const data = await callApi("fixtures/players", { fixture: String(fixtureId) });
+    const agg = await fetchMatchAggregateFromServer(fixtureId);
+    const data = agg?.players?.response || [];
     if (!data || !data.length) return [];
     return data.map((team: any) => ({
       teamId: team.team.id,

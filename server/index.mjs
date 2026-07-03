@@ -421,6 +421,10 @@ function fetchWithHeaders(url, headers) {
 async function fetchUpstream(endpoint, params) {
   const qs = new URLSearchParams(params).toString();
   const url = `${API_BASE}/${endpoint}${qs ? '?' + qs : ''}`;
+  // Per-endpoint call accounting — makes /api/quota show WHERE calls go, so quota
+  // anomalies are diagnosed from data instead of inference (added after 2026-07-03).
+  quota.byEndpoint = quota.byEndpoint || {};
+  quota.byEndpoint[endpoint] = (quota.byEndpoint[endpoint] || 0) + 1;
   const { data, headers } = await fetchWithHeaders(url, {
     'x-rapidapi-key': API_KEY,
     'x-rapidapi-host': 'v3.football.api-sports.io',
@@ -1018,6 +1022,9 @@ const server = http.createServer(async (req, res) => {
         quota: quota.daily,
         callsFromServer: quota.callsToday,
         lastChecked: quota.lastChecked,
+        callsByEndpoint: Object.fromEntries(
+          Object.entries(quota.byEndpoint || {}).sort((a, b) => b[1] - a[1]).slice(0, 15)
+        ),
         cache: {
           totalEntries: cache.size,
           maxEntries: MAX_ENTRIES,
@@ -1074,6 +1081,48 @@ const server = http.createServer(async (req, res) => {
       const sortedKeys = Object.keys(params).sort();
       const cacheKey = endpoint + '?' + sortedKeys.map(k => k + '=' + params[k]).join('&');
       const ttl = getTtl(endpoint, params);
+
+      // ── Fixture-detail interception ──────────────────────────────────
+      // Match pages historically fire 5 separate endpoints per view (fixtures?id,
+      // events, statistics, lineups, players), each with its own short TTL, polled
+      // every 30s while live. On busy live days that burned ~100 calls/hour PER
+      // watched fixture and exhausted the daily quota (2026-07-02/03). Every one of
+      // these is a slice of the agg_match_* aggregate that liveDetailPoller already
+      // keeps fresh at a BOUNDED cost — so serve slices from the aggregate and never
+      // let per-user match traffic reach upstream. Also covers stale cached bundles.
+      const AGG_SLICES = {
+        'fixtures/events': 'events',
+        'fixtures/statistics': 'stats',
+        'fixtures/lineups': 'lineups',
+        'fixtures/players': 'players',
+      };
+      const aggFixtureId = (endpoint === 'fixtures' && params.id) ? params.id
+        : (AGG_SLICES[endpoint] && params.fixture) ? params.fixture : null;
+      if (aggFixtureId) {
+        const field = endpoint === 'fixtures' ? 'fixture' : AGG_SLICES[endpoint];
+        const aggKey = `agg_match_${aggFixtureId}`;
+        let agg = cacheGet(aggKey)?.data || null;
+        let xc = agg ? 'AGG-HIT' : null;
+        if (!agg && userFetchAllowed()) {
+          // Build the aggregate ONCE (coalesced across concurrent viewers); the
+          // poller then keeps it fresh while the match is live.
+          try {
+            let p = inflight.get(aggKey);
+            if (!p) { p = fetchMatchAggregate(aggFixtureId).finally(() => inflight.delete(aggKey)); inflight.set(aggKey, p); }
+            agg = await p;
+            xc = 'AGG-MISS';
+          } catch { /* fall through */ }
+        }
+        if (!agg) {
+          const lg = lastGood.get(aggKey);
+          if (lg) { agg = lg.data; xc = 'AGG-LASTGOOD'; }
+        }
+        if (agg && agg[field] && agg[field].response !== undefined) {
+          return json(req, res, agg[field], { 'X-Cache': xc, 'Cache-Control': 'no-cache, no-store, must-revalidate' });
+        }
+        // No aggregate obtainable (quota floor + never built): fall through to the
+        // generic path below, which itself respects the floor.
+      }
 
       const entry = cacheGet(cacheKey);
       if (entry) {
