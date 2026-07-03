@@ -20,7 +20,10 @@ if (!API_KEY) {
 
 // ─── In-memory cache ────────────────────────────────────────────────────────
 const cache = new Map();
-const MAX_ENTRIES = 2000;
+// Raised 2000 → 4000 after the cache hit 1983/2000 on a Round-of-16 matchday:
+// a full LRU evicts warm entries that user traffic immediately refetches upstream,
+// burning quota on data we already had. ~4000 JSON entries is well within VPS RAM.
+const MAX_ENTRIES = 4000;
 const inflight = new Map();
 
 function getTtl(endpoint, params) {
@@ -335,7 +338,31 @@ const quota = {
 // cached/last-good data if the API itself is exhausted).
 const QUOTA_RESERVE = 2500; // always leave this many calls for live user traffic
 let _breakerLogged = false;
+// API-Football's counter resets at 00:00 UTC. If our last header snapshot is from a
+// PREVIOUS UTC day, the real counter has already reset — but when fetches were fully
+// blocked (remaining ≤ USER_QUOTA_FLOOR), no new call could run, so no new headers
+// could arrive to tell us. That deadlocked the server on yesterday's number until a
+// manual restart (seen 2026-07-03: remaining stuck at 250 with lastChecked 10h old).
+// Detect the day boundary and optimistically restore; the next real call's headers
+// immediately correct any drift.
+function utcDayOf(ts) {
+  const d = new Date(ts);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+function assumeDailyResetIfDue() {
+  if (!quota.lastChecked || !quota.daily.limit) return;
+  if (utcDayOf(Date.now()) > utcDayOf(quota.lastChecked)) {
+    quota.daily.used = 0;
+    quota.daily.remaining = quota.daily.limit;
+    quota.callsToday = 0;
+    quota.lastChecked = new Date().toISOString();
+    _breakerLogged = false;
+    console.log(`✅ QUOTA: 00:00 UTC reset assumed (last header was from a previous UTC day) — fetches re-enabled, ${quota.daily.limit} available.`);
+  }
+}
+
 function backgroundJobsAllowed() {
+  assumeDailyResetIfDue();
   // If we haven't seen a quota header yet, allow (we'll learn the real number fast)
   if (!quota.daily.limit) return true;
   if (quota.daily.remaining <= QUOTA_RESERVE) {
@@ -360,6 +387,7 @@ function backgroundJobsAllowed() {
 // upstream return 429s). When the floor is hit, callers fall back to last-good data.
 const USER_QUOTA_FLOOR = 250;
 function userFetchAllowed() {
+  assumeDailyResetIfDue();
   if (!quota.daily.limit) return true; // haven't learned the real limit yet — allow
   return quota.daily.remaining > USER_QUOTA_FLOOR;
 }
