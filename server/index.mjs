@@ -1986,6 +1986,78 @@ async function buildPremiumReport(f) {
   }
   const teamScorers = (side) => scorers.filter(s => s.team === side);
 
+  // ── STORY ANGLE ENGINE ──
+  // Reconstruct the running score from goal events (chronologically) to detect the
+  // match's actual narrative — comebacks, late winners, lead changes, red-card
+  // turning points, smash-and-grab wins. This is what turns "Team A beat Team B"
+  // into a story, using only data already fetched. Shootout goals are excluded
+  // (they'd corrupt the regulation timeline); duplicate/over-counted goal rows are
+  // clamped to each side's final total.
+  const regGoals = goals
+    .filter(g => !(g.comments || '').toLowerCase().includes('penalty shootout'))
+    .map(g => ({
+      side: g.team?.id === homeId ? 'home' : 'away',
+      min: (g.time?.elapsed || 0) + (g.time?.extra || 0),
+      rawMin: g.time?.elapsed || 0,
+      extra: g.time?.extra || 0,
+      player: g.player?.name || '',
+    }))
+    .sort((a, b) => a.min - b.min);
+  const reds = events
+    .filter(e => e.type === 'Card' && /red/i.test(e.detail || ''))
+    .map(e => ({
+      side: e.team?.id === homeId ? 'home' : 'away',
+      min: (e.time?.elapsed || 0) + (e.time?.extra || 0),
+      player: e.player?.name || '',
+    }))
+    .sort((a, b) => a.min - b.min);
+
+  const timeline = [];
+  {
+    let th = 0, ta = 0;
+    for (const g of regGoals) {
+      if (g.side === 'home' && th >= hs) continue; // clamp dupes
+      if (g.side === 'away' && ta >= as_) continue;
+      if (g.side === 'home') th++; else ta++;
+      timeline.push({ ...g, h: th, a: ta });
+    }
+  }
+  const minLabel = (g) => g.extra ? `${g.rawMin}+${g.extra}'` : `${g.min}'`;
+  const lastName = (n) => (n || '').split(' ').slice(-1)[0];
+
+  // Angle flags (winner-perspective where applicable)
+  let leadChanges = 0, prevLead = 0, maxWinnerDeficit = 0, maxHomeLead = 0, maxAwayLead = 0;
+  for (const t of timeline) {
+    const lead = Math.sign(t.h - t.a);
+    if (lead !== 0 && prevLead !== 0 && lead !== prevLead) leadChanges++;
+    if (lead !== 0) prevLead = lead;
+    maxHomeLead = Math.max(maxHomeLead, t.h - t.a);
+    maxAwayLead = Math.max(maxAwayLead, t.a - t.h);
+    if (!isDraw) {
+      const deficit = homeWon ? (t.a - t.h) : (t.h - t.a);
+      maxWinnerDeficit = Math.max(maxWinnerDeficit, deficit);
+    }
+  }
+  const comebackWin = !isDraw && !wentPens && maxWinnerDeficit >= 1;
+  // Decisive goal: the last goal that put the winner ahead for good
+  let decisiveGoal = null;
+  if (!isDraw && !wentPens) {
+    for (const t of timeline) {
+      const ahead = homeWon ? t.h > t.a : t.a > t.h;
+      if (ahead && !decisiveGoal) decisiveGoal = t;
+      else if (!ahead) decisiveGoal = null;
+      else if (ahead && decisiveGoal) { /* keep first goal of the final ahead-run */ }
+    }
+  }
+  const lateWinner = decisiveGoal && decisiveGoal.min >= 85;
+  const lastGoal = timeline[timeline.length - 1] || null;
+  const lateEqualiser = isDraw && total > 0 && lastGoal && lastGoal.min >= 85;
+  const drawSalvagedFrom = isDraw ? Math.max(maxHomeLead >= 2 ? maxHomeLead : 0, maxAwayLead >= 2 ? maxAwayLead : 0) : 0;
+  const loserRed = reds.find(r => !isDraw && r.side === (homeWon ? 'away' : 'home'));
+  const winnerRed = reds.find(r => !isDraw && r.side === (homeWon ? 'home' : 'away'));
+  const smashAndGrab = !isDraw && !wentPens && hPoss != null && aPoss != null
+    && ((homeWon && hPoss <= 40 && (hShots ?? 99) < (aShots ?? 0)) || (!homeWon && aPoss <= 40 && (aShots ?? 99) < (hShots ?? 0)));
+
   // Describe a scorer with milestone translation
   const describeScorer = (s) => {
     const last = s.name.split(' ').slice(-1)[0];
@@ -2007,12 +2079,21 @@ async function buildPremiumReport(f) {
     return parts.slice(0, -1).join(', ') + ' and ' + parts.slice(-1);
   };
 
-  // ── TITLE ──
+  // ── TITLE ── (story angle first, result-shape as fallback)
   const hatTrickHero = scorers.find(s => s.count >= 3);
   const braceHero = scorers.find(s => s.count === 2);
+  const decLast = decisiveGoal ? lastName(decisiveGoal.player).toUpperCase() : '';
   let title;
   if (hatTrickHero) title = `${hatTrickHero.name.split(' ').slice(-1)[0].toUpperCase()} HAT-TRICK FIRES ${winner.toUpperCase()} PAST ${loser.toUpperCase()}`;
   else if (wentPens) title = `${winner.toUpperCase()} BEAT ${loser.toUpperCase()} ON PENALTIES AFTER ${hs}-${as_} DEADLOCK`;
+  else if (winnerRed) title = `TEN-MAN ${winner.toUpperCase()} STUN ${loser.toUpperCase()} ${winScore}-${loseScore}`;
+  else if (comebackWin && maxWinnerDeficit >= 2) title = `${winner.toUpperCase()} ROAR BACK FROM ${maxWinnerDeficit} DOWN TO SINK ${loser.toUpperCase()}`;
+  else if (comebackWin && lateWinner) title = `${decLast} COMPLETES ${winner.toUpperCase()} COMEBACK IN ${minLabel(decisiveGoal)} DRAMA`;
+  else if (comebackWin) title = `${winner.toUpperCase()} COME FROM BEHIND TO BEAT ${loser.toUpperCase()} ${winScore}-${loseScore}`;
+  else if (lateWinner) title = `${decLast} STRIKES IN ${minLabel(decisiveGoal)} TO BREAK ${loser.toUpperCase()} HEARTS`;
+  else if (drawSalvagedFrom >= 2) title = `${(maxHomeLead >= 2 ? away : home).toUpperCase()} FIGHT BACK FROM ${drawSalvagedFrom} DOWN TO DENY ${(maxHomeLead >= 2 ? home : away).toUpperCase()}`;
+  else if (lateEqualiser) title = `${lastName(lastGoal.player).toUpperCase()} RESCUES ${minLabel(lastGoal)} POINT FOR ${(lastGoal.side === 'home' ? home : away).toUpperCase()}`;
+  else if (smashAndGrab) title = `CLINICAL ${winner.toUpperCase()} DEFY THE NUMBERS TO BEAT ${loser.toUpperCase()}`;
   else if (isDraw && total === 0) title = `${home.toUpperCase()} AND ${away.toUpperCase()} PLAY OUT GOALLESS STALEMATE`;
   else if (isDraw) title = `HONOURS EVEN AS ${home.toUpperCase()} AND ${away.toUpperCase()} SHARE ${total} GOALS`;
   else if (margin >= 3) title = `${winner.toUpperCase()} RUN RIOT IN ${winScore}-${loseScore} ROUT OF ${loser.toUpperCase()}`;
@@ -2023,6 +2104,12 @@ async function buildPremiumReport(f) {
   let subtitle;
   if (hatTrickHero) subtitle = `${hatTrickHero.name} steals the show with a treble as ${winner} dispatch ${loser} ${winScore}-${loseScore} in the ${comp}.`;
   else if (wentPens) subtitle = `${winner} hold their nerve to beat ${loser} ${penWin}-${penLose} on penalties after a ${hs}-${as_}${wentAET ? ' extra-time' : ''} stalemate in the ${comp}.`;
+  else if (winnerRed) subtitle = `Reduced to ten men${winnerRed.min ? ` in the ${winnerRed.min}th minute` : ''}, ${winner} somehow found the resolve to beat ${loser} ${winScore}-${loseScore} in the ${comp}.`;
+  else if (comebackWin) subtitle = `${winner} trailed${maxWinnerDeficit >= 2 ? ` by ${maxWinnerDeficit}` : ''} but refused to fold, turning the ${comp} tie around${decisiveGoal ? ` with the decisive blow arriving in the ${minLabel(decisiveGoal).replace("'", '')}th minute` : ''} to win ${winScore}-${loseScore}.`;
+  else if (lateWinner) subtitle = `${loser} were seconds from a point until ${decisiveGoal.player || 'the winner'} struck in the ${minLabel(decisiveGoal).replace("'", '')}th minute to settle a tense ${comp} contest ${winScore}-${loseScore}.`;
+  else if (drawSalvagedFrom >= 2) subtitle = `${maxHomeLead >= 2 ? away : home} clawed back a ${drawSalvagedFrom}-goal deficit to salvage a ${hs}-${as_} ${comp} draw that felt like a defeat for ${maxHomeLead >= 2 ? home : away}.`;
+  else if (lateEqualiser) subtitle = `${lastGoal.side === 'home' ? home : away} left it desperately late, ${lastGoal.player ? `${lastGoal.player} scoring` : 'scoring'} in the ${minLabel(lastGoal).replace("'", '')}th minute to share the ${comp} spoils at ${hs}-${as_}.`;
+  else if (smashAndGrab) subtitle = `${loser} had the ball and the chances; ${winner} had the goals — a ruthless smash-and-grab ${winScore}-${loseScore} win in the ${comp}.`;
   else if (isDraw && total === 0) subtitle = `${home} and ${away} cancel each other out in a tense, goalless ${comp} encounter.`;
   else if (isDraw) subtitle = `${home} and ${away} trade blows in an absorbing ${hs}-${as_} draw that leaves the ${comp} group finely poised.`;
   else if (margin >= 3) subtitle = `A ruthless ${winner} dismantle ${loser} ${winScore}-${loseScore}${decisionTag} to lay down a serious marker in the ${comp}.`;
@@ -2032,6 +2119,16 @@ async function buildPremiumReport(f) {
   const paras = [];
   const arc = wentPens
     ? `${winner} ${penWin}-${penLose} ${loser} on penalties. After ${hs}-${as_} could not separate the sides${venue ? ` at ${venue}` : ''}${wentAET ? ' even after extra time' : ''}, it was ${winner} who held their composure from twelve yards to advance in the ${comp}.`
+    : winnerRed
+    ? `Down to ten men and refusing to bow. ${winner}'s ${winScore}-${loseScore} victory over ${loser}${venue ? ` at ${venue}` : ''} will be remembered less for the scoreline than the circumstances — ${winnerRed.player ? `${lastName(winnerRed.player)}'s` : 'a'} ${winnerRed.min}th-minute red card leaving them a man short, and somehow stronger for it.`
+    : comebackWin
+    ? `${winner} were ${maxWinnerDeficit >= 2 ? `${maxWinnerDeficit} goals down and staring at the exit` : 'behind and in trouble'}. What followed${venue ? ` at ${venue}` : ''} was the kind of response that defines tournaments — a ${winScore}-${loseScore} comeback win over ${loser} built on refusal as much as quality.`
+    : lateWinner
+    ? `Football is cruel, and ${loser} know it better than anyone tonight. ${decisiveGoal.player || 'The winner'}'s ${minLabel(decisiveGoal)} strike${venue ? ` at ${venue}` : ''} settled a ${comp} contest that was seconds from honours even, sending ${winner} through the ${winScore}-${loseScore} door ${loser} had all but closed.`
+    : smashAndGrab
+    ? `${loser} did almost everything right except the only thing that counts. ${winner} weathered the possession, absorbed the pressure${venue ? ` at ${venue}` : ''}, and struck with a ruthlessness that turned a ${comp} contest they barely controlled into a ${winScore}-${loseScore} win.`
+    : isDraw && drawSalvagedFrom >= 2
+    ? `${maxHomeLead >= 2 ? home : away} led by ${drawSalvagedFrom} and looked home and dry. ${maxHomeLead >= 2 ? away : home} had other ideas${venue ? ` at ${venue}` : ''}, hauling themselves level in a ${hs}-${as_} ${comp} draw that felt like two different matches stitched together.`
     : isDraw && total === 0
     ? `${VAR(['Stalemate', 'Deadlock', 'A war of attrition'])}. ${home} and ${away} played out a goalless draw${venue ? ` at ${venue}` : ''}, a ${comp} contest that promised much but ultimately produced a cagey, chess-like affair where defensive discipline trumped attacking ambition.`
     : isDraw
@@ -2040,6 +2137,18 @@ async function buildPremiumReport(f) {
     ? `${winner} were imperious. A commanding ${winScore}-${loseScore} victory over ${loser}${decisionTag}${venue ? ` at ${venue}` : ''} announced their intentions in this ${comp} campaign, the result rarely in doubt once the floodgates opened.`
     : `${winner} found a way. A hard-earned ${winScore}-${loseScore} win over ${loser}${decisionTag}${venue ? ` at ${venue}` : ''} may not have been pretty, but in tournament football it is results, not aesthetics, that matter — and ${winner} march on.`;
   paras.push(arc + (round ? ` This was a ${round} fixture with real weight attached.` : ''));
+
+  // How it unfolded — a chronological narrative built from the real goal/red-card
+  // timeline. Only added when there's a sequence worth telling (2+ goals or a red).
+  if (timeline.length >= 2 || (timeline.length >= 1 && reds.length)) {
+    const ordered = [...timeline.map(t => ({ min: t.min, txt: `${lastName(t.player) || (t.side === 'home' ? home : away)} struck in the ${minLabel(t)} minute (${t.h}-${t.a})` })),
+      ...reds.map(r => ({ min: r.min, txt: `${r.side === 'home' ? home : away} lost ${lastName(r.player) || 'a man'} to a red card in the ${r.min}th` }))]
+      .sort((a, b) => a.min - b.min)
+      .map(b => b.txt);
+    if (ordered.length >= 2) {
+      paras.push(`The story of the match told itself in swings: ${ordered.slice(0, -1).join('; ')}; and ${ordered[ordered.length - 1]}.${leadChanges >= 2 ? ' The lead changed hands more than once — a contest that refused to settle.' : ''}`);
+    }
+  }
 
   // Attacking analysis
   const att = [];
@@ -2109,7 +2218,13 @@ async function buildPremiumReport(f) {
 
   // ── EXPERT SUMMARY (blockquote) ──
   const verdict = isDraw
-    ? `> A share of the spoils that flatters neither side and satisfies both only partially. ${dom ? `${dom === 'home' ? home : away} controlled the ball but couldn't convert dominance into victory` : 'The margins were wafer-thin'}, and the ${comp} group remains wide open.`
+    ? (drawSalvagedFrom >= 2
+      ? `> Two matches in one. ${maxHomeLead >= 2 ? home : away} will treat this point like a win and ${maxHomeLead >= 2 ? away : home} like a loss — momentum, not the table, is the real currency of a draw like this.`
+      : `> A share of the spoils that flatters neither side and satisfies both only partially. ${dom ? `${dom === 'home' ? home : away} controlled the ball but couldn't convert dominance into victory` : 'The margins were wafer-thin'}, and the ${comp} group remains wide open.`)
+    : comebackWin
+    ? `> Comebacks like this are worth more than three points — they tell a squad something about itself. ${winner} now know they can be behind and win; ${loser} know they can be ahead and lose. Both lessons tend to matter later in a ${comp}.`
+    : smashAndGrab
+    ? `> The purists will call it theft; the pragmatists will call it tournament football. ${winner} conceded the ball, kept their shape and took their chances — an identity, not an accident. ${loser} dominated everything except the scoreboard.`
     : margin >= 3
     ? `> A statement performance. ${winner} blended control with cutting edge to overwhelm ${loser}, and on this evidence they will fancy their chances against anyone left in the ${comp}.`
     : `> A result built on resilience rather than fluency. ${winner} found the moments that mattered; ${loser} will feel they competed but ultimately lacked the ruthlessness that separates the good from the great at this level.`;
