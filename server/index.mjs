@@ -246,6 +246,19 @@ const momentumHistory = new Map(); // fixtureId → [{ m: minute, h: homeShare0t
 const MOMENTUM_MAX_SAMPLES = 150;
 const MOMENTUM_MAX_MATCHES = 80;
 
+// Last time each match aggregate was actually SERVED to someone. The live poller
+// only refreshes matches viewed within the last 10 minutes — without this, a single
+// page view (or crawler hit) enrolled a match into 40 calls/hour of refreshes for
+// its entire duration, viewer long gone.
+const aggLastServed = new Map(); // fixtureId(string) → epoch ms
+const ACTIVE_VIEW_WINDOW_MS = 10 * 60 * 1000;
+function touchAggServed(fixtureId) {
+  aggLastServed.set(String(fixtureId), Date.now());
+  if (aggLastServed.size > 800) {
+    aggLastServed.delete(aggLastServed.keys().next().value);
+  }
+}
+
 function momentumStatVal(teamStats, type) {
   const s = (teamStats?.statistics || []).find((x) => x.type === type);
   let v = s?.value;
@@ -945,7 +958,7 @@ const server = http.createServer(async (req, res) => {
       // match view, multiplied by every browsing user during peak) was the main quota
       // drain.
       const hit = cacheGet(cacheKey);
-      if (hit) return json(req, res, hit.data, { 'X-Cache': 'HIT' });
+      if (hit) { touchAggServed(fixtureId); return json(req, res, hit.data, { 'X-Cache': 'HIT' }); }
 
       // Cache miss + low quota → serve last-good (or empty) instead of bursting.
       if (!userFetchAllowed()) {
@@ -957,6 +970,7 @@ const server = http.createServer(async (req, res) => {
       // poller takes over keeping it fresh while the match is live.
       try {
         const result = await fetchMatchAggregate(fixtureId);
+        touchAggServed(fixtureId);
         return json(req, res, result, { 'X-Cache': 'MISS' });
       } catch (err) {
         console.error('Match aggregate error:', err);
@@ -1142,6 +1156,7 @@ const server = http.createServer(async (req, res) => {
           if (lg) { agg = lg.data; xc = 'AGG-LASTGOOD'; }
         }
         if (agg && agg[field] && agg[field].response !== undefined) {
+          touchAggServed(aggFixtureId);
           return json(req, res, agg[field], { 'X-Cache': xc, 'Cache-Control': 'no-cache, no-store, must-revalidate' });
         }
         // No aggregate obtainable (quota floor + never built): fall through to the
@@ -1617,21 +1632,27 @@ async function liveDetailPoller() {
     const liveList = liveResp?.response || [];
     if (!liveList.length) return;
 
-    // Only refresh matches that are BOTH live AND already cached (viewed at least
-    // once). We never pre-warm matches nobody is looking at.
+    // Only refresh matches that are live, cached (viewed at least once), AND served
+    // to someone within the active-view window. No pre-warming, no ghost viewers.
     const candidates = [];
+    const now = Date.now();
     for (const f of liveList) {
       const fid = f?.fixture?.id;
       if (!fid) continue;
       if (!isLiveStatus(f?.fixture?.status?.short)) continue;
       if (!cacheGet(`agg_match_${fid}`) && !lastGood.get(`agg_match_${fid}`)) continue;
+      const served = aggLastServed.get(String(fid));
+      if (!served || now - served > ACTIVE_VIEW_WINDOW_MS) continue; // nobody watching
       candidates.push({ fid, live: f });
       if (candidates.length >= MAX_LIVE_DETAIL) break;
     }
     if (!candidates.length) return;
 
     const liveSecs = Math.ceil(LIVE_DETAIL_POLL_MS / 1000);
-    const LIVE_TTL = { fresh: liveSecs, stale: liveSecs * 2 };
+    // Long stale window here too (matches fetchMatchAggregate): when this poller
+    // later skips a match (viewer left / over cap), its entry must serve stale
+    // instead of expiring into a fresh 5-call rebuild on the next visit.
+    const LIVE_TTL = { fresh: liveSecs, stale: 900 };
 
     for (const { fid, live } of candidates) {
       if (!backgroundJobsAllowed()) break; // re-check between matches
