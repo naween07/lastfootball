@@ -154,11 +154,11 @@ export default function KnockoutBracket({ leagueId, season }: KnockoutBracketPro
 // earliest to Final; connectors are POSITIONAL (feeders 2i & 2i+1 of the previous
 // round feed tie i of the next). Result/winner logic is untouched — penalties and
 // extra time still resolve via the tie's winnerId / decidedBy.
-const CARD_W = 284;
-const CARD_H = 108;
-const GAP_Y = 18;
-const COL_GAP = 72;
-const LABEL_H = 28;
+const CARD_W = 228;
+const CARD_H = 90;
+const GAP_Y = 14;
+const COL_GAP = 52;
+const LABEL_H = 24;
 
 function HorizontalBracket({ rounds }: { rounds: RoundData[] }) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -300,16 +300,16 @@ function BracketRow({ team, scoreText, won, lost }: {
 }) {
   return (
     <div className={cn(
-      'flex items-center gap-2 px-3 h-[34px] border-l-2 border-transparent',
+      'flex items-center gap-2 px-2.5 h-[28px] border-l-2 border-transparent',
       won ? 'bg-[#39ff14]/[0.06] border-l-[#39ff14]' : lost ? 'bg-red-500/[0.03]' : ''
     )}>
-      <Lg src={team.logo} sz={18} />
+      <Lg src={team.logo} sz={15} />
       <span className={cn(
-        'text-[13.5px] flex-1 truncate',
+        'text-[12px] flex-1 truncate',
         won ? 'font-bold text-[#39ff14]' : lost ? 'text-red-400/80 line-through decoration-red-400/40' : 'text-foreground'
       )}>{team.name || '—'}</span>
       <span className={cn(
-        'text-[14px] font-bold tabular-nums',
+        'text-[12.5px] font-bold tabular-nums',
         won ? 'text-[#39ff14]' : lost ? 'text-red-400/50' : 'text-muted-foreground'
       )}>{scoreText}</span>
     </div>
@@ -349,15 +349,15 @@ function BracketCard({ tie, left, top, isFinal }: { tie: TieData; left: number; 
       className={cn('absolute rounded-xl border overflow-hidden bg-card', isFinal ? 'border-amber-500/50' : 'border-border/60')}
       style={{ left, top, width: CARD_W, height: CARD_H, scrollSnapAlign: 'start' }}
     >
-      <div className={cn('flex items-center gap-1.5 px-3 h-[20px]', isFinal ? 'bg-amber-500/10' : 'bg-secondary/25')}>
+      <div className={cn('flex items-center gap-1.5 px-2.5 h-[17px]', isFinal ? 'bg-amber-500/10' : 'bg-secondary/25')}>
         {isFinal && <Trophy className="w-3 h-3 text-amber-400 flex-shrink-0" />}
-        <span className={cn('text-[10px] font-bold uppercase tracking-wider', isFinal ? 'text-amber-400' : 'text-muted-foreground/70')}>{headerText}</span>
+        <span className={cn('text-[9px] font-bold uppercase tracking-wider', isFinal ? 'text-amber-400' : 'text-muted-foreground/70')}>{headerText}</span>
       </div>
       <BracketRow team={tie.team1} scoreText={s1} won={w1} lost={w2} />
       <div className="h-px bg-border/15" />
       <BracketRow team={tie.team2} scoreText={s2} won={w2} lost={w1} />
-      <div className={cn('flex items-center justify-center h-[18px] px-2', (isPens || stripNeon) ? 'bg-[#39ff14]/[0.05]' : 'bg-secondary/10')}>
-        <span className={cn('text-[9px] font-semibold uppercase tracking-wide truncate', stripNeon ? 'text-[#39ff14]' : 'text-muted-foreground/70')}>{strip}</span>
+      <div className={cn('flex items-center justify-center h-[16px] px-2', (isPens || stripNeon) ? 'bg-[#39ff14]/[0.05]' : 'bg-secondary/10')}>
+        <span className={cn('text-[8.5px] font-semibold uppercase tracking-wide truncate', stripNeon ? 'text-[#39ff14]' : 'text-muted-foreground/70')}>{strip}</span>
       </div>
     </div>
   );
