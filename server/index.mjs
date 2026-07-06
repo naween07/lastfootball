@@ -1504,6 +1504,8 @@ server.listen(PORT, '127.0.0.1', async () => {
   // Match report generation
   setTimeout(generateMatchReports, 35 * 1000);
   setInterval(generateMatchReports, 20 * 60 * 1000); // Every 20 minutes
+  setTimeout(generateMatchPreviews, 50 * 1000);
+  setInterval(generateMatchPreviews, 20 * 60 * 1000); // Every 20 minutes — publishes ~5-6h before kickoff
   // Write the static sitemap file (nginx serves it directly) — on startup + every 30 min
   setTimeout(writeSitemapFile, 50 * 1000);
   setInterval(writeSitemapFile, 30 * 60 * 1000);
@@ -2483,6 +2485,221 @@ function buildReportFromFixture(f) {
 
   const slug = reportSlugify(`${home}-${hs}-${as_}-${away}-${date.slice(0, 10)}`);
   return { title, summary, body: paras.join('\n\n'), slug, league: comp, home, away, hs, as_, date, total, margin, homeLogo: f.teams?.home?.logo || null, awayLogo: f.teams?.away?.logo || null, isFeatured: f.league?.id === 1 };
+}
+
+// ─── Pre-match PREVIEW generator ─────────────────────────────────────────────
+// Publishes an SEO preview ~5-6h before each World Cup kickoff: venue, kickoff
+// times across timezones, data-derived strengths/weaknesses, probable lineups and
+// verified how-to-watch tables. Near-zero API cost: form/goals come from the
+// season fixtures list (cache-hit — the WC hub keeps it warm), top scorers from
+// persisted fixplayers snapshots, and only the two probable-lineup lookups
+// (immutable, 30d-cached) may spend a call each.
+const WC_BROADCASTERS = {
+  'Asia & Oceania': [
+    ['India', 'Unite8 Sports (Zee) · ZEE5 — key matches also free on DD Sports'],
+    ['Pakistan', 'PTV Sports · Tapmad (all 104 matches, streaming)'],
+    ['Bangladesh', 'BTV · T Sports · Somoy TV — streaming on Toffee & Bioscope+'],
+    ['Sri Lanka', 'SLT-Mobitel PEO TV'],
+    ['Nepal', 'Check local listings (regional rights distributor)'],
+    ['China', 'CCTV (CMG) — streaming on Migu'],
+    ['South Korea', 'JTBC'],
+    ['Middle East', 'beIN SPORTS'],
+    ['Australia', 'SBS (free-to-air)'],
+  ],
+  'Europe': [
+    ['United Kingdom', 'BBC & ITV (free-to-air, shared)'],
+    ['Spain', 'DAZN · Mediapro channel'],
+    ['Italy', 'RAI (free) · DAZN'],
+    ['Denmark', 'DR · TV 2'],
+    ['Greece', 'ERT'],
+  ],
+  'Africa': [
+    ['North Africa', 'beIN SPORTS'],
+    ['Sub-Saharan Africa', 'New World TV — with free-to-air sublicenses (e.g. GBC in Ghana, RTG in Guinea)'],
+    ['Angola', 'ZAP'],
+  ],
+  'Americas': [
+    ['United States', 'FOX & FS1 (English) · Telemundo (Spanish) — streaming on FOX One & Peacock'],
+    ['Canada', 'CTV & TSN (English) · Noovo & RDS (French)'],
+    ['Mexico', 'Televisa · TV Azteca'],
+    ['Brazil', 'Globo — every match free on CazéTV (YouTube)'],
+  ],
+};
+const KICKOFF_ZONES = [
+  ['Nepal', 'Asia/Kathmandu'], ['India', 'Asia/Kolkata'], ['UK', 'Europe/London'],
+  ['Central Europe', 'Europe/Berlin'], ['West Africa', 'Africa/Lagos'],
+  ['East Africa', 'Africa/Nairobi'], ['US Eastern', 'America/New_York'],
+];
+
+function teamWCProfile(teamId, teamName, seasonFixtures) {
+  const played = seasonFixtures.filter(f =>
+    ['FT', 'AET', 'PEN'].includes(f.fixture?.status?.short)
+    && (f.teams?.home?.id === teamId || f.teams?.away?.id === teamId));
+  const p = { played: played.length, gf: 0, ga: 0, w: 0, d: 0, l: 0, cleanSheets: 0,
+    possSum: 0, possN: 0, passSum: 0, passN: 0, topScorer: null };
+  const scorerTally = new Map();
+  for (const f of played) {
+    const isHome = f.teams?.home?.id === teamId;
+    const gf = isHome ? (f.goals?.home ?? 0) : (f.goals?.away ?? 0);
+    const ga = isHome ? (f.goals?.away ?? 0) : (f.goals?.home ?? 0);
+    p.gf += gf; p.ga += ga;
+    if (ga === 0) p.cleanSheets++;
+    const winner = f.teams?.home?.winner ? 'h' : f.teams?.away?.winner ? 'a' : null;
+    if (!winner) p.d++; else if ((winner === 'h') === isHome) p.w++; else p.l++;
+    const fid = f.fixture?.id;
+    // Per-match stats if cached (report generator / momentum populate these)
+    const st = cacheGet(`fixstats:${fid}`)?.data || lastGood.get(`fixstats:${fid}`)?.data;
+    const mine = (st?.response || []).find(r => r?.team?.id === teamId);
+    if (mine) {
+      const val = (t) => { const s = (mine.statistics || []).find(x => x.type === t); const v = parseFloat(String(s?.value ?? '').replace('%', '')); return Number.isFinite(v) ? v : null; };
+      const poss = val('Ball Possession'); if (poss != null) { p.possSum += poss; p.possN++; }
+      const pass = val('Passes %'); if (pass != null) { p.passSum += pass; p.passN++; }
+    }
+    // Top scorer from persisted fixplayers snapshots (free)
+    const fp = cacheGet(`fixplayers:${fid}`)?.data || lastGood.get(`fixplayers:${fid}`)?.data;
+    for (const teamBlock of (fp?.response || [])) {
+      if (teamBlock?.team?.id !== teamId) continue;
+      for (const pl of (teamBlock.players || [])) {
+        const g = pl?.statistics?.[0]?.goals?.total || 0;
+        if (g > 0) scorerTally.set(pl.player?.name, (scorerTally.get(pl.player?.name) || 0) + g);
+      }
+    }
+  }
+  const top = [...scorerTally.entries()].sort((a, b) => b[1] - a[1])[0];
+  if (top) p.topScorer = { name: top[0], goals: top[1] };
+  p.avgPoss = p.possN ? Math.round(p.possSum / p.possN) : null;
+  p.avgPass = p.passN ? Math.round(p.passSum / p.passN) : null;
+  return p;
+}
+
+function profileBullets(name, p) {
+  const strengths = [], weaknesses = [];
+  if (p.avgPass != null && p.avgPass >= 88) strengths.push(`Elite ball retention — averaging ${p.avgPass}% passing accuracy this tournament.`);
+  if (p.avgPoss != null && p.avgPoss >= 55) strengths.push(`Control the tempo with ${p.avgPoss}% average possession.`);
+  if (p.played >= 2 && p.cleanSheets >= Math.ceil(p.played / 2)) strengths.push(`Defensively excellent — ${p.cleanSheets} clean sheet${p.cleanSheets > 1 ? 's' : ''} in ${p.played} matches.`);
+  if (p.played && p.gf / p.played >= 2) strengths.push(`Ruthless in attack: ${p.gf} goals in ${p.played} games (${(p.gf / p.played).toFixed(1)} per match).`);
+  if (p.topScorer && p.topScorer.goals >= 2) strengths.push(`${p.topScorer.name} is in form with ${p.topScorer.goals} tournament goals.`);
+  if (p.played && p.gf / p.played <= 1) weaknesses.push(`Goals have been hard to come by — just ${p.gf} in ${p.played} matches.`);
+  if (p.played && p.ga / p.played >= 1.5) weaknesses.push(`Vulnerable at the back, conceding ${(p.ga / p.played).toFixed(1)} per game.`);
+  if (p.avgPoss != null && p.avgPoss <= 45) weaknesses.push(`Often cede the ball (${p.avgPoss}% possession) — must be effective in transition.`);
+  if (!strengths.length) strengths.push(`Have ground out results when it mattered (${p.w}W ${p.d}D ${p.l}L).`);
+  if (!weaknesses.length) weaknesses.push(`Few obvious flaws so far — the question is whether the level holds as the stakes rise.`);
+  return { strengths, weaknesses };
+}
+
+async function probableLineup(teamId, seasonFixtures) {
+  // The team's most recent completed match → its starting XI as the "probable" XI.
+  const last = seasonFixtures
+    .filter(f => ['FT', 'AET', 'PEN'].includes(f.fixture?.status?.short)
+      && (f.teams?.home?.id === teamId || f.teams?.away?.id === teamId))
+    .sort((a, b) => +new Date(b.fixture?.date) - +new Date(a.fixture?.date))[0];
+  if (!last) return null;
+  const fid = last.fixture.id;
+  const key = `fixtures/lineups?fixture=${fid}`;
+  let data = cacheGet(key)?.data || lastGood.get(key)?.data;
+  if (!data) {
+    try {
+      data = await fetchUpstream('fixtures/lineups', { fixture: String(fid) });
+      cacheSet(key, data, { fresh: 2592000, stale: 2592000 }); // immutable
+    } catch { return null; }
+  }
+  const mine = (data?.response || []).find(l => l?.team?.id === teamId);
+  if (!mine?.startXI?.length) return null;
+  const opp = last.teams.home.id === teamId ? last.teams.away.name : last.teams.home.name;
+  return {
+    formation: mine.formation || '',
+    xi: mine.startXI.map(s => s?.player?.name).filter(Boolean),
+    basis: `their last match vs ${opp}`,
+  };
+}
+
+async function generateMatchPreviews() {
+  if (!backgroundJobsAllowed()) return;
+  try {
+    const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+    // Season fixtures — reuse the WC hub's warm cache; one paced fetch at most.
+    const seasonKey = 'fixtures?league=1&season=2026';
+    let season = cacheGet(seasonKey)?.data || lastGood.get(seasonKey)?.data;
+    if (!season) {
+      season = await fetchUpstream('fixtures', { league: '1', season: '2026' });
+      cacheSet(seasonKey, season, { fresh: 180, stale: 900 });
+    }
+    const fixtures = season?.response || [];
+    if (!fixtures.length) return;
+
+    const now = Date.now();
+    const inWindow = fixtures.filter(f => {
+      const t = new Date(f.fixture?.date).getTime();
+      return f.fixture?.status?.short === 'NS' && t - now >= 4 * 3600e3 && t - now <= 6.5 * 3600e3;
+    });
+    if (!inWindow.length) return;
+
+    let created = 0;
+    for (const f of inWindow.slice(0, 4)) {
+      const home = f.teams?.home?.name, away = f.teams?.away?.name;
+      const homeId = f.teams?.home?.id, awayId = f.teams?.away?.id;
+      if (!home || !away) continue;
+      const kick = new Date(f.fixture.date);
+      const slug = reportSlugify(`${home}-vs-${away}-preview-${kick.toISOString().slice(0, 10)}`);
+      const existing = await supabaseQueryWithKey('posts', `slug=eq.${encodeURIComponent(slug)}&select=id`, 'GET', null, SVC);
+      if (Array.isArray(existing) && existing.length) continue;
+
+      const round = f.league?.round || 'FIFA World Cup 2026';
+      const venue = f.fixture?.venue?.name || '';
+      const city = f.fixture?.venue?.city || '';
+      const hp = teamWCProfile(homeId, home, fixtures);
+      const ap = teamWCProfile(awayId, away, fixtures);
+      const hb = profileBullets(home, hp), ab = profileBullets(away, ap);
+      const [hXI, aXI] = await Promise.all([probableLineup(homeId, fixtures), probableLineup(awayId, fixtures)]);
+
+      const timeRows = KICKOFF_ZONES.map(([label, tz]) =>
+        `| ${label} | ${kick.toLocaleString('en-GB', { timeZone: tz, weekday: 'short', hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })} |`).join('\n');
+      const bcast = Object.entries(WC_BROADCASTERS).map(([region, rows]) =>
+        `### ${region}\n\n| Country / Region | Broadcaster |\n|---|---|\n${rows.map(([c, b]) => `| ${c} | ${b} |`).join('\n')}`).join('\n\n');
+      const lineupBlock = (name, l) => l
+        ? `**${name} (${l.formation})** — based on ${l.basis}:\n\n${l.xi.join(' · ')}`
+        : `**${name}** — the starting XI will be confirmed roughly an hour before kickoff; we'll cover it live.`;
+      const formLine = (name, p) => `**${name}:** ${p.w}W ${p.d}D ${p.l}L · ${p.gf} scored / ${p.ga} conceded · ${p.cleanSheets} clean sheet${p.cleanSheets === 1 ? '' : 's'}${p.avgPoss != null ? ` · ${p.avgPoss}% avg possession` : ''}${p.avgPass != null ? ` · ${p.avgPass}% pass accuracy` : ''}${p.topScorer ? ` · Top scorer: ${p.topScorer.name} (${p.topScorer.goals})` : ''}`;
+
+      const title = `${home} vs ${away} Preview: Predicted Lineups, Team News & How to Watch — ${round}`;
+      const subtitle = `The ${home} national football team face the ${away} national football team${venue ? ` at ${venue}${city ? `, ${city}` : ''}` : ''} in the FIFA World Cup 2026 ${round}. Kickoff times, probable XIs, key strengths and weaknesses, and where to watch in Asia, Europe, Africa and the Americas.`;
+      const body = [
+        `The **${home} national football team** and the **${away} national football team** meet in the FIFA World Cup 2026 **${round}**${venue ? `, with ${venue}${city ? ` in ${city}` : ''} hosting` : ''}. Here is everything you need before kickoff — team form, probable lineups, tactical strengths and weaknesses, and how to watch ${home} vs ${away} live wherever you are.`,
+        `## Match Information\n\n| | |\n|---|---|\n| **Fixture** | ${home} vs ${away} |\n| **Competition** | FIFA World Cup 2026 — ${round} |${venue ? `\n| **Venue** | ${venue}${city ? `, ${city}` : ''} |` : ''}\n\n### Kickoff time by region\n\n| Region | Local kickoff |\n|---|---|\n${timeRows}`,
+        `## Team Form & Key Numbers\n\n${formLine(home, hp)}\n\n${formLine(away, ap)}`,
+        `## ${home}: Strengths & Weaknesses\n\n**Strengths**\n\n${hb.strengths.map(s => `- ${s}`).join('\n')}\n\n**Weaknesses**\n\n${hb.weaknesses.map(s => `- ${s}`).join('\n')}`,
+        `## ${away}: Strengths & Weaknesses\n\n**Strengths**\n\n${ab.strengths.map(s => `- ${s}`).join('\n')}\n\n**Weaknesses**\n\n${ab.weaknesses.map(s => `- ${s}`).join('\n')}`,
+        `## Predicted Lineups\n\n${lineupBlock(home, hXI)}\n\n${lineupBlock(away, aXI)}\n\n*Predicted lineups are based on each side's most recent starting XI and may change with team news.*`,
+        `## How to Watch ${home} vs ${away}\n\n${bcast}\n\n*Broadcast schedules can change match-by-match — always confirm with your local broadcaster's official listings. The first 10 minutes of every match also stream free on official broadcaster YouTube channels.*`,
+        `## Follow it live on LastFootball\n\nLive score, LF Momentum, lineups and stats for ${home} vs ${away} will run on our [live match centre](/fixtures) from kickoff, with the full-time report published minutes after the whistle.`,
+      ].join('\n\n');
+
+      const jsonLd = generateJsonLd({ type: 'NewsArticle', title, description: subtitle, slug, author: 'LastFootball', image: null, published: new Date().toISOString() });
+      const row = {
+        type: 'NewsArticle', status: 'published',
+        title, slug, subtitle, body,
+        excerpt: subtitle,
+        meta_title: `${home} vs ${away} Preview, Lineups & How to Watch | LastFootball`,
+        meta_description: `${home} vs ${away} — ${round} preview: kickoff time, predicted lineups, team news and TV channels in Asia, Europe & Africa.`.slice(0, 158),
+        category: 'match-preview', league: 'FIFA World Cup 2026',
+        teams: [home, away],
+        tags: [home, away, 'World Cup 2026', `${home} vs ${away}`, 'preview', 'predicted lineups', 'how to watch'],
+        featured_image: null, featured_image_alt: `${home} vs ${away} World Cup 2026 preview`,
+        author_name: 'LastFootball', json_ld: jsonLd,
+        reading_time_mins: Math.max(2, Math.round(body.split(/\s+/).length / 200)),
+        published_at: new Date().toISOString(),
+      };
+      const res = await supabaseQueryWithKey('posts', '', 'POST', row, SVC);
+      if (Array.isArray(res) || res) created++;
+    }
+    if (created > 0) {
+      console.log(`[PREVIEWS] Published ${created} pre-match preview(s)`);
+      writeSitemapFile();
+      writeArticleFiles();
+    }
+  } catch (e) {
+    console.error('[PREVIEWS] error:', e.message);
+  }
 }
 
 async function generateMatchReports() {
