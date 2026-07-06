@@ -463,18 +463,19 @@ function fetchWithHeaders(url, headers) {
 // last-good/stale fallbacks serve the response instead.
 const HOURLY_BUDGET = 280;
 let _paceWindow = { start: Date.now(), spent: 0 };
-function _isEssentialCall(endpoint, params) {
+function _isEssentialCall(endpoint, params, opts) {
+  if (opts?.essential) return true;
   return endpoint === 'fixtures' && (params?.live === 'all' || !!params?.date);
 }
-function paceAllows(endpoint, params) {
+function paceAllows(endpoint, params, opts) {
   const now = Date.now();
   if (now - _paceWindow.start >= 3600 * 1000) _paceWindow = { start: now, spent: 0 };
-  const ceiling = _isEssentialCall(endpoint, params) ? HOURLY_BUDGET : Math.floor(HOURLY_BUDGET * 0.85);
+  const ceiling = _isEssentialCall(endpoint, params, opts) ? HOURLY_BUDGET : Math.floor(HOURLY_BUDGET * 0.85);
   return _paceWindow.spent < ceiling;
 }
 
-async function fetchUpstream(endpoint, params) {
-  if (!paceAllows(endpoint, params)) {
+async function fetchUpstream(endpoint, params, opts) {
+  if (!paceAllows(endpoint, params, opts)) {
     // Refuse rather than spend: every caller already falls back to last-good /
     // stale / empty on fetch failure, so pacing degrades gracefully by design.
     const e = new Error(`paced: hourly upstream budget reached (${_paceWindow.spent}/${HOURLY_BUDGET})`);
@@ -1614,12 +1615,27 @@ async function computeWorldCupTopStats() {
 // cached ~30 days since their data is immutable.
 async function fetchMatchAggregate(fixtureId) {
   const cacheKey = `agg_match_${fixtureId}`;
+  // Is this fixture currently LIVE? (checked against the already-cached live list —
+  // free). Live matches are what visitors came for: their first-view build (5 calls,
+  // bounded) rides the ESSENTIAL pacing tier so a marquee game never shows an empty
+  // stats page during a hot hour (Brazil–Norway, 2026-07-06). Finished/old matches
+  // stay non-essential — cached data or a one-hour wait is fine for those.
+  let isLiveNow = false;
+  try {
+    const tz = 'Asia/Kathmandu';
+    const liveResp = cacheGet('fixtures?live=all&timezone=' + tz)?.data
+      || lastGood.get('fixtures?live=all&timezone=' + tz)?.data
+      || (cacheGet('agg_homepage:' + tz)?.data || lastGood.get('agg_homepage:' + tz)?.data)?.live;
+    isLiveNow = !!(liveResp?.response || []).some(f => String(f?.fixture?.id) === String(fixtureId));
+  } catch { /* default non-essential */ }
+  const opts = isLiveNow ? { essential: true } : undefined;
+
   const [fixture, events, stats, lineups, players] = await Promise.allSettled([
-    fetchUpstream('fixtures', { id: String(fixtureId) }),
-    fetchUpstream('fixtures/events', { fixture: String(fixtureId) }),
-    fetchUpstream('fixtures/statistics', { fixture: String(fixtureId) }),
-    fetchUpstream('fixtures/lineups', { fixture: String(fixtureId) }),
-    fetchUpstream('fixtures/players', { fixture: String(fixtureId) }),
+    fetchUpstream('fixtures', { id: String(fixtureId) }, opts),
+    fetchUpstream('fixtures/events', { fixture: String(fixtureId) }, opts),
+    fetchUpstream('fixtures/statistics', { fixture: String(fixtureId) }, opts),
+    fetchUpstream('fixtures/lineups', { fixture: String(fixtureId) }, opts),
+    fetchUpstream('fixtures/players', { fixture: String(fixtureId) }, opts),
   ]);
   const result = {
     fixture: fixture.status === 'fulfilled' ? fixture.value : [],
