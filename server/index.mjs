@@ -2614,7 +2614,10 @@ async function probableLineup(teamId, seasonFixtures) {
 }
 
 async function generateMatchPreviews() {
-  if (!backgroundJobsAllowed()) return;
+  // User-tier gate, NOT backgroundJobsAllowed: a preview is reader-facing content
+  // costing ~2 paced calls — it must still publish during evening quota crunches
+  // when batch jobs are rightly paused (missed Spain-Portugal, 2026-07-06).
+  if (!userFetchAllowed()) return;
   try {
     const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
     // Season fixtures — reuse the WC hub's warm cache; one paced fetch at most.
@@ -2633,7 +2636,7 @@ async function generateMatchPreviews() {
       // Ideal publish is 5-6h out, but accept anything ≥75min away so restarts,
       // deploys or downtime never permanently skip an imminent match (a preview
       // 2h before kickoff is still fully valuable — Spain-Portugal, 2026-07-06).
-      return f.fixture?.status?.short === 'NS' && t - now >= 1.25 * 3600e3 && t - now <= 6.5 * 3600e3;
+      return f.fixture?.status?.short === 'NS' && t - now >= 0.5 * 3600e3 && t - now <= 6.5 * 3600e3;
     });
     if (!inWindow.length) return;
 
