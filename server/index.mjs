@@ -2630,7 +2630,10 @@ async function generateMatchPreviews() {
     const now = Date.now();
     const inWindow = fixtures.filter(f => {
       const t = new Date(f.fixture?.date).getTime();
-      return f.fixture?.status?.short === 'NS' && t - now >= 4 * 3600e3 && t - now <= 6.5 * 3600e3;
+      // Ideal publish is 5-6h out, but accept anything ≥75min away so restarts,
+      // deploys or downtime never permanently skip an imminent match (a preview
+      // 2h before kickoff is still fully valuable — Spain-Portugal, 2026-07-06).
+      return f.fixture?.status?.short === 'NS' && t - now >= 1.25 * 3600e3 && t - now <= 6.5 * 3600e3;
     });
     if (!inWindow.length) return;
 
