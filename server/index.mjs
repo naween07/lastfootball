@@ -49,7 +49,7 @@ function getTtl(endpoint, params) {
     if (date) {
       const today = new Date().toISOString().split('T')[0];
       if (date < today) return { fresh: 86400, stale: 604800 }; // Past dates — 24h
-      if (date === today) return { fresh: 60, stale: 120 };      // Today — 1min
+      if (date === today) return { fresh: 180, stale: 600 };    // Today — 3min (homepage poll overrides with its own faster TTL)
       return { fresh: 600, stale: 1800 };                         // Future — 10min
     }
     // Full-season league queries (worldcup hub, stats fixtures): heavy responses that
@@ -60,8 +60,10 @@ function getTtl(endpoint, params) {
     return { fresh: 60, stale: 120 };
   }
   
-  // Team statistics — refresh fast during the tournament
-  if (endpoint === 'teams/statistics') return { fresh: 600, stale: 3600 }; // 10min fresh, 1h stale
+  // Team statistics — season aggregates that only move when a team plays; a 10-minute
+  // TTL let background insight/prediction refreshes burn ~1,446 calls in one day
+  // (2026-07-04 profile) re-fetching numbers that hadn't changed. 6h is still fresh.
+  if (endpoint === 'teams/statistics') return { fresh: 21600, stale: 86400 };
   
   // Squad data — rarely changes (transfers only)
   if (endpoint === 'players/squads') return { fresh: 86400, stale: 172800 }; // 24h fresh, 48h stale
@@ -244,6 +246,19 @@ const momentumHistory = new Map(); // fixtureId → [{ m: minute, h: homeShare0t
 const MOMENTUM_MAX_SAMPLES = 150;
 const MOMENTUM_MAX_MATCHES = 80;
 
+// Last time each match aggregate was actually SERVED to someone. The live poller
+// only refreshes matches viewed within the last 10 minutes — without this, a single
+// page view (or crawler hit) enrolled a match into 40 calls/hour of refreshes for
+// its entire duration, viewer long gone.
+const aggLastServed = new Map(); // fixtureId(string) → epoch ms
+const ACTIVE_VIEW_WINDOW_MS = 10 * 60 * 1000;
+function touchAggServed(fixtureId) {
+  aggLastServed.set(String(fixtureId), Date.now());
+  if (aggLastServed.size > 800) {
+    aggLastServed.delete(aggLastServed.keys().next().value);
+  }
+}
+
 function momentumStatVal(teamStats, type) {
   const s = (teamStats?.statistics || []).find((x) => x.type === type);
   let v = s?.value;
@@ -351,13 +366,28 @@ function utcDayOf(ts) {
 }
 function assumeDailyResetIfDue() {
   if (!quota.lastChecked || !quota.daily.limit) return;
-  if (utcDayOf(Date.now()) > utcDayOf(quota.lastChecked)) {
+  const dayCrossed = utcDayOf(Date.now()) > utcDayOf(quota.lastChecked);
+  // Poisoned-probe guard: on 2026-07-04 the midnight probe fired at 00:00:30 but the
+  // provider's counter hadn't reset yet — the header said "48 remaining", which locked
+  // the server for the whole day (day-boundary condition can only fire once). So: when
+  // we're stuck at/below the user floor, also re-probe once per hour. Worst case cost
+  // is ~24 calls/day; the first post-reset header instantly restores the real budget.
+  const stuckAtFloor = quota.daily.remaining <= USER_QUOTA_FLOOR
+    && (Date.now() - Date.parse(quota.lastChecked)) >= 3600 * 1000;
+  if (dayCrossed) {
     quota.daily.used = 0;
     quota.daily.remaining = quota.daily.limit;
     quota.callsToday = 0;
     quota.lastChecked = new Date().toISOString();
     _breakerLogged = false;
-    console.log(`✅ QUOTA: 00:00 UTC reset assumed (last header was from a previous UTC day) — fetches re-enabled, ${quota.daily.limit} available.`);
+    console.log(`✅ QUOTA: 00:00 UTC reset assumed — fetches re-enabled, ${quota.daily.limit} assumed until next header.`);
+  } else if (stuckAtFloor) {
+    // Small probe window only: the very next upstream call's header replaces this
+    // number with the truth. If the provider has reset → full budget restored; if
+    // genuinely exhausted → re-blocks after ~1 call. Bounded to ~a few calls/hour.
+    quota.daily.remaining = USER_QUOTA_FLOOR + 25;
+    quota.lastChecked = new Date().toISOString();
+    console.log('🔎 QUOTA: hourly re-probe (stuck at floor) — small window opened; next header decides.');
   }
 }
 
@@ -398,7 +428,11 @@ function userFetchAllowed() {
 // startup budget log to see the estimated daily total vs the 7,500 cap.
 const HOMEPAGE_POLL_MS    = 180 * 1000; // full homepage rebuild (live + today + WC + domestic, cache-first)
 const LIVE_DETAIL_POLL_MS = 180 * 1000; // refresh events+stats for *viewed* live matches (handoff: ~3 min)
-const MAX_LIVE_DETAIL     = 20;         // hard cap on live matches refreshed per detail-poll run
+// 8 × 2 calls per 3-min run = max 320/hr — was 20 (800/hr), which on a busy live
+// Saturday could alone consume most of a day's budget. Beyond the 8 most-recently
+// viewed matches, detail serves slightly stale while scorelines stay live via the
+// live=all list.
+const MAX_LIVE_DETAIL     = 8;          // hard cap on live matches refreshed per detail-poll run
 
 // API-Football fixture.status.short codes that mean "in play" (per handoff).
 const LIVE_STATUSES = ['1H', '2H', 'HT', 'ET', 'P', 'BT'];
@@ -418,7 +452,36 @@ function fetchWithHeaders(url, headers) {
   });
 }
 
+// ─── GLOBAL PACING CEILING ──────────────────────────────────────────────────
+// The structural guarantee: NO combination of features, traffic, crawlers, TTL
+// mistakes or future bugs can exhaust the daily quota, because every upstream call
+// flows through fetchUpstream and fetchUpstream enforces a hard hourly ceiling.
+// 280/hour ≈ 6,700/day, leaving ~800/day headroom under the 7,500 cap for the
+// mobile app backend sharing this key. Essential traffic (live scores list,
+// today's fixtures — the data the whole site is built on) may use the full
+// ceiling; everything else is refused at 85% and the caller's existing
+// last-good/stale fallbacks serve the response instead.
+const HOURLY_BUDGET = 280;
+let _paceWindow = { start: Date.now(), spent: 0 };
+function _isEssentialCall(endpoint, params) {
+  return endpoint === 'fixtures' && (params?.live === 'all' || !!params?.date);
+}
+function paceAllows(endpoint, params) {
+  const now = Date.now();
+  if (now - _paceWindow.start >= 3600 * 1000) _paceWindow = { start: now, spent: 0 };
+  const ceiling = _isEssentialCall(endpoint, params) ? HOURLY_BUDGET : Math.floor(HOURLY_BUDGET * 0.85);
+  return _paceWindow.spent < ceiling;
+}
+
 async function fetchUpstream(endpoint, params) {
+  if (!paceAllows(endpoint, params)) {
+    // Refuse rather than spend: every caller already falls back to last-good /
+    // stale / empty on fetch failure, so pacing degrades gracefully by design.
+    const e = new Error(`paced: hourly upstream budget reached (${_paceWindow.spent}/${HOURLY_BUDGET})`);
+    e.paced = true;
+    throw e;
+  }
+  _paceWindow.spent++;
   const qs = new URLSearchParams(params).toString();
   const url = `${API_BASE}/${endpoint}${qs ? '?' + qs : ''}`;
   // Per-endpoint call accounting — makes /api/quota show WHERE calls go, so quota
@@ -862,8 +925,15 @@ const server = http.createServer(async (req, res) => {
       // call) on every stale hit during peak hours, draining the quota — and it also
       // caused the "homepage needs a hard refresh" race when many requests stampeded
       // a cold key at once.
+      const hpMeaningful = (d) => !!(d && (d.worldCupActive || d.live?.response?.length || d.today?.response?.length));
       const hit = cacheGet(cacheKey);
       if (hit) {
+        // Quota-starved rebuilds produce EMPTY aggregates that would otherwise shadow
+        // the good pinned snapshot for hours (seen 2026-07-04: blank homepage while a
+        // perfectly good snapshot sat unused). Prefer real data over a fresher void.
+        if (!hpMeaningful(hit.data) && hpMeaningful(homepageAgg?.data)) {
+          return json(req, res, homepageAgg.data, { 'X-Cache': 'PINNED-OVER-EMPTY' });
+        }
         const isFresh = Date.now() < hit.freshUntil;
         return json(req, res, hit.data, { 'X-Cache': isFresh ? 'HIT' : 'STALE' });
       }
@@ -921,7 +991,7 @@ const server = http.createServer(async (req, res) => {
       // match view, multiplied by every browsing user during peak) was the main quota
       // drain.
       const hit = cacheGet(cacheKey);
-      if (hit) return json(req, res, hit.data, { 'X-Cache': 'HIT' });
+      if (hit) { touchAggServed(fixtureId); return json(req, res, hit.data, { 'X-Cache': 'HIT' }); }
 
       // Cache miss + low quota → serve last-good (or empty) instead of bursting.
       if (!userFetchAllowed()) {
@@ -933,6 +1003,7 @@ const server = http.createServer(async (req, res) => {
       // poller takes over keeping it fresh while the match is live.
       try {
         const result = await fetchMatchAggregate(fixtureId);
+        touchAggServed(fixtureId);
         return json(req, res, result, { 'X-Cache': 'MISS' });
       } catch (err) {
         console.error('Match aggregate error:', err);
@@ -1022,6 +1093,11 @@ const server = http.createServer(async (req, res) => {
         quota: quota.daily,
         callsFromServer: quota.callsToday,
         lastChecked: quota.lastChecked,
+        pacing: {
+          hourlyBudget: HOURLY_BUDGET,
+          spentThisHour: _paceWindow.spent,
+          windowStartedUtc: new Date(_paceWindow.start).toISOString(),
+        },
         callsByEndpoint: Object.fromEntries(
           Object.entries(quota.byEndpoint || {}).sort((a, b) => b[1] - a[1]).slice(0, 15)
         ),
@@ -1118,6 +1194,7 @@ const server = http.createServer(async (req, res) => {
           if (lg) { agg = lg.data; xc = 'AGG-LASTGOOD'; }
         }
         if (agg && agg[field] && agg[field].response !== undefined) {
+          touchAggServed(aggFixtureId);
           return json(req, res, agg[field], { 'X-Cache': xc, 'Cache-Control': 'no-cache, no-store, must-revalidate' });
         }
         // No aggregate obtainable (quota floor + never built): fall through to the
@@ -1148,6 +1225,23 @@ const server = http.createServer(async (req, res) => {
         return json(req, res, lg ? lg.data : { response: [] }, {
           'X-Cache': lg ? 'DEGRADED' : 'EMPTY',
           ...(lg ? { 'X-Data-Age': String(Math.round((Date.now() - lg.savedAt) / 1000)) } : {}),
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+        });
+      }
+
+      // Enrichment tier: nice-to-have data (H2H, team profiles, squads, season stats,
+      // top-scorer boards). Long-tail breadth traffic — crawlers and page-hopping —
+      // hit ~1,700 of these misses on 2026-07-04, each spending a call for a page
+      // viewed once. These now only spend when we're comfortably above the reserve;
+      // below it they serve last-good/empty and core match data keeps the budget.
+      const ENRICHMENT = new Set([
+        'fixtures/headtohead', 'teams', 'players/squads', 'teams/statistics',
+        'players/topscorers', 'players/topassists', 'trophies', 'transfers', 'coachs',
+      ]);
+      if (ENRICHMENT.has(endpoint) && !backgroundJobsAllowed()) {
+        const lg = lastGood.get(cacheKey);
+        return json(req, res, lg ? lg.data : { response: [] }, {
+          'X-Cache': lg ? 'DEGRADED-TIER' : 'EMPTY-TIER',
           'Cache-Control': 'no-cache, no-store, must-revalidate',
         });
       }
@@ -1545,10 +1639,13 @@ async function fetchMatchAggregate(fixtureId) {
     );
   }
   const FINISHED_TTL = { fresh: 2592000, stale: 2592000 }; // ~30d — immutable
-  // Live: keep fresh a little longer than the poll interval so the entry stays in
-  // cache between runs and the poller keeps it warm.
+  // Live: fresh tracks the poll interval, but STALE stays long (15min) — a live match
+  // beyond the MAX_LIVE_DETAIL poller cap used to expire in ~6min and cost a full
+  // 5-call rebuild per viewer wave, over and over (part of the 2026-07-04 burn).
+  // Now over-cap matches serve slightly stale detail instead of re-spending; the
+  // scoreline itself stays current via the live=all list.
   const liveSecs = Math.ceil(LIVE_DETAIL_POLL_MS / 1000);
-  const LIVE_TTL = { fresh: liveSecs, stale: liveSecs * 2 };
+  const LIVE_TTL = { fresh: liveSecs, stale: 900 };
   cacheSet(cacheKey, result, isLive ? LIVE_TTL : FINISHED_TTL);
   return result;
 }
@@ -1573,21 +1670,27 @@ async function liveDetailPoller() {
     const liveList = liveResp?.response || [];
     if (!liveList.length) return;
 
-    // Only refresh matches that are BOTH live AND already cached (viewed at least
-    // once). We never pre-warm matches nobody is looking at.
+    // Only refresh matches that are live, cached (viewed at least once), AND served
+    // to someone within the active-view window. No pre-warming, no ghost viewers.
     const candidates = [];
+    const now = Date.now();
     for (const f of liveList) {
       const fid = f?.fixture?.id;
       if (!fid) continue;
       if (!isLiveStatus(f?.fixture?.status?.short)) continue;
       if (!cacheGet(`agg_match_${fid}`) && !lastGood.get(`agg_match_${fid}`)) continue;
+      const served = aggLastServed.get(String(fid));
+      if (!served || now - served > ACTIVE_VIEW_WINDOW_MS) continue; // nobody watching
       candidates.push({ fid, live: f });
       if (candidates.length >= MAX_LIVE_DETAIL) break;
     }
     if (!candidates.length) return;
 
     const liveSecs = Math.ceil(LIVE_DETAIL_POLL_MS / 1000);
-    const LIVE_TTL = { fresh: liveSecs, stale: liveSecs * 2 };
+    // Long stale window here too (matches fetchMatchAggregate): when this poller
+    // later skips a match (viewer left / over cap), its entry must serve stale
+    // instead of expiring into a fresh 5-call rebuild on the next visit.
+    const LIVE_TTL = { fresh: liveSecs, stale: 900 };
 
     for (const { fid, live } of candidates) {
       if (!backgroundJobsAllowed()) break; // re-check between matches
