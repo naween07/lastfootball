@@ -6,6 +6,7 @@ import http from 'node:http';
 import https from 'node:https';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 const PORT = 3001;
 const API_BASE = 'https://v3.football.api-sports.io';
@@ -99,6 +100,54 @@ function cacheGet(key) {
 // the TTL cache expires. Used as a fallback when the upstream API fails (e.g. quota
 // exhausted) so the site never serves empty data / skeletons.
 const lastGood = new Map();
+
+// ─── IndexNow (push-indexing: Bing, Yandex, DuckDuckGo-via-Bing) ─────────────
+// Google removed sitemap pinging in 2023; IndexNow is the modern push channel.
+// New previews/reports get submitted the moment they publish — crucial for pages
+// whose search value peaks within hours of kickoff. Key persists like .vapid.json;
+// the /<key>.txt verification file is rewritten into dist on every ping so builds
+// can't wipe it for long.
+const INDEXNOW_FILE = path.join(process.cwd(), '.indexnow.json');
+let indexNowKey = null;
+function writeIndexNowKeyFile() {
+  if (!indexNowKey) return;
+  const here = path.dirname(new URL(import.meta.url).pathname);
+  for (const dir of [path.resolve(here, '..', 'dist'), '/var/www/lastfootball/dist']) {
+    try {
+      if (fs.existsSync(dir)) { fs.writeFileSync(path.join(dir, `${indexNowKey}.txt`), indexNowKey, 'utf8'); return; }
+    } catch { /* try next */ }
+  }
+}
+function initIndexNow() {
+  try {
+    if (fs.existsSync(INDEXNOW_FILE)) {
+      indexNowKey = JSON.parse(fs.readFileSync(INDEXNOW_FILE, 'utf8')).key;
+    } else {
+      indexNowKey = crypto.randomBytes(16).toString('hex');
+      fs.writeFileSync(INDEXNOW_FILE, JSON.stringify({ key: indexNowKey }));
+      console.log('[INDEXNOW] Generated new key → .indexnow.json');
+    }
+    writeIndexNowKeyFile();
+    console.log('[INDEXNOW] ready');
+  } catch (e) { console.error('[INDEXNOW] init failed:', e.message); }
+}
+async function pingIndexNow(paths) {
+  if (!indexNowKey || !paths?.length) return;
+  writeIndexNowKeyFile();
+  try {
+    const res = await fetch('https://api.indexnow.org/indexnow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({
+        host: 'lastfootball.com',
+        key: indexNowKey,
+        keyLocation: `https://lastfootball.com/${indexNowKey}.txt`,
+        urlList: paths.slice(0, 100).map(pt => `https://lastfootball.com${pt}`),
+      }),
+    });
+    console.log(`[INDEXNOW] submitted ${paths.length} url(s) — HTTP ${res.status}`);
+  } catch (e) { console.error('[INDEXNOW] ping failed:', e.message); }
+}
 
 // ─── Web Push (goal / full-time alerts) ─────────────────────────────────────
 // Uses the `web-push` npm package (VAPID + RFC 8291 payload encryption). Imported
@@ -1486,6 +1535,7 @@ server.listen(PORT, '127.0.0.1', async () => {
   // the first visitor arrives — no cold start, no empty widgets, no API call needed.
   await loadSnapshotsIntoCache();
   initPush();
+  initIndexNow();
   // Generate the homepage immediately so even a snapshot-less start is fast.
   buildHomepageData('Asia/Kathmandu').catch(() => {});
   // Dedicated homepage refresh loop — the ONLY thing that rebuilds the homepage
@@ -2647,6 +2697,7 @@ async function generateMatchPreviews() {
     if (!inWindow.length) return;
 
     let created = 0;
+    const publishedPaths = [];
     for (const f of inWindow.slice(0, 4)) {
       const home = f.teams?.home?.name, away = f.teams?.away?.name;
       const homeId = f.teams?.home?.id, awayId = f.teams?.away?.id;
@@ -2702,12 +2753,13 @@ async function generateMatchPreviews() {
         published_at: new Date().toISOString(),
       };
       const res = await supabaseQueryWithKey('posts', '', 'POST', row, SVC);
-      if (Array.isArray(res) || res) created++;
+      if (Array.isArray(res) || res) { created++; publishedPaths.push(`/news/${slug}`); }
     }
     if (created > 0) {
       console.log(`[PREVIEWS] Published ${created} pre-match preview(s)`);
       writeSitemapFile();
       writeArticleFiles();
+      pingIndexNow(publishedPaths);
     }
   } catch (e) {
     console.error('[PREVIEWS] error:', e.message);
@@ -2746,6 +2798,7 @@ async function generateMatchReports() {
     });
 
     let created = 0;
+    const reportPaths = [];
     let checked = 0;
     for (const f of finished) {
       if (created >= 15) break;      // cap new reports created per run
@@ -2780,10 +2833,11 @@ async function generateMatchReports() {
         published_at: r.date,
       };
       const res = await supabaseQueryWithKey('posts', '', 'POST', row, SVC);
-      if (Array.isArray(res) || res) created++;
+      if (Array.isArray(res) || res) { created++; reportPaths.push(`/news/${r.slug}`); }
     }
     if (created > 0) {
       console.log(`[REPORTS] Generated ${created} premium match reports`);
+      pingIndexNow(reportPaths);
       writeSitemapFile(); // keep sitemap fresh with the new reports
       writeArticleFiles(); // prerender the new reports to static HTML for SEO
     }
