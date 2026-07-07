@@ -470,7 +470,13 @@ function _isEssentialCall(endpoint, params, opts) {
 function paceAllows(endpoint, params, opts) {
   const now = Date.now();
   if (now - _paceWindow.start >= 3600 * 1000) _paceWindow = { start: now, spent: 0 };
-  const ceiling = _isEssentialCall(endpoint, params, opts) ? HOURLY_BUDGET : Math.floor(HOURLY_BUDGET * 0.85);
+  // Three lanes: essential (live data + our own content generation) may use the full
+  // ceiling; normal traffic stops at 85%; low-priority (non-live match builds — in
+  // practice mostly crawler breadth on old pages) stops at ~54% so bots throttle
+  // FIRST and reports/previews never starve behind them again (2026-07-07 night).
+  const ceiling = _isEssentialCall(endpoint, params, opts) ? HOURLY_BUDGET
+    : opts?.tier === 'low' ? Math.floor(HOURLY_BUDGET * 0.54)
+    : Math.floor(HOURLY_BUDGET * 0.85);
   return _paceWindow.spent < ceiling;
 }
 
@@ -1630,7 +1636,7 @@ async function fetchMatchAggregate(fixtureId) {
       || (cacheGet('agg_homepage:' + tz)?.data || lastGood.get('agg_homepage:' + tz)?.data)?.live;
     isLiveNow = !!(liveResp?.response || []).some(f => String(f?.fixture?.id) === String(fixtureId));
   } catch { /* default non-essential */ }
-  const opts = isLiveNow ? { essential: true } : undefined;
+  const opts = isLiveNow ? { essential: true } : { tier: 'low' };
 
   const [fixture, events, stats, lineups, players] = await Promise.allSettled([
     fetchUpstream('fixtures', { id: String(fixtureId) }, opts),
@@ -2109,10 +2115,10 @@ async function buildPremiumReport(f) {
   const evKey = `fixevents:${fid}`, stKey = `fixstats:${fid}`;
   const evCached = cacheGet(evKey);
   if (evCached) { events = evCached.data; }
-  else { try { const e = await fetchUpstream('fixtures/events', { fixture: String(fid) }); events = e?.response || []; cacheSet(evKey, events, { fresh: 2592000, stale: 2592000 }); } catch {} }
+  else { try { const e = await fetchUpstream('fixtures/events', { fixture: String(fid) }, { essential: true }); events = e?.response || []; cacheSet(evKey, events, { fresh: 2592000, stale: 2592000 }); } catch {} }
   const stCached = cacheGet(stKey);
   if (stCached) { statsResp = stCached.data; }
-  else { try { const s = await fetchUpstream('fixtures/statistics', { fixture: String(fid) }); statsResp = s?.response || []; cacheSet(stKey, statsResp, { fresh: 2592000, stale: 2592000 }); } catch {} }
+  else { try { const s = await fetchUpstream('fixtures/statistics', { fixture: String(fid) }, { essential: true }); statsResp = s?.response || []; cacheSet(stKey, statsResp, { fresh: 2592000, stale: 2592000 }); } catch {} }
 
   const homeId = f.teams?.home?.id, awayId = f.teams?.away?.id;
   const hStat = statsResp.find(s => s.team?.id === homeId);
@@ -2599,7 +2605,7 @@ async function probableLineup(teamId, seasonFixtures) {
   let data = cacheGet(key)?.data || lastGood.get(key)?.data;
   if (!data) {
     try {
-      data = await fetchUpstream('fixtures/lineups', { fixture: String(fid) });
+      data = await fetchUpstream('fixtures/lineups', { fixture: String(fid) }, { essential: true });
       cacheSet(key, data, { fresh: 2592000, stale: 2592000 }); // immutable
     } catch { return null; }
   }
@@ -2624,7 +2630,7 @@ async function generateMatchPreviews() {
     const seasonKey = 'fixtures?league=1&season=2026';
     let season = cacheGet(seasonKey)?.data || lastGood.get(seasonKey)?.data;
     if (!season) {
-      season = await fetchUpstream('fixtures', { league: '1', season: '2026' });
+      season = await fetchUpstream('fixtures', { league: '1', season: '2026' }, { essential: true });
       cacheSet(seasonKey, season, { fresh: 180, stale: 900 });
     }
     const fixtures = season?.response || [];
@@ -2715,7 +2721,7 @@ async function generateMatchReports() {
     // Gather recently finished matches from notable leagues
     const finished = [];
     // World Cup first
-    const wc = await fetchUpstream('fixtures', { league: '1', season: '2026', status: 'FT-AET-PEN', timezone: 'America/New_York' });
+    const wc = await fetchUpstream('fixtures', { league: '1', season: '2026', status: 'FT-AET-PEN', timezone: 'America/New_York' }, { essential: true });
     for (const f of (wc?.response || [])) finished.push(f);
     // Today + yesterday across all leagues, keep only notable ones
     const today = new Date();
