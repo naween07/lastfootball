@@ -2737,7 +2737,9 @@ async function generateMatchPreviews() {
         `## Follow it live on LastFootball\n\nLive score, LF Momentum, lineups and stats for ${home} vs ${away} will run on our [live match centre](/fixtures) from kickoff, with the full-time report published minutes after the whistle.\n\n**🎯 Think you know the score?** [Predict ${home} vs ${away}](/predict) before kickoff and climb the weekly leaderboard — exact scores earn the big points.`,
       ].join('\n\n');
 
-      const jsonLd = generateJsonLd({ type: 'NewsArticle', title, description: subtitle, slug, author: 'LastFootball', image: null, published: new Date().toISOString() });
+      const cardPath = await writePreviewCard({ slug, home, away, round, kickoffIso: f.fixture.date, homeLogo: f.teams?.home?.logo, awayLogo: f.teams?.away?.logo });
+      const ogImage = cardPath ? `https://lastfootball.com${cardPath}` : null;
+      const jsonLd = generateJsonLd({ type: 'NewsArticle', title, description: subtitle, slug, author: 'LastFootball', image: ogImage, published: new Date().toISOString() });
       const row = {
         type: 'NewsArticle', status: 'published',
         title, slug, subtitle, body,
@@ -2747,7 +2749,7 @@ async function generateMatchPreviews() {
         category: 'match-preview', league: 'FIFA World Cup 2026',
         teams: [home, away],
         tags: [home, away, 'World Cup 2026', `${home} vs ${away}`, 'preview', 'predicted lineups', 'how to watch'],
-        featured_image: null, featured_image_alt: `${home} vs ${away} World Cup 2026 preview`,
+        featured_image: ogImage, featured_image_alt: `${home} vs ${away} World Cup 2026 preview`,
         author_name: 'LastFootball', json_ld: jsonLd,
         reading_time_mins: Math.max(2, Math.round(body.split(/\s+/).length / 200)),
         published_at: new Date().toISOString(),
@@ -3289,6 +3291,87 @@ async function writeScoreCard({ slug, home, away, hs, as_, league, date, homeLog
     return `/og/${slug}.png`;
   } catch (e) {
     console.error('[OG] writeScoreCard error:', e.message);
+    return null;
+  }
+}
+
+// ─── Pre-match preview card (same design language, no score) ─────────────────
+function previewCardSvg({ home, away, round, kickLabel, homeFlag, awayFlag }) {
+  const W = 1200, H = 630;
+  const NEON = '#39ff14';
+  const FONT = 'Arial, "Helvetica Neue", Helvetica, sans-serif';
+  const hFont = ogFitFont(String(home || ''), 46, 13);
+  const aFont = ogFitFont(String(away || ''), 46, 13);
+  const flagW = 184, flagH = 122, flagRx = 8;
+  const homeCx = 238, awayCx = 962, flagY = 196, nameY = 392;
+  const flagTile = (img, cx, id) => {
+    const x = cx - flagW / 2;
+    if (!img) {
+      return `<rect x="${x}" y="${flagY}" width="${flagW}" height="${flagH}" rx="${flagRx}" fill="#1e1e1e" stroke="#ffffff" stroke-opacity="0.08"/>`;
+    }
+    return `<clipPath id="${id}"><rect x="${x}" y="${flagY}" width="${flagW}" height="${flagH}" rx="${flagRx}"/></clipPath>
+    <image href="${img}" x="${x}" y="${flagY}" width="${flagW}" height="${flagH}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${id})"/>
+    <rect x="${x}" y="${flagY}" width="${flagW}" height="${flagH}" rx="${flagRx}" fill="none" stroke="#ffffff" stroke-opacity="0.12"/>`;
+  };
+  const flank = (cx, y, half, color, op) =>
+    `<line x1="${cx - half - 46}" y1="${y}" x2="${cx - half - 14}" y2="${y}" stroke="${color}" stroke-opacity="${op}" stroke-width="2"/>` +
+    `<line x1="${cx + half + 14}" y1="${y}" x2="${cx + half + 46}" y2="${y}" stroke="${color}" stroke-opacity="${op}" stroke-width="2"/>`;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#1b1b1b"/><stop offset="100%" stop-color="#0b0b0b"/></linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="72"/></filter>
+  </defs>
+  <rect width="${W}" height="${H}" fill="url(#bg)"/>
+  <circle cx="80" cy="36" r="150" fill="${NEON}" opacity="0.13" filter="url(#glow)"/>
+  <circle cx="1120" cy="600" r="150" fill="${NEON}" opacity="0.13" filter="url(#glow)"/>
+  <rect x="16" y="16" width="${W-32}" height="${H-32}" rx="22" fill="none" stroke="#2b2b2b" stroke-width="1.5"/>
+
+  <text x="${W/2}" y="92" font-family='${FONT}' font-size="40" fill="#ffffff" text-anchor="middle" font-weight="800" letter-spacing="6">${ogEscape(String(round || 'FIFA WORLD CUP 2026').toUpperCase())}</text>
+  ${flank(W/2, 80, 220, NEON, 1)}
+  <text x="${W/2}" y="134" font-family='${FONT}' font-size="24" fill="${NEON}" text-anchor="middle" font-weight="600" letter-spacing="1">${ogEscape(kickLabel)}</text>
+
+  ${flagTile(homeFlag, homeCx, 'hf')}
+  ${flagTile(awayFlag, awayCx, 'af')}
+  <text x="${homeCx}" y="${nameY}" font-family='${FONT}' font-size="${hFont}" fill="#ffffff" text-anchor="middle" font-weight="800" letter-spacing="1">${ogEscape(String(home || '').toUpperCase())}</text>
+  <text x="${awayCx}" y="${nameY}" font-family='${FONT}' font-size="${aFont}" fill="#ffffff" text-anchor="middle" font-weight="800" letter-spacing="1">${ogEscape(String(away || '').toUpperCase())}</text>
+
+  <text x="${W/2}" y="308" font-family='${FONT}' font-size="104" fill="#ffffff" text-anchor="middle" font-weight="900" letter-spacing="4">VS</text>
+  <text x="${W/2}" y="372" font-family='${FONT}' font-size="22" fill="${NEON}" text-anchor="middle" font-weight="700" letter-spacing="4">MATCH PREVIEW</text>
+  ${flank(W/2, 365, 108, '#888888', 0.6)}
+
+  <line x1="170" y1="506" x2="1030" y2="506" stroke="#ffffff" stroke-opacity="0.06" stroke-width="2"/>
+  <text x="${W/2-5}" y="566" font-family='${FONT}' font-size="42" fill="#ffffff" text-anchor="end" font-weight="900">Last</text>
+  <text x="${W/2+5}" y="566" font-family='${FONT}' font-size="42" fill="${NEON}" text-anchor="start" font-weight="900">Football</text>
+  <text x="${W/2}" y="600" font-family='${FONT}' font-size="18" fill="#666666" text-anchor="middle" letter-spacing="4">LASTFOOTBALL.COM</text>
+</svg>`;
+}
+
+async function writePreviewCard({ slug, home, away, round, kickoffIso, homeLogo, awayLogo }) {
+  if (!sharp) return null;
+  try {
+    const here = path.dirname(new URL(import.meta.url).pathname);
+    const ogRoots = [path.resolve(here, '..', 'og-cards'), '/var/www/lastfootball/og-cards'];
+    let ogDir = null;
+    for (const d of ogRoots) {
+      try { fs.mkdirSync(d, { recursive: true }); ogDir = d; break; } catch {}
+    }
+    if (!ogDir) return null;
+    const outPath = path.join(ogDir, `${slug}.png`);
+    if (fs.existsSync(outPath)) return `/og/${slug}.png`;
+    let kickLabel = '';
+    try {
+      const k = new Date(kickoffIso);
+      kickLabel = `${k.toLocaleDateString('en-GB', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' })} · ${k.toLocaleTimeString('en-GB', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' })} UTC`;
+    } catch {}
+    const homeUrl = homeLogo || flagUrlForTeam(home);
+    const awayUrl = awayLogo || flagUrlForTeam(away);
+    const [homeFlag, awayFlag] = await Promise.all([flagDataUri(homeUrl), flagDataUri(awayUrl)]);
+    const svg = previewCardSvg({ home, away, round, kickLabel, homeFlag, awayFlag });
+    await sharp(Buffer.from(svg)).png().toFile(outPath);
+    return `/og/${slug}.png`;
+  } catch (e) {
+    console.error('[OG] writePreviewCard error:', e.message);
     return null;
   }
 }
