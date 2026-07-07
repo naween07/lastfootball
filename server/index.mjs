@@ -2683,7 +2683,7 @@ async function generateMatchPreviews() {
         `## ${away}: Strengths & Weaknesses\n\n**Strengths**\n\n${ab.strengths.map(s => `- ${s}`).join('\n')}\n\n**Weaknesses**\n\n${ab.weaknesses.map(s => `- ${s}`).join('\n')}`,
         `## Predicted Lineups\n\n${lineupBlock(home, hXI)}\n\n${lineupBlock(away, aXI)}\n\n*Predicted lineups are based on each side's most recent starting XI and may change with team news.*`,
         `## How to Watch ${home} vs ${away}\n\n${bcast}\n\n*Broadcast schedules can change match-by-match — always confirm with your local broadcaster's official listings. The first 10 minutes of every match also stream free on official broadcaster YouTube channels.*`,
-        `## Follow it live on LastFootball\n\nLive score, LF Momentum, lineups and stats for ${home} vs ${away} will run on our [live match centre](/fixtures) from kickoff, with the full-time report published minutes after the whistle.`,
+        `## Follow it live on LastFootball\n\nLive score, LF Momentum, lineups and stats for ${home} vs ${away} will run on our [live match centre](/fixtures) from kickoff, with the full-time report published minutes after the whistle.\n\n**🎯 Think you know the score?** [Predict ${home} vs ${away}](/predict) before kickoff and climb the weekly leaderboard — exact scores earn the big points.`,
       ].join('\n\n');
 
       const jsonLd = generateJsonLd({ type: 'NewsArticle', title, description: subtitle, slug, author: 'LastFootball', image: null, published: new Date().toISOString() });

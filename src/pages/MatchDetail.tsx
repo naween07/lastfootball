@@ -13,6 +13,9 @@ import MatchInsights from '@/components/MatchInsights';
 import OptimizedImage from '@/components/OptimizedImage';
 import LFMomentum, { MomentumSample } from '@/components/LFMomentum';
 import { fetchMatchDetails, fetchMatchPlayers } from '@/services/footballApi';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 import { useState, useEffect, useMemo } from 'react';
 import { Match, MatchPlayerData, MatchEvent } from '@/types/football';
 import { cn } from '@/lib/utils';
@@ -375,6 +378,111 @@ function TabBar({ match, tab, setTab }: { match: Match; tab: Tab; setTab: (t: Ta
 }
 
 /* ─────────── Overview tab ─────────── */
+// ─── Inline score prediction (upcoming matches) ──────────────────────────────
+// The habit loop's missing link: predict right where the intent is — on the match
+// page itself. Writes to the same `predictions` table PredictPage uses, so points
+// and the leaderboard work identically.
+function PredictInline({ match }: { match: Match }) {
+  const { user } = useAuth();
+  const [h, setH] = useState<number | ''>('');
+  const [a, setA] = useState<number | ''>('');
+  const [saved, setSaved] = useState<{ h: number; a: number } | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase.from('predictions')
+      .select('home_score, away_score')
+      .eq('user_id', user.id).eq('match_id', match.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) setSaved({ h: data.home_score, a: data.away_score });
+      });
+  }, [user, match.id]);
+
+  const save = async () => {
+    if (h === '' || a === '') return toast.error('Enter both scores');
+    setBusy(true);
+    try {
+      const { error } = await supabase.from('predictions').upsert({
+        user_id: user!.id,
+        match_id: match.id,
+        home_score: Number(h),
+        away_score: Number(a),
+        home_team: match.homeTeam.name,
+        away_team: match.awayTeam.name,
+        league_name: match.league.name,
+        match_date: match.date,
+      });
+      if (error) throw error;
+      setSaved({ h: Number(h), a: Number(a) });
+      setEditing(false);
+      toast.success(`Prediction saved: ${match.homeTeam.name} ${h} - ${a} ${match.awayTeam.name}`);
+    } catch (err: any) {
+      toast.error(err?.message || 'Could not save — finish setup on the Predict page');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="bg-card border border-[#39ff14]/25 rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-[#39ff14]/[0.05] border-b border-[#39ff14]/15">
+        <span className="text-[11px] font-black uppercase tracking-widest text-[#39ff14]">🎯 Predict the score</span>
+        <Link to="/predict" className="text-[10px] text-muted-foreground hover:text-foreground uppercase tracking-wide">
+          Leaderboard →
+        </Link>
+      </div>
+      <div className="p-4">
+        {!user ? (
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <p className="text-sm text-muted-foreground flex-1">
+              Call {match.homeTeam.shortName} vs {match.awayTeam.shortName} before kickoff and earn points on the weekly leaderboard.
+            </p>
+            <Link to="/auth" className="px-4 py-2 rounded-lg bg-[#39ff14] text-black text-xs font-extrabold uppercase tracking-wide text-center hover:bg-[#39ff14]/90 transition-colors flex-shrink-0">
+              Sign in to predict
+            </Link>
+          </div>
+        ) : saved && !editing ? (
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-foreground">
+              <span className="text-[#39ff14] font-bold">✓ Your call:</span>{' '}
+              {match.homeTeam.shortName} <span className="font-black tabular-nums">{saved.h} - {saved.a}</span> {match.awayTeam.shortName}
+            </p>
+            <button onClick={() => { setH(saved.h); setA(saved.a); setEditing(true); }}
+              className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 flex-shrink-0">
+              Change
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
+              <span className="text-sm font-semibold text-foreground truncate">{match.homeTeam.shortName}</span>
+              <OptimizedImage src={match.homeTeam.logo} alt="" className="w-[22px] h-[22px] object-contain flex-shrink-0" />
+            </div>
+            <input type="number" min={0} max={20} inputMode="numeric" value={h}
+              onChange={e => setH(e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0))}
+              className="w-12 h-10 rounded-lg bg-secondary/60 border border-border text-center text-base font-black text-foreground focus:border-[#39ff14]/60 focus:outline-none" />
+            <span className="text-muted-foreground font-bold">–</span>
+            <input type="number" min={0} max={20} inputMode="numeric" value={a}
+              onChange={e => setA(e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0))}
+              className="w-12 h-10 rounded-lg bg-secondary/60 border border-border text-center text-base font-black text-foreground focus:border-[#39ff14]/60 focus:outline-none" />
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <OptimizedImage src={match.awayTeam.logo} alt="" className="w-[22px] h-[22px] object-contain flex-shrink-0" />
+              <span className="text-sm font-semibold text-foreground truncate">{match.awayTeam.shortName}</span>
+            </div>
+            <button onClick={save} disabled={busy}
+              className="px-4 h-10 rounded-lg bg-[#39ff14] text-black text-xs font-extrabold uppercase tracking-wide hover:bg-[#39ff14]/90 disabled:opacity-50 transition-colors">
+              {busy ? '…' : 'Save'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function OverviewTab({ match, momentum, onJumpTo }: { match: Match; momentum: MomentumSample[]; onJumpTo: (t: Tab) => void }) {
   const isFuture = match.status === 'NS';
   const topEvents = useMemo(() => match.events?.slice(0, 8) || [], [match.events]);
@@ -382,6 +490,7 @@ function OverviewTab({ match, momentum, onJumpTo }: { match: Match; momentum: Mo
   return (
     <div className="space-y-4">
       {!isFuture && <LFMomentum samples={momentum} match={match} />}
+      {isFuture && <PredictInline match={match} />}
 
       <Card padded>
         <SectionTitle>Match info</SectionTitle>
