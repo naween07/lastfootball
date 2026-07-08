@@ -424,6 +424,8 @@ function assumeDailyResetIfDue() {
   const stuckAtFloor = quota.daily.remaining <= USER_QUOTA_FLOOR
     && (Date.now() - Date.parse(quota.lastChecked)) >= 3600 * 1000;
   if (dayCrossed) {
+    // Seal the finished day's final numbers before wiping them.
+    saveQuotaDaySnapshot(utcDateStr(Date.parse(quota.lastChecked))).catch(() => {});
     quota.daily.used = 0;
     quota.daily.remaining = quota.daily.limit;
     quota.callsToday = 0;
@@ -438,6 +440,28 @@ function assumeDailyResetIfDue() {
     quota.lastChecked = new Date().toISOString();
     console.log('🔎 QUOTA: hourly re-probe (stuck at floor) — small window opened; next header decides.');
   }
+}
+
+function utcDateStr(ts = Date.now()) {
+  return new Date(ts).toISOString().slice(0, 10);
+}
+// Persist today's running quota state every 15 min (and seal the final number at
+// the midnight rollover) so "how much did we use yesterday / last Tuesday?" is a
+// query, not archaeology. Rows live in cache_snapshots as quota_day:YYYY-MM-DD.
+async function saveQuotaDaySnapshot(dateStr) {
+  try {
+    if (!quota.daily.limit) return;
+    const day = dateStr || utcDateStr(quota.lastChecked ? Date.parse(quota.lastChecked) : Date.now());
+    await saveSnapshot(`quota_day:${day}`, {
+      date: day,
+      used: quota.daily.used,
+      remaining: quota.daily.remaining,
+      limit: quota.daily.limit,
+      callsFromServer: quota.callsToday || 0,
+      byEndpoint: quota.byEndpoint || {},
+      savedAt: new Date().toISOString(),
+    });
+  } catch { /* best-effort */ }
 }
 
 function backgroundJobsAllowed() {
@@ -1129,6 +1153,17 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    if (path === '/api/quota-history') {
+      try {
+        const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+        const rows = await supabaseQueryWithKey('cache_snapshots',
+          'key=like.quota_day:*&select=key,data,updated_at&order=key.desc&limit=14', 'GET', null, SVC);
+        return json(req, res, { days: (rows || []).map(r => r.data) });
+      } catch (e) {
+        return json(req, res, { error: e.message }, 500);
+      }
+    }
+
     if (path === '/api/quota') {
       // Count cache entries by type
       const cacheBreakdown = {};
@@ -1536,6 +1571,7 @@ server.listen(PORT, '127.0.0.1', async () => {
   await loadSnapshotsIntoCache();
   initPush();
   initIndexNow();
+  setInterval(saveQuotaDaySnapshot, 15 * 60 * 1000); // quota history trail
   // Generate the homepage immediately so even a snapshot-less start is fast.
   buildHomepageData('Asia/Kathmandu').catch(() => {});
   // Dedicated homepage refresh loop — the ONLY thing that rebuilds the homepage
@@ -1925,6 +1961,7 @@ async function loadSnapshotsIntoCache() {
     if (Array.isArray(rows)) {
       for (const r of rows) {
         if (!r.key || !r.data) continue;
+        if (r.key.startsWith('quota_day:')) continue; // history rows, not cache entries
         // Immutable finished-match data (fixplayers:*) never changes, so load it with a
         // long TTL — it should never expire and re-trigger an API call. Everything else
         // gets a short fresh window so the background loop refreshes it soon.
