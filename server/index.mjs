@@ -1313,11 +1313,26 @@ const server = http.createServer(async (req, res) => {
       // last-good if we have it, else an empty API-shaped object. Never burst.
       if (!userFetchAllowed()) {
         const lg = lastGood.get(cacheKey);
-        return json(req, res, lg ? lg.data : { response: [] }, {
-          'X-Cache': lg ? 'DEGRADED' : 'EMPTY',
-          ...(lg ? { 'X-Data-Age': String(Math.round((Date.now() - lg.savedAt) / 1000)) } : {}),
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-        });
+        if (lg) {
+          return json(req, res, lg.data, {
+            'X-Cache': 'DEGRADED', 'X-Data-Age': String(Math.round((Date.now() - lg.savedAt) / 1000)),
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+          });
+        }
+        // No last-good — try the football-data.org fallback for league fixtures/standings
+        // (World Cup + big-5) so /worldcup, /stats and fixtures pages still show real data.
+        if (FD_TOKEN) {
+          try {
+            let fb = null;
+            if (endpoint === 'fixtures' && params.league) fb = await fdFixtures(params.league, params.date || null);
+            else if (endpoint === 'standings' && params.league) fb = await fdStandings(params.league);
+            if (fb) {
+              cacheSet(cacheKey, fb, { fresh: 180, stale: 900 });
+              return json(req, res, fb, { 'X-Cache': 'FALLBACK-FD', 'Cache-Control': 'no-cache, no-store, must-revalidate' });
+            }
+          } catch {}
+        }
+        return json(req, res, { response: [] }, { 'X-Cache': 'EMPTY', 'Cache-Control': 'no-cache, no-store, must-revalidate' });
       }
 
       // Enrichment tier: nice-to-have data (H2H, team profiles, squads, season stats,
@@ -1844,6 +1859,81 @@ async function liveDetailPoller() {
 }
 
 // Build the aggregated homepage payload for a given timezone (cached + warmable).
+// ─── football-data.org fallback adapter ─────────────────────────────────────
+// Free official backup feed (fixtures/results/standings) for when API-Football is
+// down or its budget is exhausted. Covers the World Cup (competition code WC) plus
+// the big-5 leagues. Maps their v4 schema into the API-Football envelope the site
+// already consumes, so nothing downstream changes. Self-throttled to the free
+// tier's 10 req/min via their response headers, as their docs require.
+const FD_TOKEN = process.env.FOOTBALL_DATA_TOKEN || '';
+const FD_BASE = 'https://api.football-data.org/v4';
+const FD_COMP = { '1': 'WC', '39': 'PL', '140': 'PD', '135': 'SA', '78': 'BL1', '61': 'FL1' };
+let _fdWindow = { start: Date.now(), spent: 0 };
+function fdAllows() {
+  const now = Date.now();
+  if (now - _fdWindow.start >= 60 * 1000) _fdWindow = { start: now, spent: 0 };
+  return _fdWindow.spent < 8; // stay under their 10/min with headroom
+}
+async function fdFetch(pathname) {
+  if (!FD_TOKEN || !fdAllows()) return null;
+  _fdWindow.spent++;
+  try {
+    const res = await fetch(`${FD_BASE}${pathname}`, { headers: { 'X-Auth-Token': FD_TOKEN } });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch { return null; }
+}
+const FD_STATUS = { SCHEDULED: 'NS', TIMED: 'NS', IN_PLAY: '2H', PAUSED: 'HT', FINISHED: 'FT', SUSPENDED: 'INT', POSTPONED: 'PST', CANCELLED: 'CANC', AWARDED: 'FT' };
+function fdMapMatch(m) {
+  const st = FD_STATUS[m.status] || 'NS';
+  const finished = st === 'FT';
+  const hg = m.score?.fullTime?.home ?? null, ag = m.score?.fullTime?.away ?? null;
+  return {
+    fixture: {
+      id: m.id, date: m.utcDate,
+      status: { short: st, long: m.status, elapsed: m.minute || null },
+      venue: { name: m.venue || null, city: null },
+    },
+    league: { id: 1, name: m.competition?.name || 'FIFA World Cup', season: m.season?.startDate?.slice(0, 4) || '2026', round: m.stage ? String(m.stage).replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : (m.matchday ? `Matchday ${m.matchday}` : '') },
+    teams: {
+      home: { id: m.homeTeam?.id, name: m.homeTeam?.shortName || m.homeTeam?.name, logo: m.homeTeam?.crest || null, winner: finished ? m.score?.winner === 'HOME_TEAM' : null },
+      away: { id: m.awayTeam?.id, name: m.awayTeam?.shortName || m.awayTeam?.name, logo: m.awayTeam?.crest || null, winner: finished ? m.score?.winner === 'AWAY_TEAM' : null },
+    },
+    goals: { home: hg, away: ag },
+    score: { fulltime: { home: hg, away: ag }, penalty: { home: m.score?.penalties?.home ?? null, away: m.score?.penalties?.away ?? null } },
+    _source: 'football-data.org',
+  };
+}
+// Fetch fixtures for a competition; optionally filter to a single date (YYYY-MM-DD).
+async function fdFixtures(leagueId, dateStr) {
+  const comp = FD_COMP[String(leagueId)];
+  if (!comp) return null;
+  const q = dateStr ? `?dateFrom=${dateStr}&dateTo=${dateStr}` : '';
+  const data = await fdFetch(`/competitions/${comp}/matches${q}`);
+  if (!data?.matches) return null;
+  return { get: 'fixtures', results: data.matches.length, response: data.matches.map(fdMapMatch) };
+}
+async function fdLiveFixtures() {
+  // No live filter on free tier; approximate "live" as WC matches in play today.
+  const data = await fdFetch('/competitions/WC/matches?status=IN_PLAY');
+  if (!data?.matches) return { get: 'fixtures', results: 0, response: [] };
+  return { get: 'fixtures', results: data.matches.length, response: data.matches.map(fdMapMatch) };
+}
+async function fdStandings(leagueId) {
+  const comp = FD_COMP[String(leagueId)];
+  if (!comp) return null;
+  const data = await fdFetch(`/competitions/${comp}/standings`);
+  const groups = data?.standings;
+  if (!Array.isArray(groups) || !groups.length) return null;
+  const mapRow = (r) => ({
+    rank: r.position, team: { id: r.team?.id, name: r.team?.shortName || r.team?.name, logo: r.team?.crest || null },
+    points: r.points, goalsDiff: r.goalDifference, group: null,
+    all: { played: r.playedGames, win: r.won, draw: r.draw, lose: r.lost, goals: { for: r.goalsFor, against: r.goalsAgainst } },
+  });
+  const standings = groups.map(g => (g.table || []).map(row => ({ ...mapRow(row), group: g.group || g.stage || null })));
+  return { get: 'standings', response: [{ league: { id: Number(leagueId), season: 2026, standings } }] };
+}
+
 async function buildHomepageData(tz) {
   const cacheKey = 'agg_homepage:' + tz;
   let today;
@@ -1866,6 +1956,14 @@ async function buildHomepageData(tz) {
     const blocks = ws?.response?.[0]?.league?.standings;
     if (blocks && blocks.length) { wcActive = true; wcStandings = ws; }
   } catch {}
+  // Fallback: if API-Football gave nothing (down / out of budget), try football-data.org.
+  if (!wcActive) {
+    try {
+      const fdWc = await fdStandings('1');
+      const fdBlocks = fdWc?.response?.[0]?.league?.standings;
+      if (fdBlocks && fdBlocks.length) { wcActive = true; wcStandings = fdWc; }
+    } catch {}
+  }
 
   // Domestic league scorers/standings barely change and aren't even shown during
   // the WC — cache them for 6h so warming doesn't refetch them every few minutes.
@@ -1896,15 +1994,34 @@ async function buildHomepageData(tz) {
     ...leagues.map(l => cachedUpstream('players/topscorers', { league: String(l.id), season: l.season }, domesticTtl)),
     ...leagues.map(l => cachedUpstream('standings', { league: String(l.id), season: l.season }, domesticTtl)),
   ]);
-  const live = { status: 'fulfilled', value: liveData };
+  let live = { status: 'fulfilled', value: liveData };
+
+  // ── Fallback layer: when API-Football returns nothing (down / budget gone) and
+  // the WC is on, backfill live + today from football-data.org so the homepage
+  // shows real fixtures/results instead of freezing. Scores may lag (free tier).
+  let todayVal = todayMatches.status === 'fulfilled' ? todayMatches.value : { response: [] };
+  const liveEmpty = !(live.value?.response || []).length;
+  const todayEmpty = !(todayVal?.response || []).length;
+  if (FD_TOKEN && (liveEmpty || todayEmpty)) {
+    try {
+      if (liveEmpty) {
+        const fdLive = await fdLiveFixtures();
+        if (fdLive?.response?.length) live = { status: 'fulfilled', value: fdLive };
+      }
+      if (todayEmpty) {
+        const fdToday = await fdFixtures('1', today);
+        if (fdToday?.response?.length) todayVal = fdToday;
+      }
+    } catch {}
+  }
 
   // Goal / full-time push notifications, derived from the live+today data this poll
   // already fetched. Fire-and-forget so a push hiccup can never delay the homepage.
-  detectLiveEventsAndNotify(liveData, todayMatches.status === 'fulfilled' ? todayMatches.value : null).catch(() => {});
+  detectLiveEventsAndNotify(live.value, todayVal).catch(() => {});
 
   const result = {
     live: live.status === 'fulfilled' ? live.value : [],
-    today: todayMatches.status === 'fulfilled' ? todayMatches.value : [],
+    today: todayVal,
     scorers: {},
     standings: {},
     worldCupActive: wcActive,
