@@ -31,6 +31,10 @@ function isKO(r: string) { return KW.some(k => r.toLowerCase().includes(k.toLowe
 
 function getOrder(r: string): number {
   const l = r.toLowerCase();
+  // 3rd-place playoff contains "final" in some feeds ("3rd Place Final") but is NOT
+  // the final — must be caught before the final check. Placed at 4.5 so it sorts
+  // between semis and the final without being treated as either.
+  if (l.includes('3rd place') || l.includes('third place') || l.includes('3rd-place') || (l.includes('play-off') && l.includes('3'))) return 4.5;
   if (l.includes('play-off')) return 0;
   if (l.includes('round of 32')) return 1;
   if (l.includes('round of 16') || l.includes('8th')) return 2;
@@ -42,6 +46,7 @@ function getOrder(r: string): number {
 
 function getLabel(r: string): string {
   const l = r.toLowerCase();
+  if (l.includes('3rd place') || l.includes('third place') || l.includes('3rd-place') || (l.includes('play-off') && l.includes('3'))) return '3rd Place';
   if (l.includes('final') && !l.includes('semi') && !l.includes('quarter')) return 'Final';
   if (l.includes('semi')) return 'Semi-finals';
   if (l.includes('quarter')) return 'Quarter-finals';
@@ -125,6 +130,11 @@ export default function KnockoutBracket({ leagueId, season }: KnockoutBracketPro
 
       const rd: RoundData[] = [];
       for (const [label, rns] of lm) {
+        // The 3rd-place playoff is not part of the knockout TREE — it hangs off the
+        // semi-final losers, not winners, so including it breaks feeder positioning
+        // and (before this) rendered as a phantom second final. It still appears in
+        // the fixtures/results lists; it just doesn't belong in the bracket.
+        if (label === '3rd Place') continue;
         let ms: Match[] = [];
         for (const rn of rns) ms = ms.concat(await fetchLeagueFixtures(leagueId, season, rn));
         rd.push({ label, ties: buildTies(ms), order: getOrder(rns[0]) });
