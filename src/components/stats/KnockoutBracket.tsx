@@ -117,30 +117,37 @@ function buildTies(matches: Match[]): TieData[] {
 // ─── Main Component ─────────────────────────────────────────────────────────
 export default function KnockoutBracket({ leagueId, season }: KnockoutBracketProps) {
   const [rounds, setRounds] = useState<RoundData[]>([]);
+  const [thirdPlace, setThirdPlace] = useState<TieData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
     fetchLeagueRounds(leagueId, season).then(async all => {
       const ko = all.filter(isKO);
-      if (!ko.length) { setRounds([]); return; }
+      if (!ko.length) { setRounds([]); setThirdPlace(null); return; }
 
       const lm = new Map<string, string[]>();
       ko.forEach(r => { const l = getLabel(r); if (!lm.has(l)) lm.set(l, []); lm.get(l)!.push(r); });
 
       const rd: RoundData[] = [];
+      let third: TieData | null = null;
       for (const [label, rns] of lm) {
-        // The 3rd-place playoff is not part of the knockout TREE — it hangs off the
-        // semi-final losers, not winners, so including it breaks feeder positioning
-        // and (before this) rendered as a phantom second final. It still appears in
-        // the fixtures/results lists; it just doesn't belong in the bracket.
-        if (label === '3rd Place') continue;
         let ms: Match[] = [];
         for (const rn of rns) ms = ms.concat(await fetchLeagueFixtures(leagueId, season, rn));
+        // The 3rd-place playoff is not part of the knockout TREE — it hangs off the
+        // semi-final losers, not winners, so including it there breaks feeder
+        // positioning and rendered as a phantom second final. Pull it out and show
+        // it as its own card beneath the bracket instead.
+        if (label === '3rd Place') {
+          const ties = buildTies(ms);
+          third = ties[0] || null;
+          continue;
+        }
         rd.push({ label, ties: buildTies(ms), order: getOrder(rns[0]) });
       }
       rd.sort((a, b) => a.order - b.order);
       setRounds(rd);
+      setThirdPlace(third);
     }).catch(console.error).finally(() => setLoading(false));
   }, [leagueId, season]);
 
@@ -155,7 +162,7 @@ export default function KnockoutBracket({ leagueId, season }: KnockoutBracketPro
     <div className="text-center py-12 text-muted-foreground text-sm">No knockout rounds available.</div>
   );
 
-  return <HorizontalBracket rounds={rounds} />;
+  return <HorizontalBracket rounds={rounds} thirdPlace={thirdPlace} />;
 }
 
 // ─── Horizontal bracket ───────────────────────────────────────────────────────
@@ -170,7 +177,7 @@ const GAP_Y = 14;
 const COL_GAP = 52;
 const LABEL_H = 24;
 
-function HorizontalBracket({ rounds }: { rounds: RoundData[] }) {
+function HorizontalBracket({ rounds, thirdPlace }: { rounds: RoundData[]; thirdPlace: TieData | null }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(0);
   const ordered = rounds; // already ascending by round order
@@ -301,6 +308,19 @@ function HorizontalBracket({ rounds }: { rounds: RoundData[] }) {
           )}
         </div>
       </div>
+
+      {/* 3rd-place playoff — shown separately, since it sits outside the knockout tree */}
+      {thirdPlace && (
+        <div className="mt-4 px-2">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-amber-500/80">🥉 3rd Place Play-off</span>
+            <div className="flex-1 h-px bg-border/40" />
+          </div>
+          <div style={{ maxWidth: CARD_W }}>
+            <BracketCard tie={thirdPlace} isFinal={false} left={0} top={0} inline />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -326,7 +346,7 @@ function BracketRow({ team, scoreText, won, lost }: {
   );
 }
 
-function BracketCard({ tie, left, top, isFinal }: { tie: TieData; left: number; top: number; isFinal: boolean }) {
+function BracketCard({ tie, left, top, isFinal, inline }: { tie: TieData; left: number; top: number; isFinal: boolean; inline?: boolean }) {
   const w1 = tie.decided && tie.winnerId === tie.team1.id;
   const w2 = tie.decided && tie.winnerId === tie.team2.id;
   const has2 = !!tie.leg2;                          // two-legged tie (Champions/Europa League)
@@ -356,8 +376,8 @@ function BracketCard({ tie, left, top, isFinal }: { tie: TieData; left: number; 
 
   return (
     <div
-      className={cn('absolute rounded-xl border overflow-hidden bg-card', isFinal ? 'border-amber-500/50' : 'border-border/60')}
-      style={{ left, top, width: CARD_W, height: CARD_H, scrollSnapAlign: 'start' }}
+      className={cn('rounded-xl border overflow-hidden bg-card', inline ? 'relative' : 'absolute', isFinal ? 'border-amber-500/50' : 'border-border/60')}
+      style={inline ? { width: CARD_W, height: CARD_H } : { left, top, width: CARD_W, height: CARD_H, scrollSnapAlign: 'start' }}
     >
       <div className={cn('flex items-center gap-1.5 px-2.5 h-[17px]', isFinal ? 'bg-amber-500/10' : 'bg-secondary/25')}>
         {isFinal && <Trophy className="w-3 h-3 text-amber-400 flex-shrink-0" />}
