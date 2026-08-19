@@ -1950,20 +1950,11 @@ async function buildHomepageData(tz) {
     { id: 61, name: 'Ligue 1', season: '2025' },
   ];
 
-  let wcActive = false, wcStandings = null;
-  try {
-    const ws = await cachedUpstream('standings', { league: '1', season: '2026' });
-    const blocks = ws?.response?.[0]?.league?.standings;
-    if (blocks && blocks.length) { wcActive = true; wcStandings = ws; }
-  } catch {}
-  // Fallback: if API-Football gave nothing (down / out of budget), try football-data.org.
-  if (!wcActive) {
-    try {
-      const fdWc = await fdStandings('1');
-      const fdBlocks = fdWc?.response?.[0]?.league?.standings;
-      if (fdBlocks && fdBlocks.length) { wcActive = true; wcStandings = fdWc; }
-    } catch {}
-  }
+  // World Cup ARCHIVED (2026 finished): no longer fetched or featured on the
+  // homepage. The /worldcup pages still serve its standings/bracket live. To
+  // re-feature for 2030, restore the standings fetch + fallback here and flip
+  // worldCupActive back on.
+  const wcActive = false, wcStandings = null;
 
   // Domestic league scorers/standings barely change and aren't even shown during
   // the WC — cache them for 6h so warming doesn't refetch them every few minutes.

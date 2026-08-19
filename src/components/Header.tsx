@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Search, Star, BarChart3, Flame, Trophy, Menu, X as XIcon, ChevronRight } from 'lucide-react';
+import { Search, Star, BarChart3, Flame, Menu, X as XIcon, ChevronRight } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useFavorites } from '@/hooks/useFavorites';
@@ -69,7 +69,6 @@ export default function Header() {
             } pathname={pathname} />
             <NavItem to="/stats" label="Stats" icon={<BarChart3 className="w-3.5 h-3.5" />} pathname={pathname} />
             <NavItem to="/search" label="Search" icon={<Search className="w-3.5 h-3.5" />} pathname={pathname} />
-            <WorldCupNav pathname={pathname} />
           </nav>
 
           {/* Desktop right */}
@@ -121,7 +120,6 @@ export default function Header() {
             <MobileNavItem to="/compare" label="Player Comparison" icon="⚔️" pathname={pathname} onClick={() => setMenuOpen(false)} />
             <MobileNavItem to="/predict" label="Predict & Win" icon="🎯" pathname={pathname} onClick={() => setMenuOpen(false)} highlight />
             <MobileNavItem to="/leaderboard" label="Leaderboard" icon="🏅" pathname={pathname} onClick={() => setMenuOpen(false)} />
-            <MobileNavItem to="/worldcup" label="World Cup 2026 (Archive)" icon="🏆" pathname={pathname} onClick={() => setMenuOpen(false)} />
             <MobileNavItem to="/fantasy" label="Fantasy WC" icon="⚽" pathname={pathname} onClick={() => setMenuOpen(false)} />
             <MobileNavItem to="/news" label="News" icon="📰" pathname={pathname} onClick={() => setMenuOpen(false)} />
             <MobileNavItem to="/reports" label="Match Reports" icon="📊" pathname={pathname} onClick={() => setMenuOpen(false)} />
@@ -185,10 +183,12 @@ function NavItem({ to, label, icon, pathname }: {
   );
 }
 
-// ─── World Cup Nav (Desktop) — ARCHIVED ─────────────────────────────────────
-// The World Cup is over; this is now a quiet link into the still-live /worldcup
-// archive (final bracket, reports, SEO pages), not a featured/pulsing item.
-// To re-feature for 2030, restore the amber styling + countdown from git history.
+// ─── World Cup Nav (Desktop) — ARCHIVED / HIDDEN ────────────────────────────
+// The World Cup is over and removed from the nav entirely; /worldcup remains
+// reachable by direct URL (bracket, reports, SEO pages all live). Kept here,
+// commented, to re-enable for 2030: restore <WorldCupNav /> in the desktop nav
+// and the mobile menu item, and uncomment this component.
+/*
 function WorldCupNav({ pathname }: { pathname: string }) {
   const isActive = pathname.startsWith('/worldcup');
 
@@ -208,3 +208,4 @@ function WorldCupNav({ pathname }: { pathname: string }) {
     </Link>
   );
 }
+*/
