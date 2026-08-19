@@ -121,8 +121,8 @@ export default function Header() {
             <MobileNavItem to="/compare" label="Player Comparison" icon="⚔️" pathname={pathname} onClick={() => setMenuOpen(false)} />
             <MobileNavItem to="/predict" label="Predict & Win" icon="🎯" pathname={pathname} onClick={() => setMenuOpen(false)} highlight />
             <MobileNavItem to="/leaderboard" label="Leaderboard" icon="🏅" pathname={pathname} onClick={() => setMenuOpen(false)} />
-            <MobileNavItem to="/worldcup" label="World Cup 2026" icon="🏆" pathname={pathname} onClick={() => setMenuOpen(false)} highlight />
-            <MobileNavItem to="/fantasy" label="Fantasy WC" icon="⚽" pathname={pathname} onClick={() => setMenuOpen(false)} highlight />
+            <MobileNavItem to="/worldcup" label="World Cup 2026 (Archive)" icon="🏆" pathname={pathname} onClick={() => setMenuOpen(false)} />
+            <MobileNavItem to="/fantasy" label="Fantasy WC" icon="⚽" pathname={pathname} onClick={() => setMenuOpen(false)} />
             <MobileNavItem to="/news" label="News" icon="📰" pathname={pathname} onClick={() => setMenuOpen(false)} />
             <MobileNavItem to="/reports" label="Match Reports" icon="📊" pathname={pathname} onClick={() => setMenuOpen(false)} />
 
@@ -185,43 +185,26 @@ function NavItem({ to, label, icon, pathname }: {
   );
 }
 
-// ─── World Cup Nav (Desktop) ────────────────────────────────────────────────
-const WC_START = new Date('2026-06-11T19:00:00Z').getTime();
-
-function getCountdown() {
-  const diff = WC_START - Date.now();
-  if (diff <= 0) return null;
-  return { days: Math.floor(diff / 86400000) };
-}
-
+// ─── World Cup Nav (Desktop) — ARCHIVED ─────────────────────────────────────
+// The World Cup is over; this is now a quiet link into the still-live /worldcup
+// archive (final bracket, reports, SEO pages), not a featured/pulsing item.
+// To re-feature for 2030, restore the amber styling + countdown from git history.
 function WorldCupNav({ pathname }: { pathname: string }) {
-  const [countdown, setCountdown] = useState(getCountdown);
   const isActive = pathname.startsWith('/worldcup');
-
-  useEffect(() => {
-    const timer = setInterval(() => setCountdown(getCountdown()), 60000);
-    return () => clearInterval(timer);
-  }, []);
 
   return (
     <Link
       to="/worldcup"
       className={cn(
-        'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all relative',
+        'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all',
         isActive
-          ? 'bg-amber-500/20 text-amber-400 ring-1 ring-amber-500/30'
-          : 'bg-gradient-to-r from-amber-500/10 to-amber-600/10 text-amber-400 hover:from-amber-500/20 hover:to-amber-600/20',
+          ? 'bg-secondary text-foreground'
+          : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60',
       )}
     >
       <Trophy className="w-3.5 h-3.5" />
       <span className="hidden lg:inline">WC 2026</span>
       <span className="lg:hidden">WC</span>
-      {countdown && (
-        <span className="text-[9px] font-mono text-amber-400/70 tabular-nums">
-          {countdown.days}d
-        </span>
-      )}
-      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
     </Link>
   );
 }

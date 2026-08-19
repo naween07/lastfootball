@@ -12,6 +12,19 @@ import { ArrowRight, Zap, Calendar, Trophy, Newspaper, ChevronRight, Target, Sta
 import { cn } from '@/lib/utils';
 import { pushSupported, pushPermission, getPushSubscription, enablePush } from '@/lib/push';
 
+// ─── Featured-league priority ────────────────────────────────────────────────
+// Controls which competitions sort to the front of the homepage (live strip,
+// upcoming, results). The World Cup (league 1) has been ARCHIVED for 2026 — its
+// /worldcup pages, bracket and reports all remain live and indexable, it's just no
+// longer featured on the front page now that domestic seasons are running. To
+// re-feature the World Cup for 2030, move 1 back to the top of this list.
+// API-Football league IDs: 39 EPL · 140 La Liga · 135 Serie A · 78 Bundesliga · 61 Ligue 1.
+const LEAGUE_PRIORITY = [39, 140, 135, 78, 61];
+function leagueRank(id: number): number {
+  const i = LEAGUE_PRIORITY.indexOf(id);
+  return i === -1 ? 99 : i;
+}
+
 interface NewsItem {
   id: string;
   title: string;
@@ -52,7 +65,7 @@ export default function HomePage() {
         let gotData = false;
         if (homeData.status === 'fulfilled') {
           const hd = homeData.value;
-          setLiveMatches([...hd.liveMatches].sort((a, b) => (a.league.id === 1 ? 0 : 1) - (b.league.id === 1 ? 0 : 1)));
+          setLiveMatches([...hd.liveMatches].sort((a, b) => leagueRank(a.league.id) - leagueRank(b.league.id)));
           setTodayMatches(hd.todayMatches);
           setTopScorers(hd.scorers);
           setStandingsData(hd.standings);
@@ -101,10 +114,9 @@ export default function HomePage() {
     todayMatches
       .filter(m => m.status === 'NS' || (m.status as string) === 'TBD')
       .sort((a, b) => {
-        // World Cup (league 1) first, then by kickoff time
-        const aWC = a.league.id === 1 ? 0 : 1;
-        const bWC = b.league.id === 1 ? 0 : 1;
-        if (aWC !== bWC) return aWC - bWC;
+        // Featured leagues first, then by kickoff time
+        const ar = leagueRank(a.league.id), br = leagueRank(b.league.id);
+        if (ar !== br) return ar - br;
         return new Date(`${a.date}T${a.time || '00:00'}`).getTime() - new Date(`${b.date}T${b.time || '00:00'}`).getTime();
       })
       .slice(0, 6),
@@ -114,9 +126,7 @@ export default function HomePage() {
     todayMatches
       .filter(m => m.status === 'FT' || m.status === 'AET' || m.status === 'PEN')
       .sort((a, b) => {
-        const aWC = a.league.id === 1 ? 0 : 1;
-        const bWC = b.league.id === 1 ? 0 : 1;
-        return aWC - bWC;
+        return leagueRank(a.league.id) - leagueRank(b.league.id);
       })
       .slice(0, 4),
   [todayMatches]);
@@ -334,8 +344,8 @@ export default function HomePage() {
                 <Target className="w-6 h-6 text-white" />
               </div>
               <div className="flex-1 min-w-0">
-                <h2 className="text-lg sm:text-xl font-black text-foreground">Predict the World Cup & Win NPR 50,000</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">Predict World Cup 2026 scores before kickoff. +3 exact, +1 correct winner. Score 100+ for NPR 30,000 — champion wins NPR 50,000.</p>
+                <h2 className="text-lg sm:text-xl font-black text-foreground">Predict Match Scores & Win NPR 50,000</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Predict scores before kickoff across the top leagues. +3 exact, +1 correct winner. Score 100+ for NPR 30,000 — season champion wins NPR 50,000.</p>
               </div>
               <span className="hidden sm:inline-flex items-center gap-1.5 bg-amber-500 text-white text-sm font-black rounded-lg px-4 py-2.5 flex-shrink-0">
                 Predict Now <ChevronRight className="w-4 h-4" />
