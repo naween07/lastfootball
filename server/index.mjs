@@ -10,6 +10,21 @@ import crypto from 'node:crypto';
 
 const PORT = 3001;
 const API_BASE = 'https://v3.football.api-sports.io';
+
+// ─── Self-advancing season ───────────────────────────────────────────────────
+// European domestic seasons run Aug→May and API-Football labels a 2026/27 season
+// as "2026" (the year it starts). So from July onward the current season is this
+// calendar year; before July it's last year. This rolls over automatically every
+// summer — no yearly code change. The empty-result fallback in buildHomepageData
+// covers the transition weeks when the new season exists but has no games yet.
+function currentSeason(date = new Date()) {
+  const y = date.getUTCFullYear();
+  return (date.getUTCMonth() >= 6) ? y : y - 1; // month>=6 → July or later
+}
+function prevSeason(date = new Date()) {
+  return currentSeason(date) - 1;
+}
+
 const API_KEY = process.env.API_FOOTBALL_KEY;
 const SUPABASE_URL = 'https://ehfyctoaudhyrjxbftty.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVoZnljdG9hdWRoeXJqeGJmdHR5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMjU4NjAsImV4cCI6MjA5MjYwMTg2MH0.0AoYP0nhrYWuLhSVGwRdHKSfNVQa-jJw0E4EZKWtTGU';
@@ -1942,12 +1957,13 @@ async function buildHomepageData(tz) {
   } catch {
     today = new Date().toLocaleDateString('en-CA');
   }
+  const SEASON = String(currentSeason());
   const leagues = [
-    { id: 39, name: 'Premier League', season: '2025' },
-    { id: 140, name: 'La Liga', season: '2025' },
-    { id: 135, name: 'Serie A', season: '2025' },
-    { id: 78, name: 'Bundesliga', season: '2025' },
-    { id: 61, name: 'Ligue 1', season: '2025' },
+    { id: 39, name: 'Premier League', season: SEASON },
+    { id: 140, name: 'La Liga', season: SEASON },
+    { id: 135, name: 'Serie A', season: SEASON },
+    { id: 78, name: 'Bundesliga', season: SEASON },
+    { id: 61, name: 'Ligue 1', season: SEASON },
   ];
 
   // World Cup ARCHIVED (2026 finished): no longer fetched or featured on the
@@ -2032,17 +2048,40 @@ async function buildHomepageData(tz) {
     } catch {}
   }
 
-  leagues.forEach((l, i) => {
+  const hasStandings = (v) => !!(v?.response?.[0]?.league?.standings?.[0]?.length);
+  const hasScorers = (v) => !!(v?.response?.length);
+
+  // Fill from the computed current season; if a league has no data yet (the annual
+  // rollover gap — new season created but no games played), fall back to last
+  // season so the widget never goes blank. Once games are played, it switches to
+  // the new season automatically. This is what makes the rollover self-healing.
+  await Promise.all(leagues.map(async (l, i) => {
     const scorerRes = rest[i];
     const standRes = rest[i + leagues.length];
-    if (scorerRes?.status === 'fulfilled') result.scorers[l.id] = scorerRes.value;
-    if (standRes?.status === 'fulfilled') result.standings[l.id] = standRes.value;
-  });
+    let scorerVal = scorerRes?.status === 'fulfilled' ? scorerRes.value : null;
+    let standVal = standRes?.status === 'fulfilled' ? standRes.value : null;
+
+    if (!hasScorers(scorerVal)) {
+      try {
+        const fb = await cachedUpstream('players/topscorers', { league: String(l.id), season: String(prevSeason()) }, domesticTtl);
+        if (hasScorers(fb)) scorerVal = fb;
+      } catch {}
+    }
+    if (!hasStandings(standVal)) {
+      try {
+        const fb = await cachedUpstream('standings', { league: String(l.id), season: String(prevSeason()) }, domesticTtl);
+        if (hasStandings(fb)) standVal = fb;
+      } catch {}
+    }
+    if (scorerVal) result.scorers[l.id] = scorerVal;
+    if (standVal) result.standings[l.id] = standVal;
+  }));
 
   cacheSet(cacheKey, result, { fresh: 60, stale: 300 });
   // Persist a snapshot so a server restart can serve instant data with no API call.
   // Only snapshot if we actually got meaningful data (avoid storing empties).
-  if (result.worldCupActive || (result.live?.response?.length) || (result.today?.response?.length)) {
+  if (result.worldCupActive || (result.live?.response?.length) || (result.today?.response?.length)
+      || Object.keys(result.standings).length || Object.keys(result.scorers).length) {
     homepageAgg = { data: result, at: Date.now() }; // pin the freshest GOOD aggregate
     saveSnapshot(cacheKey, result);
   }
