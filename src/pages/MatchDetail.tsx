@@ -583,7 +583,8 @@ function EmptyState({ text }: { text: string }) {
 }
 
 function GoalScorers({ events, side }: { events: MatchEvent[]; side: 'home' | 'away' }) {
-  const goals = events.filter(e => e.type === 'goal' && e.team === side);
+  // Own goals count for the other side -- see getScorers in articleGenerator.ts.
+  const goals = events.filter(e => e.type === 'goal' && (e.detail === 'Own Goal' ? e.team !== side : e.team === side));
   if (!goals.length) return null;
 
   // Get short last name

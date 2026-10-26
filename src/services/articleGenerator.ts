@@ -96,10 +96,14 @@ function slugify(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
-function getScorers(events: MatchEvent[] | undefined, side: 'home' | 'away'): { name: string; minute: number; detail?: string }[] {
+export function getScorers(events: MatchEvent[] | undefined, side: 'home' | 'away'): { name: string; minute: number; detail?: string }[] {
   if (!events) return [];
   return events
-    .filter(e => e.type === 'goal' && e.team === side)
+    // An own goal belongs to the side that benefits, not the side whose
+    // player put it in: API-Football reports the event under the player's
+    // own team, so it has to be flipped here or the report credits the goal
+    // to the team that conceded it and the scorer list contradicts the score.
+    .filter(e => e.type === 'goal' && (e.detail === 'Own Goal' ? e.team !== side : e.team === side))
     .map(e => ({ name: e.playerName, minute: e.minute, detail: e.detail }));
 }
 
