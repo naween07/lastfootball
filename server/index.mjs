@@ -8,6 +8,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
+import { goalSide } from './goalSide.mjs';
+
 const PORT = 3001;
 const API_BASE = 'https://v3.football.api-sports.io';
 
@@ -2377,7 +2379,7 @@ async function buildPremiumReport(f) {
   const scorerMap = {}; // "name|team" -> { name, team, count, penalty, own }
   for (const g of goals) {
     const nm = g.player?.name || 'Unknown';
-    const tm = g.team?.id === homeId ? 'home' : 'away';
+    const tm = goalSide(g, homeId);
     const key = nm + '|' + tm;
     if (!scorerMap[key]) scorerMap[key] = { name: nm, team: tm, count: 0, penalty: 0, own: 0, minutes: [] };
     scorerMap[key].count++;
@@ -2406,7 +2408,10 @@ async function buildPremiumReport(f) {
   const regGoals = goals
     .filter(g => !(g.comments || '').toLowerCase().includes('penalty shootout'))
     .map(g => ({
-      side: g.team?.id === homeId ? 'home' : 'away',
+      // An own goal counts for the other side. Reading g.team directly here
+      // reconstructed a score that never happened, and every angle below --
+      // lead changes, comebacks, the decisive goal -- came from it.
+      side: goalSide(g, homeId),
       min: (g.time?.elapsed || 0) + (g.time?.extra || 0),
       rawMin: g.time?.elapsed || 0,
       extra: g.time?.extra || 0,
@@ -2490,8 +2495,9 @@ async function buildPremiumReport(f) {
   };
 
   // ── TITLE ── (story angle first, result-shape as fallback)
-  const hatTrickHero = scorers.find(s => s.count >= 3);
-  const braceHero = scorers.find(s => s.count === 2);
+  // Own goals are not a player's own tally, so they cannot make a milestone.
+  const hatTrickHero = scorers.find(s => s.own === 0 && s.count >= 3);
+  const braceHero = scorers.find(s => s.own === 0 && s.count === 2);
   const decLast = decisiveGoal ? lastName(decisiveGoal.player).toUpperCase() : '';
   let title;
   if (hatTrickHero) title = `${hatTrickHero.name.split(' ').slice(-1)[0].toUpperCase()} HAT-TRICK FIRES ${winner.toUpperCase()} PAST ${loser.toUpperCase()}`;
