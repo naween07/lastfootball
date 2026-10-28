@@ -34,6 +34,8 @@ const WCTeamPage = lazy(() => import("./pages/WCTeamPage"));
 const WCStadiumPage = lazy(() => import("./pages/WCStadiumPage"));
 const Auth = lazy(() => import("./pages/Auth"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
+const Privacy = lazy(() => import("./pages/Privacy"));
+const Terms = lazy(() => import("./pages/Terms"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 // Prefetch key pages after initial load so navigation feels instant
@@ -104,6 +106,8 @@ function AppRoutes() {
             <Route path="/search" element={<SearchPage />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/onboarding" element={<Onboarding />} />
+            <Route path="/privacy" element={<Privacy />} />
+            <Route path="/terms" element={<Terms />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </PageTransition>
