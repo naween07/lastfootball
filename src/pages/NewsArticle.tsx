@@ -6,6 +6,15 @@ import { supabase } from '@/integrations/supabase/client';
 import { Calendar, Clock, Eye, User, ArrowLeft, Tag } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+/**
+ * Generated meta_title values already end in "| LastFootball", and SEOHead
+ * appends the site name itself. Without stripping, article titles compounded
+ * to "Headline | LastFootball | LastFootball | Last Football".
+ */
+function stripBrandSuffix(title: string): string {
+  return title.replace(/\s*\|\s*Last\s?Football\s*$/i, '').trim();
+}
+
 export default function NewsArticle() {
   const { slug } = useParams();
   const location = useLocation();
@@ -52,7 +61,7 @@ export default function NewsArticle() {
   return (
     <div className="min-h-screen bg-[#0a0a0a]">
       <SEOHead 
-        title={`${article.meta_title || article.title} | LastFootball`}
+        title={stripBrandSuffix(article.meta_title || article.title)}
         description={article.meta_description || article.excerpt || article.title}
         path={`/news/${slug}`}
       />

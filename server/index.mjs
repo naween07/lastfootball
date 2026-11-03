@@ -3187,7 +3187,7 @@ async function prerenderArticle(slug) {
   const image = post.featured_image || `${BASE}/og-image.png`;
   const imageAlt = escapeHtml(post.featured_image_alt || post.title || '');
   const published = post.published_at || new Date().toISOString();
-  const pageTitle = `${title} | LastFootball`;
+  const pageTitle = `${title} | Last Football`;
 
   // Build the crawler-visible content block
   const bodyHtml = mdToHtmlServer(post.body || '');
@@ -3212,7 +3212,7 @@ async function prerenderArticle(slug) {
       description: post.meta_description || post.subtitle,
       datePublished: published,
       author: { '@type': 'Organization', name: post.author_name || 'LastFootball' },
-      publisher: { '@type': 'Organization', name: 'LastFootball', logo: { '@type': 'ImageObject', url: `${BASE}/favicon.svg` } },
+      publisher: { '@type': 'Organization', name: 'Last Football', logo: { '@type': 'ImageObject', url: `${BASE}/favicon.svg` } },
       mainEntityOfPage: url,
     };
   }
