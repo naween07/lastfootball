@@ -7,6 +7,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import BottomTabBar from "@/components/BottomTabBar";
 import PageTransition from "@/components/PageTransition";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import SiteFooter from "@/components/SiteFooter";
+import AppInstallBanner from "@/components/AppInstallBanner";
 import { Loader2 } from "lucide-react";
 
 // Lazy load all pages
@@ -78,7 +80,7 @@ function AppRoutes() {
   usePrefetchPages();
 
   return (
-    <div className="pb-14 md:pb-0">
+    <div className="app-shell">
       <Suspense fallback={<PageLoader />}>
         <PageTransition>
           <Routes>
@@ -112,6 +114,7 @@ function AppRoutes() {
           </Routes>
         </PageTransition>
       </Suspense>
+      <SiteFooter />
     </div>
   );
 }
@@ -125,6 +128,7 @@ const App = () => (
       <BrowserRouter>
         <AppRoutes />
         <BottomTabBar />
+        <AppInstallBanner />
       </BrowserRouter>
       </ErrorBoundary>
     </TooltipProvider>

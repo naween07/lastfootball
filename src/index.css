@@ -113,6 +113,24 @@
     overflow: auto;
     -webkit-overflow-scrolling: touch;
   }
+
+  /* Page shell. Clears the fixed BottomTabBar, and additionally the install
+     banner while AppInstallBanner has set data-install-banner on <html>, so
+     the end of an article is never hidden behind either of them. */
+  .app-shell {
+    padding-bottom: calc(3.5rem + env(safe-area-inset-bottom));
+  }
+
+  html[data-install-banner='true'] .app-shell {
+    padding-bottom: calc(7.25rem + env(safe-area-inset-bottom));
+  }
+
+  @media (min-width: 768px) {
+    .app-shell,
+    html[data-install-banner='true'] .app-shell {
+      padding-bottom: 0;
+    }
+  }
 }
 
 /* ─── Premium Utilities ────────────────────────────────────────────────────── */

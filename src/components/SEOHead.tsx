@@ -1,4 +1,5 @@
 import { Helmet } from 'react-helmet-async';
+import { PLAY_STORE_URL } from '@/lib/appLinks';
 
 interface SEOHeadProps {
   title?: string;
@@ -9,7 +10,7 @@ interface SEOHeadProps {
   jsonLd?: Record<string, unknown>;
 }
 
-const SITE_NAME = 'LastFootball';
+const SITE_NAME = 'Last Football';
 const BASE_URL = 'https://lastfootball.com';
 const DEFAULT_IMAGE = 'https://lastfootball.com/favicon.svg';
 
@@ -144,17 +145,59 @@ export function buildMatchJsonLd(match: {
   return jsonLd;
 }
 
+/**
+ * The Android app, as a node for the site-wide graph below.
+ *
+ * No @context: it is emitted inside buildWebsiteJsonLd's @graph, which carries
+ * the context for every node in it.
+ */
+export function buildAppJsonLd() {
+  return {
+    '@type': 'SoftwareApplication',
+    '@id': `${BASE_URL}/#android-app`,
+    name: 'Last Football',
+    alternateName: 'LastFootball',
+    applicationCategory: 'SportsApplication',
+    operatingSystem: 'Android',
+    url: PLAY_STORE_URL,
+    installUrl: PLAY_STORE_URL,
+    downloadUrl: PLAY_STORE_URL,
+    image: `${BASE_URL}/icon-512.png`,
+    description: 'Football news, live scores, fixtures, results and standings.',
+    offers: {
+      '@type': 'Offer',
+      price: '0',
+      priceCurrency: 'USD',
+    },
+    publisher: {
+      '@type': 'Organization',
+      name: 'Last Football',
+      url: BASE_URL,
+    },
+  };
+}
+
 export function buildWebsiteJsonLd() {
   return {
     '@context': 'https://schema.org',
-    '@type': 'WebSite',
-    name: SITE_NAME,
-    url: BASE_URL,
-    description: 'Real-time football live scores, fixtures, results, and match stats.',
-    potentialAction: {
-      '@type': 'SearchAction',
-      target: `${BASE_URL}/search?q={search_term_string}`,
-      'query-input': 'required name=search_term_string',
-    },
+    '@graph': [
+      {
+        '@type': 'WebSite',
+        '@id': `${BASE_URL}/#website`,
+        name: SITE_NAME,
+        // People write the brand both ways. Declaring both tells search
+        // engines the one-word and two-word spellings are the same entity.
+        alternateName: ['LastFootball', 'Last Football'],
+        url: BASE_URL,
+        description: 'Real-time football live scores, fixtures, results, and match stats.',
+        sameAs: [PLAY_STORE_URL],
+        potentialAction: {
+          '@type': 'SearchAction',
+          target: `${BASE_URL}/search?q={search_term_string}`,
+          'query-input': 'required name=search_term_string',
+        },
+      },
+      buildAppJsonLd(),
+    ],
   };
 }
