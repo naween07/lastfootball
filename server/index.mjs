@@ -3165,6 +3165,18 @@ function mdToHtmlServer(md) {
 }
 
 // Build a fully prerendered HTML page for a published article (match report etc.)
+/** Recursively restyle the old one-word brand inside a stored JSON-LD object. */
+function rebrandJsonLd(value) {
+  if (typeof value === 'string') return value.split('LastFootball').join('Last Football');
+  if (Array.isArray(value)) return value.map(rebrandJsonLd);
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = rebrandJsonLd(v);
+    return out;
+  }
+  return value;
+}
+
 async function prerenderArticle(slug) {
   // Fetch the post (cached briefly to avoid DB hit per crawl)
   const cacheKey = 'prerender:' + slug;
@@ -3202,8 +3214,11 @@ async function prerenderArticle(slug) {
       <div class="article-body">${bodyHtml}</div>
     </article>`;
 
-  // JSON-LD: prefer stored, else build a NewsArticle
-  let jsonLd = post.json_ld;
+  // JSON-LD: prefer stored, else build a NewsArticle.
+  // Stored json_ld was written when the brand was styled "LastFootball", so
+  // rename it on the way out rather than migrating ~1,400 rows. The match is
+  // case-sensitive, which leaves lastfootball.com inside URLs untouched.
+  let jsonLd = post.json_ld ? rebrandJsonLd(post.json_ld) : null;
   if (!jsonLd) {
     jsonLd = {
       '@context': 'https://schema.org',
@@ -3211,7 +3226,7 @@ async function prerenderArticle(slug) {
       headline: post.title,
       description: post.meta_description || post.subtitle,
       datePublished: published,
-      author: { '@type': 'Organization', name: post.author_name || 'LastFootball' },
+      author: { '@type': 'Organization', name: post.author_name || 'Last Football' },
       publisher: { '@type': 'Organization', name: 'Last Football', logo: { '@type': 'ImageObject', url: `${BASE}/favicon.svg` } },
       mainEntityOfPage: url,
     };
