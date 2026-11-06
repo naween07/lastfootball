@@ -136,14 +136,31 @@ export default function NewsArticle() {
           </div>
         )}
 
-        {/* Teams */}
-        {article.teams?.length > 0 && (
+        {/* Teams and players, as links to their pages.
+            These were plain chips: the names were right there and went
+            nowhere. Articles synced before the entities column have names
+            only, so those still render as chips. */}
+        {Array.isArray(article.entities) && article.entities.length > 0 ? (
+          <div className="flex flex-wrap gap-2 mt-3">
+            {article.entities
+              .filter((e: any) => e?.externalId && e?.name && (e.kind === 'TEAM' || e.kind === 'PLAYER'))
+              .map((e: any) => (
+                <Link
+                  key={`${e.kind}-${e.externalId}`}
+                  to={`/${e.kind === 'TEAM' ? 'team' : 'player'}/${e.externalId}`}
+                  className="text-[10px] text-[#00ff87] bg-[#00ff87]/5 border border-[#00ff87]/20 px-2 py-0.5 rounded-full hover:bg-[#00ff87]/15 transition-colors"
+                >
+                  {e.name}
+                </Link>
+              ))}
+          </div>
+        ) : article.teams?.length > 0 ? (
           <div className="flex flex-wrap gap-2 mt-3">
             {article.teams.map((team: string) => (
               <span key={team} className="text-[10px] text-[#00ff87] bg-[#00ff87]/5 border border-[#00ff87]/20 px-2 py-0.5 rounded-full">{team}</span>
             ))}
           </div>
-        )}
+        ) : null}
       </article>
     </div>
   );

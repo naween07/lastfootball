@@ -3068,6 +3068,14 @@ function toPostRow(a) {
     teams: a.teams ?? [],
     reading_time_mins: a.readingTimeMins ?? null,
     published_at: toIsoDate(a.publishedAt),
+    // Ids, not names. `teams` can print "Arsenal vs Chelsea"; only these can
+    // link to /team/42, which is what turns every article from a dead end
+    // into part of the site's link graph.
+    entities: Array.isArray(a.entities) && a.entities.length
+      ? a.entities
+          .filter((e) => e && e.externalId && e.name)
+          .map((e) => ({ kind: e.kind, externalId: e.externalId, name: e.name, position: e.position ?? 0 }))
+      : null,
     // view_count and created_at are omitted on purpose -- see above.
   };
 }
@@ -3077,6 +3085,7 @@ const ARTICLE_FIELDS = `
   metaTitle metaDescription canonicalUrl keywords tags jsonLd
   image imageAlt imageCaption authorName leagueName teams
   category readingTimeMins publishedAt
+  entities { kind externalId name role position }
 `;
 
 /**
@@ -3372,7 +3381,7 @@ async function prerenderArticle(slug) {
   if (hit) return hit.data;
 
   const rows = await supabaseQueryWithKey('posts',
-    `slug=eq.${encodeURIComponent(slug)}&status=eq.published&select=title,subtitle,meta_description,body,league,teams,featured_image,featured_image_alt,published_at,json_ld,author_name&limit=1`,
+    `slug=eq.${encodeURIComponent(slug)}&status=eq.published&select=title,subtitle,meta_description,body,league,teams,entities,featured_image,featured_image_alt,published_at,json_ld,author_name&limit=1`,
     'GET', null, process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY);
   if (!Array.isArray(rows) || !rows.length) return null;
   const post = rows[0];
@@ -3392,8 +3401,29 @@ async function prerenderArticle(slug) {
   // Build the crawler-visible content block
   const bodyHtml = mdToHtmlServer(post.body || '');
   const subtitleHtml = post.subtitle ? `<p class="article-subtitle"><em>${escapeHtml(post.subtitle)}</em></p>` : '';
-  const teamsLine = Array.isArray(post.teams) && post.teams.length
-    ? `<p class="article-teams">${escapeHtml(post.teams.join(' vs '))}${post.league ? ' — ' + escapeHtml(post.league) : ''}</p>` : '';
+  // Entity links, crawler-visible.
+  //
+  // This is the half of the internal linking that counts: these pages are
+  // prerendered, so the links are in the HTML without any JavaScript running.
+  // The entity's own name is the anchor text, which is the point -- a link
+  // reading "Arsenal" pointing at /team/42 is what ties an article to its
+  // club. Falls back to the old plain-text line for articles synced before
+  // the entities column existed.
+  const entityLinks = Array.isArray(post.entities)
+    ? post.entities
+        .filter((e) => e && e.externalId && e.name && (e.kind === 'TEAM' || e.kind === 'PLAYER'))
+        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+        .map((e) => {
+          const path = e.kind === 'TEAM' ? 'team' : 'player';
+          return `<a href="/${path}/${e.externalId}">${escapeHtml(e.name)}</a>`;
+        })
+    : [];
+
+  const teamsLine = entityLinks.length
+    ? `<p class="article-teams">${entityLinks.join(' vs ')}${post.league ? ' — ' + escapeHtml(post.league) : ''}</p>`
+    : (Array.isArray(post.teams) && post.teams.length
+        ? `<p class="article-teams">${escapeHtml(post.teams.join(' vs '))}${post.league ? ' — ' + escapeHtml(post.league) : ''}</p>`
+        : '');
   const contentBlock = `
     <article class="prerendered-article">
       <h1>${title}</h1>
