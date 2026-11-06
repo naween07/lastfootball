@@ -950,7 +950,31 @@ const server = http.createServer(async (req, res) => {
   try {
     // Health check (no rate limit)
     if (path === '/api/health') {
-      return json(req, res, { ok: true, cache: cache.size, logos: logoCache.size, rateLimits: rateLimits.size });
+      // Articles reach this site only through the backend sync now, so its
+      // state belongs in the health check: "ok: true" while no article has
+      // arrived for a day would be a lie.
+      const ageMins = syncState.lastSuccessAt
+        ? Math.round((Date.now() - Date.parse(syncState.lastSuccessAt)) / 60000)
+        : null;
+      // The job runs every 20 minutes; an hour without a success means
+      // several have failed or the process is not running them at all.
+      const syncHealthy = ageMins !== null && ageMins < 60 && syncState.consecutiveFailures === 0;
+
+      return json(req, res, {
+        ok: true,
+        cache: cache.size,
+        logos: logoCache.size,
+        rateLimits: rateLimits.size,
+        articleSync: {
+          healthy: syncHealthy,
+          lastSuccessAt: syncState.lastSuccessAt,
+          minutesSinceLastSuccess: ageMins,
+          lastCount: syncState.lastCount,
+          lastAttemptAt: syncState.lastAttemptAt,
+          consecutiveFailures: syncState.consecutiveFailures,
+          lastError: syncState.lastError,
+        },
+      });
     }
 
     // ─── Share kit: copy-paste posting helper for Facebook/social ───────────
@@ -2985,6 +3009,21 @@ async function generateMatchPreviews() {
 // traffic figures every twenty minutes.
 const BACKEND_GRAPHQL = 'https://api.lastfootball.com/graphql/';
 
+// What happened on the last sync, so a failure is visible without reading
+// journald.
+//
+// This server no longer generates match reports -- the backend does, and this
+// pulls them in. If that pull breaks, the site simply stops gaining articles
+// and nothing says so. The admin panel's deploy was broken for two months for
+// exactly that reason: the failure was silent and nobody was looking.
+const syncState = {
+  lastAttemptAt: null,
+  lastSuccessAt: null,
+  lastCount: 0,
+  lastError: null,
+  consecutiveFailures: 0,
+};
+
 // `News.category` is an enum here and free text in `posts`. These are the
 // values `posts` actually holds, so migrated rows keep their existing shape.
 const CATEGORY_TO_POSTS = {
@@ -3095,6 +3134,7 @@ const ARTICLE_FIELDS = `
  */
 async function syncArticlesFromBackend(full = false) {
   const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+  syncState.lastAttemptAt = new Date().toISOString();
   const maxPages = full ? 40 : 2;
   const rows = [];
 
@@ -3113,10 +3153,17 @@ async function syncArticlesFromBackend(full = false) {
     }
   } catch (e) {
     console.error('[SYNC] backend fetch failed:', e.message);
+    syncState.lastError = `backend fetch failed: ${e.message}`;
+    syncState.consecutiveFailures++;
     return;
   }
 
-  if (!rows.length) { console.warn('[SYNC] backend returned no articles — nothing written'); return; }
+  if (!rows.length) {
+    console.warn('[SYNC] backend returned no articles — nothing written');
+    syncState.lastError = 'backend returned no articles';
+    syncState.consecutiveFailures++;
+    return;
+  }
 
   // Set SYNC_DRY_RUN=1 in .env to see exactly what the first pass would write
   // before letting it write anything. This table is behind every indexed
@@ -3150,6 +3197,18 @@ async function syncArticlesFromBackend(full = false) {
     }
   }
   console.log(`[SYNC] ${written}/${rows.length} article(s) upserted from the backend${full ? ' (full pass)' : ''}`);
+
+  if (written) {
+    syncState.lastSuccessAt = new Date().toISOString();
+    syncState.lastCount = written;
+    syncState.lastError = null;
+    syncState.consecutiveFailures = 0;
+  } else {
+    // Every batch was rejected. Reporting this as a success because the
+    // function ran to the end is how a broken sync stays invisible.
+    syncState.lastError = `all ${rows.length} row(s) rejected`;
+    syncState.consecutiveFailures++;
+  }
 
   // Regenerate the crawler-visible HTML for anything new.
   if (written) writeArticleFiles();
