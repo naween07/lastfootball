@@ -1625,9 +1625,18 @@ server.listen(PORT, '127.0.0.1', async () => {
   // Fantasy points job
   setTimeout(scoreFantasy, 20 * 1000);
   setInterval(scoreFantasy, 30 * 60 * 1000); // Every 30 minutes
-  // Match report generation
-  setTimeout(generateMatchReports, 35 * 1000);
-  setInterval(generateMatchReports, 20 * 60 * 1000); // Every 20 minutes
+  // Match reports are produced by the app backend now, and pulled in here.
+  // `generateMatchReports` is left in the file but no longer scheduled: two
+  // generators writing the same reports into two stores is what this
+  // replaces. Previews below are NOT affected -- the backend does not make
+  // those, so this server still does.
+  setTimeout(() => syncArticlesFromBackend(false), 35 * 1000);
+  setInterval(() => syncArticlesFromBackend(false), 20 * 60 * 1000);
+  // Once a night, every article -- so an edit made in the admin portal to an
+  // older story reaches the site rather than silently never arriving.
+  setInterval(() => {
+    if (new Date().getUTCHours() === 2) syncArticlesFromBackend(true);
+  }, 60 * 60 * 1000);
   setTimeout(generateMatchPreviews, 50 * 1000);
   setInterval(generateMatchPreviews, 20 * 60 * 1000); // Every 20 minutes — publishes ~5-6h before kickoff
   // Write the static sitemap file (nginx serves it directly) — on startup + every 30 min
@@ -2956,6 +2965,159 @@ async function generateMatchPreviews() {
   } catch (e) {
     console.error('[PREVIEWS] error:', e.message);
   }
+}
+
+// ─── Pull published articles from the app backend into `posts` ─────────────
+//
+// The backend at api.lastfootball.com is now the single producer of match
+// reports and the only place they are edited. This copies them into `posts`
+// so everything downstream on this server -- the prerenderer, the sitemap,
+// the article API, the view counter -- keeps reading exactly what it always
+// has. Nothing else on this side changes, which is the point: roughly a
+// thousand of those article URLs are indexed.
+//
+// Runs from here rather than from the backend because the Supabase service
+// key already lives on this side. Pushing from the backend would mean a
+// second copy of it.
+//
+// `view_count` is deliberately never written. This server counts real
+// readers; the backend's number is near zero, and syncing it would wipe the
+// traffic figures every twenty minutes.
+const BACKEND_GRAPHQL = 'https://api.lastfootball.com/graphql/';
+
+// `News.category` is an enum here and free text in `posts`. These are the
+// values `posts` actually holds, so migrated rows keep their existing shape.
+const CATEGORY_TO_POSTS = {
+  MATCH_REPORT: 'match-report',
+  PREVIEW: 'match-preview',
+  FEATURED: 'featured',
+  ROUNDUP: 'roundup',
+  ARTICLE: 'Football',
+};
+
+function backendQuery(query) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({ query });
+    const url = new URL(BACKEND_GRAPHQL);
+    const req = https.request(
+      url,
+      { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } },
+      (res) => {
+        let data = '';
+        res.on('data', (c) => (data += c));
+        res.on('end', () => {
+          try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+        });
+      }
+    );
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+function toPostRow(a) {
+  // `body` is NOT NULL in posts but nullable in News, so it needs a fallback
+  // or the whole upsert batch is rejected.
+  const body = a.body || a.summary || a.description || a.title;
+  return {
+    type: 'NewsArticle',
+    status: 'published',
+    title: a.title,
+    slug: a.slug,
+    subtitle: a.summary ?? null,
+    body,
+    excerpt: a.excerpt ?? null,
+    meta_title: a.metaTitle ?? null,
+    meta_description: a.metaDescription ?? null,
+    canonical_url: a.canonicalUrl ?? null,
+    keywords: a.keywords ?? [],
+    tags: a.tags ?? [],
+    json_ld: a.jsonLd ?? null,
+    author_name: a.authorName || 'LastFootball',
+    featured_image: a.image ?? null,
+    featured_image_alt: a.imageAlt ?? null,
+    featured_image_caption: a.imageCaption ?? null,
+    category: CATEGORY_TO_POSTS[a.category] || 'Football',
+    league: a.leagueName ?? null,
+    teams: a.teams ?? [],
+    reading_time_mins: a.readingTimeMins ?? null,
+    published_at: a.publishedAt ?? null,
+    // view_count and created_at are omitted on purpose -- see above.
+  };
+}
+
+const ARTICLE_FIELDS = `
+  id title slug summary body description excerpt
+  metaTitle metaDescription canonicalUrl keywords tags jsonLd
+  image imageAlt imageCaption authorName leagueName teams
+  category readingTimeMins publishedAt
+`;
+
+/**
+ * @param {boolean} full  true = every published article (the nightly pass,
+ *                        which is how an edit to an older article reaches the
+ *                        site); false = the most recent pages only.
+ */
+async function syncArticlesFromBackend(full = false) {
+  const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+  const maxPages = full ? 40 : 2;
+  const rows = [];
+
+  try {
+    for (let page = 1; page <= maxPages; page++) {
+      const res = await backendQuery(
+        `{ newss(status: PUBLISHED, page: ${page}, limit: 100) { results { ${ARTICLE_FIELDS} } } }`
+      );
+      const batch = res?.data?.newss?.results || [];
+      if (!batch.length) break;
+      for (const a of batch) {
+        // No slug means no address on this site; it cannot be rendered here.
+        if (a?.slug && a?.title) rows.push(toPostRow(a));
+      }
+      if (batch.length < 100) break;
+    }
+  } catch (e) {
+    console.error('[SYNC] backend fetch failed:', e.message);
+    return;
+  }
+
+  if (!rows.length) { console.warn('[SYNC] backend returned no articles — nothing written'); return; }
+
+  // Set SYNC_DRY_RUN=1 in .env to see exactly what the first pass would write
+  // before letting it write anything. This table is behind every indexed
+  // article URL on the site; it is worth one restart to look first.
+  if (process.env.SYNC_DRY_RUN) {
+    const sample = rows[0];
+    console.log(`[SYNC] DRY RUN — would upsert ${rows.length} article(s). First row:`);
+    console.log(JSON.stringify({ ...sample, body: (sample.body || '').slice(0, 120) + '…' }, null, 2));
+    const missing = rows.filter((r) => !r.title || !r.slug || !r.body || !r.author_name || !r.category);
+    console.log(`[SYNC] DRY RUN — ${missing.length} row(s) missing a NOT NULL column`);
+    return;
+  }
+
+  let written = 0;
+  for (let i = 0; i < rows.length; i += 100) {
+    const chunk = rows.slice(i, i + 100);
+    try {
+      const res = await supabaseQueryWithKey('posts', 'on_conflict=slug', 'POST', chunk, SVC);
+      // supabaseQueryWithKey resolves rather than throwing on an HTTP error,
+      // so a failed write looks exactly like a successful one unless the
+      // response is inspected. PostgREST answers an error as an object with
+      // `message`; a successful minimal upsert answers with an empty array.
+      if (res && !Array.isArray(res) && (res.message || res.code)) {
+        console.error(`[SYNC] upsert rejected for ${chunk.length} row(s):`, res.message || res.code);
+        continue;
+      }
+      written += chunk.length;
+    } catch (e) {
+      console.error(`[SYNC] upsert failed for ${chunk.length} row(s):`, e.message);
+    }
+  }
+  console.log(`[SYNC] ${written}/${rows.length} article(s) upserted from the backend${full ? ' (full pass)' : ''}`);
+
+  // Regenerate the crawler-visible HTML for anything new.
+  if (written) writeArticleFiles();
 }
 
 async function generateMatchReports() {
