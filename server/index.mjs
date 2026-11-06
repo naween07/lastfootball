@@ -1021,6 +1021,30 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    // ─── Server-side prerender for club and player pages (SEO) ──────────
+    // The other end of the links the article pages now carry. Without this
+    // a crawler following "Manchester United" off a match report lands on an
+    // empty shell, and the internal linking counts for nothing.
+    const hubMatch = path.replace(/\/$/, '').match(/^\/(team|player)\/(\d+)$/);
+    if (hubMatch) {
+      try {
+        const html = await prerenderHub(hubMatch[1] === 'team' ? 'TEAM' : 'PLAYER', hubMatch[2]);
+        if (html) {
+          res.writeHead(200, {
+            ...getCorsHeaders(req),
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'public, max-age=300',
+          });
+          return res.end(html);
+        }
+      } catch (e) {
+        console.error('[PRERENDER] hub error:', e.message);
+      }
+      // No articles for this club yet, or no name recorded: the live page is
+      // still perfectly good, it just is not prerendered.
+      return serveSpaShell(req, res);
+    }
+
     // ─── Dynamic sitemap (static pages + all published posts) ───────────
     if (path === '/api/sitemap.xml' || path === '/sitemap.xml') {
       const cached = cacheGet('sitemap:xml');
@@ -3113,7 +3137,17 @@ function toPostRow(a) {
     entities: Array.isArray(a.entities) && a.entities.length
       ? a.entities
           .filter((e) => e && e.externalId && e.name)
-          .map((e) => ({ kind: e.kind, externalId: e.externalId, name: e.name, position: e.position ?? 0 }))
+          // `role` says which of them the article is actually about. The
+          // API derives `about` and `mentions` itself, so nothing here reads
+          // it yet, but dropping it meant this column could not answer
+          // "is this club the subject?" without going back to the API.
+          .map((e) => ({
+            kind: e.kind,
+            externalId: e.externalId,
+            name: e.name,
+            role: e.role ?? 'MENTIONED',
+            position: e.position ?? 0,
+          }))
       : null,
     // view_count and created_at are omitted on purpose -- see above.
   };
@@ -3543,6 +3577,170 @@ async function prerenderArticle(slug) {
   return html;
 }
 
+/**
+ * A club's or player's own page, rendered so a crawler can read it.
+ *
+ * Article pages have carried links to these hubs since yesterday, but the
+ * hubs render their own news block in the browser. So a crawler following
+ * one of those links arrived at an empty shell: the link graph was built
+ * with one end of every edge invisible.
+ *
+ * Returns null when the entity has no articles, or when no article recorded
+ * its name. Both fall through to the SPA. A hub page carrying a heading and
+ * nothing under it is a thin page, which is worse than no prerender at all --
+ * it invites indexing of an empty result and earns the site nothing.
+ */
+async function prerenderHub(kind, externalId) {
+  const id = Number(externalId);
+  if (!Number.isInteger(id) || id <= 0) return null;
+
+  const cacheKey = `prerender:hub:${kind}:${id}`;
+  const hit = cacheGet(cacheKey);
+  if (hit) return hit.data;
+
+  // jsonb containment. Matching on `kind` as well as the id matters: the
+  // provider numbers teams, players and competitions in separate spaces, so
+  // team 33 and league 33 are different things and only `kind` separates
+  // them.
+  const filter = encodeURIComponent(JSON.stringify([{ kind, externalId: id }]));
+  const rows = await supabaseQueryWithKey('posts',
+    `status=eq.published&entities=cs=${filter}` +
+    '&select=slug,title,published_at,league,entities' +
+    '&order=published_at.desc&limit=24',
+    'GET', null, process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY);
+
+  // supabaseQueryWithKey resolves with the error body rather than throwing,
+  // so a malformed filter arrives here as an object and an empty result
+  // arrives as an empty array. Told apart, because they mean opposite
+  // things: no articles is normal and silent, a rejected query is a bug and
+  // would otherwise hide as "this club simply has no news".
+  if (!Array.isArray(rows)) {
+    console.error(
+      `[PRERENDER] hub query rejected for ${kind} ${id}:`,
+      (rows && (rows.message || rows.code)) || 'unexpected response',
+    );
+    return null;
+  }
+  if (!rows.length) return null;
+
+  // The name comes from the articles' own snapshot of it. Nothing here
+  // builds a name out of the id: "Club #33" as an <h1> is not a page worth
+  // serving, and guessing is worse.
+  let name = null;
+  for (const row of rows) {
+    const match = Array.isArray(row.entities)
+      ? row.entities.find((e) => e && e.kind === kind && Number(e.externalId) === id)
+      : null;
+    if (match && typeof match.name === 'string' && match.name.trim()) {
+      name = match.name.trim();
+      break;
+    }
+  }
+  if (!name) return null;
+
+  const shell = getSpaShell();
+  if (!shell) return null;
+
+  const BASE = 'https://lastfootball.com';
+  const segment = kind === 'TEAM' ? 'team' : 'player';
+  const url = `${BASE}/${segment}/${id}`;
+  const safeName = escapeHtml(name);
+
+  const pageTitle = kind === 'TEAM'
+    ? `${name} news, match reports and results | Last Football`
+    : `${name} news and match reports | Last Football`;
+  // No article count in the description: it would change under the page on
+  // every sync, and a meta description that moves is one a search engine
+  // learns to ignore.
+  const desc = kind === 'TEAM'
+    ? `Match reports, results and the latest news for ${name}.`
+    : `Match reports and news featuring ${name}.`;
+
+  const fmtDate = (value) => {
+    if (!value) return null;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    return {
+      iso: d.toISOString().slice(0, 10),
+      human: d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
+    };
+  };
+
+  const listItems = [];
+  const jsonLdItems = [];
+  let position = 0;
+  for (const row of rows) {
+    if (!row.slug || !row.title) continue;
+    position++;
+    const href = `/news/${encodeURIComponent(row.slug)}`;
+    const when = fmtDate(row.published_at);
+    const dateHtml = when ? ` <time datetime="${when.iso}">${escapeHtml(when.human)}</time>` : '';
+    const leagueHtml = row.league ? ` <span class="hub-league">${escapeHtml(row.league)}</span>` : '';
+    listItems.push(
+      `<li><a href="${href}">${escapeHtml(row.title)}</a>${dateHtml}${leagueHtml}</li>`
+    );
+    jsonLdItems.push({
+      '@type': 'ListItem',
+      position,
+      url: `${BASE}${href}`,
+      name: row.title,
+    });
+  }
+  if (!listItems.length) return null;
+
+  const heading = kind === 'TEAM' ? `${safeName} news and match reports` : `${safeName} news`;
+  const contentBlock = `
+    <section class="prerendered-hub">
+      <h1>${heading}</h1>
+      <p>${escapeHtml(desc)}</p>
+      <ul class="hub-articles">
+        ${listItems.join('\n        ')}
+      </ul>
+    </section>`;
+
+  // CollectionPage, with the club or player as the thing the page is about
+  // and the articles as its list. `about.@id` carries a fragment so the page
+  // and the club are not claimed to be the same entity. No `sameAs`: we hold
+  // no verified Wikidata or official URL for these ids, and a wrong `sameAs`
+  // merges our page into the wrong entity, which is worse than none.
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    '@id': url,
+    url,
+    name: kind === 'TEAM' ? `${name} news and match reports` : `${name} news`,
+    description: desc,
+    isPartOf: { '@type': 'WebSite', '@id': `${BASE}/#website`, name: 'Last Football', url: BASE },
+    about: {
+      '@type': kind === 'TEAM' ? 'SportsTeam' : 'Person',
+      '@id': `${url}#entity`,
+      name,
+    },
+    mainEntity: { '@type': 'ItemList', numberOfItems: jsonLdItems.length, itemListElement: jsonLdItems },
+  };
+
+  let html = shell;
+  html = html.replace(/<title>[\s\S]*?<\/title>/, `<title>${escapeHtml(pageTitle)}</title>`);
+  html = html.replace(/<meta name="description"[^>]*>/, `<meta name="description" content="${escapeHtml(desc)}" />`);
+  if (/<link rel="canonical"/.test(html)) {
+    html = html.replace(/<link rel="canonical"[^>]*>/, `<link rel="canonical" href="${url}" />`);
+  } else {
+    html = html.replace('</head>', `  <link rel="canonical" href="${url}" />\n</head>`);
+  }
+  html = html
+    .replace(/<meta property="og:type"[^>]*>/, `<meta property="og:type" content="website" />`)
+    .replace(/<meta property="og:url"[^>]*>/, `<meta property="og:url" content="${url}" />`)
+    .replace(/<meta property="og:title"[^>]*>/, `<meta property="og:title" content="${escapeHtml(pageTitle)}" />`)
+    .replace(/<meta property="og:description"[^>]*>/, `<meta property="og:description" content="${escapeHtml(desc)}" />`)
+    .replace(/<meta name="twitter:title"[^>]*>/, `<meta name="twitter:title" content="${escapeHtml(pageTitle)}" />`)
+    .replace(/<meta name="twitter:description"[^>]*>/, `<meta name="twitter:description" content="${escapeHtml(desc)}" />`);
+  html = html.replace('</head>', `  <script type="application/ld+json">${JSON.stringify(jsonLd)}</script>\n</head>`);
+  html = html.replace(/<div id="root">[\s\S]*?<\/div>/, `<div id="root">${contentBlock}</div>`);
+
+  cacheSet(cacheKey, html, { fresh: 300, stale: 1800 });
+  return html;
+}
+
 async function buildSitemapXml() {
   const BASE = 'https://lastfootball.com';
   const today = new Date().toISOString().split('T')[0];
@@ -3564,14 +3762,38 @@ async function buildSitemapXml() {
   );
   try {
     const posts = await supabaseQueryWithKey('posts',
-      'status=eq.published&select=slug,updated_at,published_at,category&order=published_at.desc&limit=5000',
+      'status=eq.published&select=slug,updated_at,published_at,category,entities&order=published_at.desc&limit=5000',
       'GET', null, process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY);
     if (Array.isArray(posts)) {
+      // Club and player pages, collected from the articles that mention them
+      // in the same pass. A hub that no article links to is left out: it has
+      // nothing on it, and asking a crawler to fetch an empty page spends
+      // crawl budget the articles need.
+      const hubs = new Map();
+
       for (const p of posts) {
         if (!p.slug) continue;
         const lastmod = (p.updated_at || p.published_at || '').split('T')[0] || today;
         const pri = p.category === 'match-report' ? '0.7' : '0.8';
         urls.push(`  <url><loc>${BASE}/news/${encodeURIComponent(p.slug)}</loc><lastmod>${lastmod}</lastmod><changefreq>weekly</changefreq><priority>${pri}</priority></url>`);
+
+        if (!Array.isArray(p.entities)) continue;
+        for (const e of p.entities) {
+          if (!e || !e.externalId || !e.name) continue;
+          const segment = e.kind === 'TEAM' ? 'team' : e.kind === 'PLAYER' ? 'player' : null;
+          // LEAGUE is skipped on purpose: there is no /league/:id route on
+          // the site yet, so listing one would be a sitemap entry pointing
+          // at a 404.
+          if (!segment) continue;
+          const key = `${segment}/${e.externalId}`;
+          // Posts come back newest first, so the first sighting of a hub is
+          // its most recent article -- which is the lastmod that matters.
+          if (!hubs.has(key)) hubs.set(key, lastmod);
+        }
+      }
+
+      for (const [key, lastmod] of hubs) {
+        urls.push(`  <url><loc>${BASE}/${key}</loc><lastmod>${lastmod}</lastmod><changefreq>weekly</changefreq><priority>0.6</priority></url>`);
       }
     }
   } catch (e) { console.error('[SITEMAP] posts fetch error:', e.message); }
