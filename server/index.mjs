@@ -3789,13 +3789,9 @@ async function writeHubFiles() {
     for (const d of distRoots) { if (fs.existsSync(d)) { distRoot = d; break; } }
     if (!distRoot) { console.error('[PRERENDER] no dist dir found for hubs'); return; }
 
-    const posts = await supabaseQueryWithKey('posts',
-      'status=eq.published&select=slug,title,published_at,league,entities' +
-      '&order=published_at.desc&limit=5000',
-      'GET', null, process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY);
+    const posts = await fetchAllPublishedPosts('slug,title,published_at,league,entities');
     if (!Array.isArray(posts)) {
-      console.error('[PRERENDER] hub pass: posts query rejected:',
-        (posts && (posts.message || posts.code)) || 'unexpected response');
+      console.error('[PRERENDER] hub pass: no posts returned');
       return;
     }
 
@@ -3859,9 +3855,7 @@ async function buildSitemapXml() {
     `  <url><loc>${BASE}${p.loc}</loc><changefreq>${p.freq}</changefreq><priority>${p.pri}</priority></url>`
   );
   try {
-    const posts = await supabaseQueryWithKey('posts',
-      'status=eq.published&select=slug,updated_at,published_at,category,entities&order=published_at.desc&limit=5000',
-      'GET', null, process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY);
+    const posts = await fetchAllPublishedPosts('slug,updated_at,published_at,category,entities');
     if (Array.isArray(posts)) {
       // Club and player pages, collected from the articles that mention them
       // in the same pass. A hub that no article links to is left out: it has
@@ -4209,6 +4203,47 @@ async function backfillScoreCards() {
   }
 }
 
+/**
+ * Every published post, fetched a page at a time.
+ *
+ * PostgREST caps a response at 1,000 rows however large a `limit` asks for,
+ * and says nothing about having done it. `limit=2000` therefore returned the
+ * newest 1,000 and looked like the whole table, which is how 664 of 1,664
+ * published articles came to have no prerendered file and no sitemap entry.
+ * The log line "Wrote 1000 article HTML files" read like a total when it was
+ * a ceiling -- a round number that should have been suspicious.
+ *
+ * The order carries `slug` as a tiebreaker because `published_at` has ties:
+ * ordering by it alone is not a total order, so rows could shift between
+ * pages and be fetched twice or skipped entirely.
+ */
+async function fetchAllPublishedPosts(select, { pageSize = 1000, maxPages = 20 } = {}) {
+  const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+  const all = [];
+
+  for (let page = 0; page < maxPages; page++) {
+    const rows = await supabaseQueryWithKey('posts',
+      `status=eq.published&select=${select}` +
+      '&order=published_at.desc.nullslast,slug.asc' +
+      `&limit=${pageSize}&offset=${page * pageSize}`,
+      'GET', null, SVC);
+
+    if (!Array.isArray(rows)) {
+      console.error('[POSTS] page query rejected:',
+        (rows && (rows.message || rows.code)) || 'unexpected response');
+      // Partial beats nothing for a prerender pass, but never silently: the
+      // caller's count would otherwise look like a complete run.
+      return all.length ? all : null;
+    }
+
+    all.push(...rows);
+    if (rows.length < pageSize) return all;
+  }
+
+  console.warn(`[POSTS] stopped at ${maxPages} pages (${all.length} rows) -- there may be more`);
+  return all;
+}
+
 async function writeArticleFiles() {
   try {
     const here = path.dirname(new URL(import.meta.url).pathname);
@@ -4223,9 +4258,7 @@ async function writeArticleFiles() {
     const newsDir = path.join(distRoot, 'news');
     if (!fs.existsSync(newsDir)) fs.mkdirSync(newsDir, { recursive: true });
 
-    const posts = await supabaseQueryWithKey('posts',
-      'status=eq.published&select=slug&order=published_at.desc&limit=2000',
-      'GET', null, process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY);
+    const posts = await fetchAllPublishedPosts('slug');
     if (!Array.isArray(posts)) return;
 
     let written = 0;
@@ -4240,7 +4273,7 @@ async function writeArticleFiles() {
         written++;
       } catch (e) { /* skip this one */ }
     }
-    console.log(`[PRERENDER] Wrote ${written} article HTML files to ${newsDir}`);
+    console.log(`[PRERENDER] Wrote ${written}/${posts.length} article HTML files to ${newsDir}`);
   } catch (e) {
     console.error('[PRERENDER] writeArticleFiles error:', e.message);
   }
