@@ -43,6 +43,16 @@ only once the new one exists and has been looked at.
 - `<indexnow-key>.txt` -- the IndexNow verification file
 - `news/<slug>.html` -- roughly a thousand prerendered article pages that
   nginx serves directly via `try_files`
+- `team/<id>/index.html` and `player/<id>/index.html` -- the club and player
+  hub pages, served by the `$uri/` arm of `try_files $uri $uri/ /index.html`
+  plus the `index` directive
+
+Both prerenderers exist as server routes *as well*, and in production
+neither route runs: nginx answers `/news/<slug>` and `/team/<id>` off disk
+and never proxies them. The files are the whole mechanism; the routes only
+matter to the dev server. So "the code is deployed" is not the same as "the
+pages are prerendered" -- only a restart, or the next half-hourly pass, puts
+the files back.
 
 A fresh build contains none of these, so swapping a new `dist` into place
 removes all of them. The service rewrites them on startup. Until it is

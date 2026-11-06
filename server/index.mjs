@@ -1693,6 +1693,10 @@ server.listen(PORT, '127.0.0.1', async () => {
   // Prerender article HTML files to dist/news/ (served directly by nginx via try_files)
   setTimeout(writeArticleFiles, 60 * 1000);
   setInterval(writeArticleFiles, 30 * 60 * 1000);
+  // The hub pages, after the articles: both are rebuilt from scratch because
+  // a deploy replaces `dist` and takes every prerendered file with it.
+  setTimeout(writeHubFiles, 110 * 1000);
+  setInterval(writeHubFiles, 30 * 60 * 1000);
   // Keep World Cup stats cache always warm so the first viewer never sees stale data
   setTimeout(warmWorldCupStats, 10 * 1000);
   setInterval(warmWorldCupStats, 300 * 1000); // Every 5 minutes
@@ -3244,8 +3248,12 @@ async function syncArticlesFromBackend(full = false) {
     syncState.consecutiveFailures++;
   }
 
-  // Regenerate the crawler-visible HTML for anything new.
-  if (written) writeArticleFiles();
+  // Regenerate the crawler-visible HTML for anything new. The hub pages go
+  // with it: a new match report changes what both clubs' pages list.
+  if (written) {
+    writeArticleFiles();
+    writeHubFiles();
+  }
 }
 
 async function generateMatchReports() {
@@ -3590,38 +3598,10 @@ async function prerenderArticle(slug) {
  * nothing under it is a thin page, which is worse than no prerender at all --
  * it invites indexing of an empty result and earns the site nothing.
  */
-async function prerenderHub(kind, externalId) {
+function buildHubHtml(kind, externalId, rows) {
   const id = Number(externalId);
   if (!Number.isInteger(id) || id <= 0) return null;
-
-  const cacheKey = `prerender:hub:${kind}:${id}`;
-  const hit = cacheGet(cacheKey);
-  if (hit) return hit.data;
-
-  // jsonb containment. Matching on `kind` as well as the id matters: the
-  // provider numbers teams, players and competitions in separate spaces, so
-  // team 33 and league 33 are different things and only `kind` separates
-  // them.
-  const filter = encodeURIComponent(JSON.stringify([{ kind, externalId: id }]));
-  const rows = await supabaseQueryWithKey('posts',
-    `status=eq.published&entities=cs=${filter}` +
-    '&select=slug,title,published_at,league,entities' +
-    '&order=published_at.desc&limit=24',
-    'GET', null, process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY);
-
-  // supabaseQueryWithKey resolves with the error body rather than throwing,
-  // so a malformed filter arrives here as an object and an empty result
-  // arrives as an empty array. Told apart, because they mean opposite
-  // things: no articles is normal and silent, a rejected query is a bug and
-  // would otherwise hide as "this club simply has no news".
-  if (!Array.isArray(rows)) {
-    console.error(
-      `[PRERENDER] hub query rejected for ${kind} ${id}:`,
-      (rows && (rows.message || rows.code)) || 'unexpected response',
-    );
-    return null;
-  }
-  if (!rows.length) return null;
+  if (!Array.isArray(rows) || !rows.length) return null;
 
   // The name comes from the articles' own snapshot of it. Nothing here
   // builds a name out of the id: "Club #33" as an <h1> is not a page worth
@@ -3737,8 +3717,126 @@ async function prerenderHub(kind, externalId) {
   html = html.replace('</head>', `  <script type="application/ld+json">${JSON.stringify(jsonLd)}</script>\n</head>`);
   html = html.replace(/<div id="root">[\s\S]*?<\/div>/, `<div id="root">${contentBlock}</div>`);
 
+  return html;
+}
+
+/**
+ * The articles that mention one club or player, newest first.
+ *
+ * jsonb containment. Matching on `kind` as well as the id matters: the
+ * provider numbers teams, players and competitions in separate spaces, so
+ * team 33 and league 33 are different things and only `kind` tells them
+ * apart.
+ */
+async function fetchHubArticles(kind, id) {
+  const filter = encodeURIComponent(JSON.stringify([{ kind, externalId: Number(id) }]));
+  const rows = await supabaseQueryWithKey('posts',
+    `status=eq.published&entities=cs=${filter}` +
+    '&select=slug,title,published_at,league,entities' +
+    '&order=published_at.desc&limit=24',
+    'GET', null, process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY);
+
+  // supabaseQueryWithKey resolves with the error body rather than throwing,
+  // so a malformed filter arrives here as an object and an empty result
+  // arrives as an empty array. They are told apart because they mean
+  // opposite things: no articles is normal and silent, a rejected query is a
+  // bug that would otherwise hide forever as "that club has no news".
+  if (!Array.isArray(rows)) {
+    console.error(
+      `[PRERENDER] hub query rejected for ${kind} ${id}:`,
+      (rows && (rows.message || rows.code)) || 'unexpected response',
+    );
+    return null;
+  }
+  return rows;
+}
+
+async function prerenderHub(kind, externalId) {
+  const id = Number(externalId);
+  if (!Number.isInteger(id) || id <= 0) return null;
+
+  const cacheKey = `prerender:hub:${kind}:${id}`;
+  const hit = cacheGet(cacheKey);
+  if (hit) return hit.data;
+
+  const rows = await fetchHubArticles(kind, id);
+  const html = buildHubHtml(kind, id, rows);
+  if (!html) return null;
+
   cacheSet(cacheKey, html, { fresh: 300, stale: 1800 });
   return html;
+}
+
+/**
+ * Write every hub page nginx will actually serve.
+ *
+ * This is the part that counts in production. `location /` ends in
+ * `try_files $uri $uri/ /index.html`, so nginx answers /team/33 off disk and
+ * the server's own route above never runs -- exactly as /news/:slug is
+ * really served by the files `writeArticleFiles` leaves behind, not by its
+ * route. The file goes at team/33/index.html so the `$uri/` arm of that
+ * try_files finds a directory and the `index` directive serves it.
+ *
+ * One query for every hub, not one per hub: grouping ~1,800 articles in
+ * memory costs nothing, while 500 containment queries every half hour would
+ * be a self-inflicted load problem.
+ */
+async function writeHubFiles() {
+  try {
+    const here = path.dirname(new URL(import.meta.url).pathname);
+    const distRoots = [path.resolve(here, '..', 'dist'), '/var/www/lastfootball/dist'];
+    let distRoot = null;
+    for (const d of distRoots) { if (fs.existsSync(d)) { distRoot = d; break; } }
+    if (!distRoot) { console.error('[PRERENDER] no dist dir found for hubs'); return; }
+
+    const posts = await supabaseQueryWithKey('posts',
+      'status=eq.published&select=slug,title,published_at,league,entities' +
+      '&order=published_at.desc&limit=5000',
+      'GET', null, process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY);
+    if (!Array.isArray(posts)) {
+      console.error('[PRERENDER] hub pass: posts query rejected:',
+        (posts && (posts.message || posts.code)) || 'unexpected response');
+      return;
+    }
+
+    // Grouped newest-first, because `posts` already came back that way.
+    const byHub = new Map();
+    for (const post of posts) {
+      if (!post.slug || !post.title || !Array.isArray(post.entities)) continue;
+      for (const e of post.entities) {
+        if (!e || !e.externalId || !e.name) continue;
+        if (e.kind !== 'TEAM' && e.kind !== 'PLAYER') continue;
+        const key = `${e.kind}:${Number(e.externalId)}`;
+        let list = byHub.get(key);
+        if (!list) { list = []; byHub.set(key, list); }
+        // Same cap as the request path, so the file and the live render agree.
+        if (list.length < 24) list.push(post);
+      }
+    }
+
+    let written = 0;
+    let skipped = 0;
+    for (const [key, rows] of byHub) {
+      const sep = key.indexOf(':');
+      const kind = key.slice(0, sep);
+      const id = Number(key.slice(sep + 1));
+      const html = buildHubHtml(kind, id, rows);
+      // Nothing is written for a hub with no name: buildHubHtml refuses it,
+      // and a file is a louder way to be wrong than a live page.
+      if (!html) { skipped++; continue; }
+      const segment = kind === 'TEAM' ? 'team' : 'player';
+      const dir = path.join(distRoot, segment, String(id));
+      try {
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'index.html'), html, 'utf8');
+        written++;
+      } catch { skipped++; }
+    }
+    console.log(`[PRERENDER] Wrote ${written} hub page(s) to ${distRoot}` +
+      (skipped ? `, skipped ${skipped}` : ''));
+  } catch (e) {
+    console.error('[PRERENDER] writeHubFiles error:', e.message);
+  }
 }
 
 async function buildSitemapXml() {
