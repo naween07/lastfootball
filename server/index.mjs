@@ -3028,6 +3028,19 @@ function toIsoDate(value) {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
+// Images uploaded through the admin panel are stored as a path relative to
+// the API host -- "/uploads/news/<id>.png". Copied across unchanged, the
+// website would resolve that against lastfootball.com and show a broken
+// image. Generated reports are unaffected: their images are absolute
+// provider URLs.
+function absoluteImage(src) {
+  if (!src) return null;
+  const v = String(src).trim();
+  if (!v) return null;
+  if (/^https?:\/\//i.test(v)) return v;
+  return `https://api.lastfootball.com${v.startsWith('/') ? '' : '/'}${v}`;
+}
+
 function toPostRow(a) {
   // `body` is NOT NULL in posts but nullable in News, so it needs a fallback
   // or the whole upsert batch is rejected.
@@ -3047,7 +3060,7 @@ function toPostRow(a) {
     tags: a.tags ?? [],
     json_ld: a.jsonLd ?? null,
     author_name: a.authorName || 'LastFootball',
-    featured_image: a.image ?? null,
+    featured_image: absoluteImage(a.image),
     featured_image_alt: a.imageAlt ?? null,
     featured_image_caption: a.imageCaption ?? null,
     category: CATEGORY_TO_POSTS[a.category] || 'Football',
