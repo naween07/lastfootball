@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import SEOHead from '@/components/SEOHead';
 import OptimizedImage from '@/components/OptimizedImage';
+import EntityNews from '@/components/EntityNews';
 import {
   fetchTeamInfo, fetchTeamStatistics, fetchSquad, fetchTeamFixtures,
   TeamInfo, TeamStatSummary, SquadPlayer, Match,
@@ -261,6 +262,11 @@ export default function TeamProfile() {
                 </div>
               </div>
             )}
+
+            {/* Articles about this club. Until the entity links existed
+                there was no way to ask for these, so this page linked to
+                nothing and nothing linked back to it. */}
+            <EntityNews kind="team" id={Number(id)} name={team.name} />
 
             {/* SEO: Team Analysis Narrative */}
             {stats && (

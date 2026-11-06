@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import SEOHead from '@/components/SEOHead';
 import OptimizedImage from '@/components/OptimizedImage';
+import EntityNews from '@/components/EntityNews';
 import { fetchPlayerProfile, PlayerProfile as PlayerProfileType } from '@/services/footballApi';
 import { ArrowLeft, ArrowLeftRight, Loader2, MapPin, Calendar, Ruler, Weight, Shield, Zap, Swords } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -151,6 +152,9 @@ export default function PlayerProfile() {
           { label: 'Red Cards', value: s.redCards },
           { label: 'Fouls Committed', value: s.foulsCommitted },
         ]} />
+
+        {/* Articles mentioning this player */}
+        <EntityNews kind="player" id={Number(playerId)} name={player.name} />
 
         {/* Compare CTA */}
         <Link
