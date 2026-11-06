@@ -3016,6 +3016,18 @@ function backendQuery(query) {
   });
 }
 
+// The GraphQL API types its dates as String, and GraphQL coerces a JS Date
+// through valueOf() -- so `publishedAt` arrives as epoch milliseconds in a
+// string, "1793836800000", which Postgres rejects outright. Handles an ISO
+// string too, in case the API's typing is ever tightened.
+function toIsoDate(value) {
+  if (!value) return null;
+  const s = String(value).trim();
+  if (!s) return null;
+  const d = /^\d{10,}$/.test(s) ? new Date(Number(s)) : new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 function toPostRow(a) {
   // `body` is NOT NULL in posts but nullable in News, so it needs a fallback
   // or the whole upsert batch is rejected.
@@ -3042,7 +3054,7 @@ function toPostRow(a) {
     league: a.leagueName ?? null,
     teams: a.teams ?? [],
     reading_time_mins: a.readingTimeMins ?? null,
-    published_at: a.publishedAt ?? null,
+    published_at: toIsoDate(a.publishedAt),
     // view_count and created_at are omitted on purpose -- see above.
   };
 }
@@ -3087,6 +3099,7 @@ async function syncArticlesFromBackend(full = false) {
   // Set SYNC_DRY_RUN=1 in .env to see exactly what the first pass would write
   // before letting it write anything. This table is behind every indexed
   // article URL on the site; it is worth one restart to look first.
+  console.log(`[SYNC] ${rows.length} row(s) prepared; dry run ${process.env.SYNC_DRY_RUN ? 'ON' : 'OFF'}`);
   if (process.env.SYNC_DRY_RUN) {
     const sample = rows[0];
     console.log(`[SYNC] DRY RUN — would upsert ${rows.length} article(s). First row:`);
