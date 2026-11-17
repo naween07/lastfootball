@@ -3,10 +3,17 @@ import { describe, expect, it } from 'vitest';
 import { getScorers } from './articleGenerator';
 import type { MatchEvent } from '../types/football';
 
-/// API-Football reports an own goal under the team of the player who scored it,
-/// not the team the goal counts for. These tests pin that down, because getting
-/// it wrong credits the goal to the side that conceded and leaves the scorer
-/// list contradicting the scoreline.
+/// API-Football reports an own goal under the team the goal COUNTS FOR, not
+/// the team of the player who put it in. These tests had it the other way
+/// round and getScorers flipped the side to compensate, which credited every
+/// own goal to the team that conceded it.
+///
+/// Settled against published reports rather than from the provider's docs.
+/// Switzerland 4-0 Scotland (2026-11-16): Lewis Ferguson, a Scotland player,
+/// put through his own net, and the event arrived on the home side -- which
+/// is Switzerland. The running tally built from these events reaches 4-0,
+/// the real final score. France 2-1 Turkiye and Rumilly Vallieres 1-2 Saint
+/// Etienne agree. A flip would have made those tallies 3-1 and 0-2.
 function event(overrides: Partial<MatchEvent> = {}): MatchEvent {
   return {
     id: 1,
@@ -26,29 +33,32 @@ describe('getScorers', () => {
     expect(getScorers(events, 'away')).toEqual([]);
   });
 
-  it('credits an own goal to the side that benefits from it', () => {
+  it('leaves an own goal on the side the provider credited, which is the side it counts for', () => {
+    // L. Ferguson plays for the away team; the goal counts for the home team,
+    // and that is the side the event arrives on.
     const events = [
-      event({ team: 'home', playerName: 'K. Walker', detail: 'Own Goal', minute: 34 }),
+      event({ team: 'home', playerName: 'L. Ferguson', detail: 'Own Goal', minute: 22 }),
     ];
 
-    expect(getScorers(events, 'away').map(s => s.name)).toEqual(['K. Walker']);
+    expect(getScorers(events, 'home').map(s => s.name)).toEqual(['L. Ferguson']);
+    expect(getScorers(events, 'away')).toEqual([]);
+  });
+
+  it('keeps the own-goal detail so the narrative can say whose net it was', () => {
+    const events = [event({ team: 'away', detail: 'Own Goal' })];
+
+    expect(getScorers(events, 'away')[0].detail).toBe('Own Goal');
     expect(getScorers(events, 'home')).toEqual([]);
   });
 
-  it('keeps the own-goal detail so it can be marked (og)', () => {
-    const events = [event({ team: 'away', detail: 'Own Goal' })];
-
-    expect(getScorers(events, 'home')[0].detail).toBe('Own Goal');
-  });
-
-  it('separates a real goal from an own goal in the same match', () => {
+  it('lists a real goal and an own goal for the same side in one match', () => {
     const events = [
       event({ id: 1, team: 'home', playerName: 'B. Saka', minute: 12 }),
       event({ id: 2, team: 'home', playerName: 'W. Saliba', detail: 'Own Goal', minute: 70 }),
     ];
 
-    expect(getScorers(events, 'home').map(s => s.name)).toEqual(['B. Saka']);
-    expect(getScorers(events, 'away').map(s => s.name)).toEqual(['W. Saliba']);
+    expect(getScorers(events, 'home').map(s => s.name)).toEqual(['B. Saka', 'W. Saliba']);
+    expect(getScorers(events, 'away')).toEqual([]);
   });
 
   it('ignores cards and substitutions', () => {

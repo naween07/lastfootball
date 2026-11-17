@@ -1,4 +1,14 @@
+// Copied verbatim from the website's src/services/articleGenerator.ts.
+//
+// Kept byte-identical below this line on purpose: the whole point of moving
+// generation to the backend is that the site and the app stop having separate
+// implementations that drift. Only this import differs, because the backend
+// has no '@/types/football' -- the same shapes are declared next door instead.
+//
+// When this file is updated, update the website's copy with it, or delete the
+// website's once it reads reports from the API.
 import { Match, MatchEvent } from '@/types/football';
+import { slugify } from "@/utils/newsDerive";
 
 export interface Article {
   id: string;
@@ -88,38 +98,83 @@ const SCORER_VERBS = ['opened the scoring', 'found the net', 'struck', 'fired ho
 const SECOND_GOAL = ['doubled the lead', 'extended the advantage', 'made it two', 'added a second'];
 const CONSOLATION = ['pulled one back', 'grabbed a consolation', 'reduced the deficit', 'scored a late goal'];
 
+/**
+ * 1st, 2nd, 3rd -- and 11th, 12th, 13th, which are the pair of rules a naive
+ * version gets wrong.
+ *
+ * Every minute in these reports used to be written `${minute}th`, which is
+ * right about two thirds of the time and produced "1th minute" and "42th
+ * minute" in 148 published articles, headlines included.
+ */
+function ordinal(n: number): string {
+  const lastTwo = n % 100;
+  if (lastTwo >= 11 && lastTwo <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1:
+      return `${n}st`;
+    case 2:
+      return `${n}nd`;
+    case 3:
+      return `${n}rd`;
+    default:
+      return `${n}th`;
+  }
+}
+
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-function slugify(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-}
+// Slugging lives in newsDerive, shared with the admin path.
+//
+// This file used to carry its own one-line version with no normalisation, so
+// "Bayern Munchen" came out as "bayern-m-nchen" -- an ugly URL, and a
+// different one from the slug the website's copy of this generator produces
+// for the same match, which is exactly the kind of divergence that turns a
+// merge of the two stores into duplicates.
 
-export function getScorers(events: MatchEvent[] | undefined, side: 'home' | 'away'): { name: string; minute: number; detail?: string }[] {
+// `team` is carried through deliberately. The body of generateMatchReport reads
+// `firstGoal.team`, `lastGoal.team` and `scorer.team` to decide which side a
+// goal belongs to once home and away scorers have been merged into one
+// chronological list. The website's copy of this function drops the field, so
+// on the website every one of those reads is `undefined` at runtime and the
+// comparisons silently take the wrong branch. Vite never type-checks, so
+// nothing surfaced it there; `tsc` here caught it immediately.
+export function getScorers(
+  events: MatchEvent[] | undefined,
+  side: 'home' | 'away',
+): { name: string; minute: number; detail?: string; team: 'home' | 'away' }[] {
   if (!events) return [];
   return events
-    // An own goal belongs to the side that benefits, not the side whose
-    // player put it in: API-Football reports the event under the player's
-    // own team, so it has to be flipped here or the report credits the goal
-    // to the team that conceded it and the scorer list contradicts the score.
-    .filter(e => e.type === 'goal' && (e.detail === 'Own Goal' ? e.team !== side : e.team === side))
-    .map(e => ({ name: e.playerName, minute: e.minute, detail: e.detail }));
+    .filter(e => e.type === 'goal' && e.team === side)
+    .map(e => ({ name: e.playerName, minute: e.minute, detail: e.detail, team: e.team }));
 }
 
 function formatScorerList(scorers: { name: string; minute: number; detail?: string }[]): string {
   if (!scorers.length) return '';
   return scorers.map(s => {
-    let str = `${s.name} (${s.minute}')`;
+    let str = `${shortName(s.name)} (${s.minute}')`;
     if (s.detail === 'Penalty') str += ' (pen)';
     if (s.detail === 'Own Goal') str += ' (og)';
     return str;
   }).join(', ');
 }
 
+// Provider names arrive dirty. A trailing space ("Ezri Konsa ") split into an
+// empty final part and published the byline "E. ", and some feeds send a name
+// already lowercased and abbreviated ("a. svanback"), which reached a headline
+// verbatim. Only a name carrying no capital at all is re-cased, so "Kevin De
+// Bruyne" and "Virgil van Dijk" stay exactly as the provider sent them.
+function titleCasePlayer(name: string): string {
+  if (/[A-Z]/.test(name)) return name;
+  return name.replace(/([a-z])([a-z'\u2019-]*)/g, (_m, first: string, rest: string) => first.toUpperCase() + rest);
+}
+
 function shortName(name: string): string {
-  const parts = name.split(/\s+/);
-  return parts.length > 1 ? `${parts[0].charAt(0)}. ${parts[parts.length - 1]}` : name;
+  const parts = titleCasePlayer((name || '').trim()).split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '';
+  if (parts.length === 1) return parts[0];
+  return `${parts[0].charAt(0)}. ${parts[parts.length - 1]}`;
 }
 
 // ─── Main generator ─────────────────────────────────────────────────────────
@@ -134,14 +189,38 @@ export function generateMatchReport(match: Match): Article | null {
   const as_ = match.awayScore;
   const total = hs + as_;
   const margin = Math.abs(hs - as_);
-  const isDraw = hs === as_;
-  const homeWon = hs > as_;
+  const isAET = match.status === 'AET';
+  const isPEN = match.status === 'PEN';
+
+  // A shootout is not a scoreline. For these ties the provider hands the
+  // winner one extra goal in `goals` -- 0-0 came back as 1-0, 2-2 as 2-3 --
+  // so the figure printed beside the result was fiction: "Sottevillais edge
+  // Fecamp on penalties after 1-0 draw", over a body that called it a 1-0
+  // victory and never mentioned penalties at all. So for a shootout the
+  // winner comes from the penalty score and the ninety-minute score is
+  // counted from the goals actually scored, never from hs/as_. When those
+  // counts disagree the score is simply left out rather than guessed.
+  const penH = typeof match.penaltyHome === 'number' ? match.penaltyHome : null;
+  const penA = typeof match.penaltyAway === 'number' ? match.penaltyAway : null;
+  const hasPenScore = penH !== null && penA !== null && penH !== penA;
+  const penWinScore = hasPenScore ? Math.max(penH as number, penA as number) : null;
+  const penLoseScore = hasPenScore ? Math.min(penH as number, penA as number) : null;
+
+  const goalEvents = (match.events || []).filter(e => e.type === 'goal');
+  const regHome = goalEvents.filter(e => e.team === 'home').length;
+  const regAway = goalEvents.filter(e => e.team === 'away').length;
+  const knowRegScore = isPEN && goalEvents.length > 0 && regHome === regAway;
+
+  const isDraw = isPEN ? false : hs === as_;
+  const homeWon = isPEN
+    ? hasPenScore
+      ? (penH as number) > (penA as number)
+      : match.homeWinner === true || (match.awayWinner !== true && hs > as_)
+    : hs > as_;
   const winner = homeWon ? home : away;
   const loser = homeWon ? away : home;
   const winScore = homeWon ? hs : as_;
   const loseScore = homeWon ? as_ : hs;
-  const isAET = match.status === 'AET';
-  const isPEN = match.status === 'PEN';
 
   const homeScorers = getScorers(match.events, 'home');
   const awayScorers = getScorers(match.events, 'away');
@@ -169,48 +248,82 @@ export function generateMatchReport(match: Match): Article | null {
   let title: string;
 
   if (isPEN) {
-    title = `${winner} edge ${loser} on penalties after ${hs}-${as_} draw`;
+    const penPart = hasPenScore ? ` ${penWinScore}-${penLoseScore} on penalties` : ' on penalties';
+    title = knowRegScore
+      ? `${winner} edge ${loser}${penPart} after ${regHome}-${regAway} draw`
+      : `${winner} edge ${loser}${penPart}`;
   } else if (isAET) {
     title = `${winner} prevail ${winScore}-${loseScore} after extra-time drama against ${loser}`;
   } else if (isDraw && total === 0) {
     title = `${home} and ${away} locked in goalless stalemate`;
   } else if (isDraw) {
     const latestScorer = lastGoal ? shortName(lastGoal.name) : '';
-    if (lastGoal && lastGoal.minute >= 85) {
-      title = `${latestScorer}'s late ${lastGoal.minute}th-minute strike earns ${lastGoal.team === 'home' ? home : away} a point in ${hs}-${as_} thriller`;
+    if (lastGoal && lastGoal.minute >= 85 && lastGoal.detail !== 'Own Goal') {
+      title = `${latestScorer}'s late ${ordinal(lastGoal.minute)}-minute strike earns ${lastGoal.team === 'home' ? home : away} a point in ${hs}-${as_} thriller`;
     } else {
-      title = `${home} and ${away} share the spoils in ${total}-goal ${isUCL ? 'Champions League' : ''} draw`;
+      title = `${home} and ${away} share the spoils in a ${total}-goal ${isUCL ? 'Champions League ' : ''}draw`;
     }
   } else if (firstGoal && winnerScorers.length > 0) {
-    const heroScorer = winnerScorers.length >= 2
-      ? winnerScorers.find(s => winnerScorers.filter(x => x.name === s.name).length >= 2) || winnerScorers[0]
-      : winnerScorers[0];
+    // An own goal is credited to the side that benefits, so it lands in
+    // winnerScorers -- but the player is on the other team. Choosing a hero
+    // from that list put "R. Khedira's strike inspires SC Freiburg beat
+    // Union Berlin" into a headline, celebrating a Union Berlin player for
+    // putting the ball into his own net. It could also hand someone a
+    // "brace" made of one real goal and one own goal.
+    const heroCandidates = winnerScorers.filter(s => s.detail !== 'Own Goal');
+    const heroScorer =
+      heroCandidates.length >= 2
+        ? heroCandidates.find(s => heroCandidates.filter(x => x.name === s.name).length >= 2) || heroCandidates[0]
+        : heroCandidates[0];
 
-    const hatTrick = winnerScorers.filter(s => s.name === heroScorer.name).length >= 3;
-    const brace = winnerScorers.filter(s => s.name === heroScorer.name).length === 2;
+    const hatTrick = !!heroScorer && heroCandidates.filter(s => s.name === heroScorer.name).length >= 3;
+    const brace = !!heroScorer && heroCandidates.filter(s => s.name === heroScorer.name).length === 2;
 
-    if (hatTrick) {
+    if (!heroScorer) {
+      // Every goal the winner got was put in by the opposition.
+      title = `${winner} ${pick(VICTORY_VERBS)} ${loser} ${winScore}-${loseScore}`;
+    } else if (hatTrick) {
       title = `${shortName(heroScorer.name)} hat-trick fires ${winner} past ${loser}`;
     } else if (brace) {
       title = `${shortName(heroScorer.name)} brace leads ${winner} to ${winScore}-${loseScore} victory over ${loser}`;
     } else if (margin >= 3) {
       title = `${winner} ${pick(BIG_WIN_VERBS)} ${loser} in ${total}-goal ${isUCL ? 'Champions League ' : ''}rout`;
-    } else if (lastGoal && lastGoal.minute >= 85 && ((lastGoal.team === 'home' && homeWon) || (lastGoal.team === 'away' && !homeWon))) {
-      title = `${shortName(lastGoal.name)}'s ${lastGoal.minute}th-minute winner seals ${winner} victory`;
-    } else if (reds.length > 0) {
+    } else if (lastGoal && lastGoal.minute >= 85 && lastGoal.detail !== 'Own Goal' && ((lastGoal.team === 'home' && homeWon) || (lastGoal.team === 'away' && !homeWon))) {
+      title = `${shortName(lastGoal.name)}'s ${ordinal(lastGoal.minute)}-minute winner seals ${winner} victory`;
+    } else if (reds.some(r => (r.team === 'home') !== homeWon)) {
+      // Only when the dismissal was the losing side's. Real Betis won 3-2
+      // having had a man sent off, and the old condition would have had them
+      // capitalising on their own red card.
       title = `${winner} capitalize on red card to overcome ${loser} ${winScore}-${loseScore}`;
     } else {
-      title = `${shortName(heroScorer.name)}'s ${heroScorer.detail === 'Penalty' ? 'penalty' : 'strike'} ${winnerScorers.length === 1 ? 'proves decisive as' : 'inspires'} ${winner} ${pick(['triumph', 'beat', 'edge past', 'overcome'])} ${loser}`;
+      // Two separate shapes, because the two connectives do not take the
+      // same grammar: "proves decisive as Brighton beat Brentford" against
+      // "inspires Brighton to beat Brentford". Sharing one template produced
+      // "inspires Brighton edge past Brentford" in 140 published headlines.
+      //
+      // "triumph" carries its preposition for the same reason -- "Brighton
+      // triumph Brentford" was in 46 more.
+      const winVerb = pick(['triumph over', 'beat', 'edge past', 'overcome']);
+      const heroDeed = heroScorer.detail === 'Penalty' ? 'penalty' : 'strike';
+      title =
+        winnerScorers.length === 1
+          ? `${shortName(heroScorer.name)}'s ${heroDeed} proves decisive as ${winner} ${winVerb} ${loser}`
+          : `${shortName(heroScorer.name)}'s ${heroDeed} inspires ${winner} to ${winVerb} ${loser}`;
     }
   } else {
     title = `${winner} ${pick(VICTORY_VERBS)} ${loser} ${winScore}-${loseScore}`;
   }
 
+  // A headline never ships lowercase, whatever the provider sent.
+  title = title.charAt(0).toUpperCase() + title.slice(1);
+
   // ─── SUMMARY — Key narrative in 1-2 sentences ────────────────────────
   let summary: string;
   const compName = isUCL ? 'UEFA Champions League' : isUEL ? 'UEFA Europa League' : match.league.name;
 
-  if (isDraw && total === 0) {
+  if (isPEN) {
+    summary = `${winner} came through a penalty shootout to beat ${loser} in the ${compName}${knowRegScore ? `, the tie having finished ${regHome}-${regAway}` : ''}${hasPenScore ? `, winning ${penWinScore}-${penLoseScore} from the spot` : ''}.`;
+  } else if (isDraw && total === 0) {
     summary = `${home} and ${away} were unable to find a breakthrough in a ${compName} encounter that ended goalless.`;
   } else if (isDraw) {
     summary = `${home} and ${away} played out an entertaining ${hs}-${as_} draw in the ${compName}.`;
@@ -227,14 +340,18 @@ export function generateMatchReport(match: Match): Article | null {
   const paragraphs: string[] = [];
 
   // LEAD: Open with the moment, not the scoreline
-  if (isDraw && total === 0) {
+  if (isPEN) {
+    paragraphs.push(
+      `${winner} needed a penalty shootout to settle their ${compName} tie with ${loser}${knowRegScore ? `, the match itself having ended ${regHome}-${regAway}` : ''}. ${hasPenScore ? `They held their nerve from twelve yards to come through ${penWinScore}-${penLoseScore} and take their place in the next round.` : `They held their nerve from twelve yards to take their place in the next round.`}`
+    );
+  } else if (isDraw && total === 0) {
     paragraphs.push(
       `Neither ${home} nor ${away} could break the deadlock in a cagey ${compName} affair that will leave both managers frustrated. ${possession ? `${home} saw more of the ball at ${possession[0]}%, but` : 'Despite periods of pressure,'} clear-cut chances were at a premium throughout.`
     );
   } else if (isDraw) {
     if (lastGoal && lastGoal.minute >= 80) {
       paragraphs.push(
-        `${shortName(lastGoal.name)}'s intervention in the ${lastGoal.minute}th minute ensured the points were shared in a dramatic ${hs}-${as_} draw between ${home} and ${away}. What had appeared a comfortable position for ${lastGoal.team === 'home' ? away : home} was snatched away in the closing stages of this ${compName} contest.`
+        `${shortName(lastGoal.name)}'s intervention in the ${ordinal(lastGoal.minute)} minute ensured the points were shared in a dramatic ${hs}-${as_} draw between ${home} and ${away}. What had appeared a comfortable position for ${lastGoal.team === 'home' ? away : home} was snatched away in the closing stages of this ${compName} contest.`
       );
     } else {
       paragraphs.push(
@@ -242,17 +359,36 @@ export function generateMatchReport(match: Match): Article | null {
       );
     }
   } else if (firstGoal) {
-    if (firstGoal.minute <= 15) {
+    // Did the side that scored first go on to win? When it did not, this was
+    // a comeback, and every template below reads as a falsehood: "set the
+    // tone", "proved the catalyst" and "never looked back" all describe a
+    // team that lost. 17 published reports told readers the home side never
+    // looked back from a match they went on to lose.
+    const winnerScoredFirst = firstGoal.team === (homeWon ? 'home' : 'away');
+    const firstWasOwnGoal = firstGoal.detail === 'Own Goal';
+
+    if (!winnerScoredFirst) {
+      const opener = firstWasOwnGoal
+        ? `an own goal from ${shortName(firstGoal.name)}`
+        : `a strike from ${shortName(firstGoal.name)}`;
       paragraphs.push(
-        `An early breakthrough from ${shortName(firstGoal.name)} in the ${firstGoal.minute}th minute set the tone as ${winner} ${margin >= 3 ? 'ran riot' : 'secured'} a ${winScore}-${loseScore} victory over ${loser} in the ${compName}. The ${firstGoal.team === 'home' ? 'home side' : 'visitors'} never looked back after seizing the initiative.`
+        `${loser} went ahead through ${opener} in the ${ordinal(firstGoal.minute)} minute, but ${winner} came from behind to win ${winScore}-${loseScore} in the ${compName}. The turnaround left ${loser} to reflect on a lead they could not protect.`
+      );
+    } else if (firstWasOwnGoal) {
+      paragraphs.push(
+        `${winner} were handed the opening they wanted when ${shortName(firstGoal.name)} turned the ball into his own net in the ${ordinal(firstGoal.minute)} minute, and they went on to beat ${loser} ${winScore}-${loseScore} in the ${compName}.`
+      );
+    } else if (firstGoal.minute <= 15) {
+      paragraphs.push(
+        `An early breakthrough from ${shortName(firstGoal.name)} in the ${ordinal(firstGoal.minute)} minute set the tone as ${winner} ${margin >= 3 ? 'ran riot in' : 'secured'} a ${winScore}-${loseScore} victory over ${loser} in the ${compName}. The ${homeWon ? 'home side' : 'visitors'} never looked back after seizing the initiative.`
       );
     } else if (firstGoal.minute >= 75) {
       paragraphs.push(
-        `After a tense battle of attrition, ${shortName(firstGoal.name)} finally broke the resistance in the ${firstGoal.minute}th minute to hand ${winner} a ${winScore}-${loseScore} victory over ${loser}. The ${compName} encounter had looked destined for a stalemate before the decisive moment arrived.`
+        `After a tense battle of attrition, ${shortName(firstGoal.name)} finally broke the resistance in the ${ordinal(firstGoal.minute)} minute to hand ${winner} a ${winScore}-${loseScore} victory over ${loser}. The ${compName} encounter had looked destined for a stalemate before the decisive moment arrived.`
       );
     } else {
       paragraphs.push(
-        `${shortName(firstGoal.name)}'s ${firstGoal.minute}th-minute ${firstGoal.detail === 'Penalty' ? 'penalty' : 'goal'} proved the catalyst as ${winner} ${margin >= 3 ? 'dismantled' : 'overcame'} ${loser} ${winScore}-${loseScore} in the ${compName}. ${homeWon ? `The home faithful were given plenty to celebrate` : `It was a statement performance from the visitors`} on a night that underlined their credentials.`
+        `${shortName(firstGoal.name)}'s ${ordinal(firstGoal.minute)}-minute ${firstGoal.detail === 'Penalty' ? 'penalty' : 'goal'} proved the catalyst as ${winner} ${margin >= 3 ? 'dismantled' : 'overcame'} ${loser} ${winScore}-${loseScore} in the ${compName}. ${homeWon ? `The home faithful were given plenty to celebrate` : `It was a statement performance from the visitors`} on a night that underlined their credentials.`
       );
     }
   } else {
@@ -262,27 +398,56 @@ export function generateMatchReport(match: Match): Article | null {
   }
 
   // GOAL DETAILS: Build the narrative chronologically
-  if (total > 0 && allScorers.length > 0) {
+  if (allScorers.length > 0) {
     const goalNarrative: string[] = [];
+    let lateCount = 0;
 
     allScorers.forEach((scorer, idx) => {
       const team = scorer.team === 'home' ? home : away;
       const name = shortName(scorer.name);
       const min = scorer.minute;
+      const currentHS = homeScorers.filter(s => s.minute <= min).length;
+      const currentAS = awayScorers.filter(s => s.minute <= min).length;
 
-      if (idx === 0) {
+      // The side credited with an own goal is the side it benefits, which is
+      // right -- but the player is not one of theirs, and every verb in
+      // SCORER_VERBS ("fired home for", "opened the scoring for") reads as
+      // though he is.
+      if (scorer.detail === 'Own Goal') {
+        goalNarrative.push(
+          `${name} turned the ball into his own net in the ${ordinal(min)} minute, handing ${team} a goal to make it ${currentHS}-${currentAS}.`
+        );
+      } else if (idx === 0) {
         const assist = match.events?.find(e => e.type === 'goal' && e.minute === min && e.assistName);
         goalNarrative.push(
-          `${name} ${pick(SCORER_VERBS)} for ${team} on ${min} minutes${assist?.assistName ? `, with ${shortName(assist.assistName)} providing the assist` : ''}${scorer.detail === 'Penalty' ? ' from the penalty spot' : ''}.`
+          `${name} ${pick(SCORER_VERBS)} for ${team} on ${min} ${min === 1 ? 'minute' : 'minutes'}${assist?.assistName ? `, with ${shortName(assist.assistName)} providing the assist` : ''}${scorer.detail === 'Penalty' ? ' from the penalty spot' : ''}.`
         );
       } else {
-        const currentHS = homeScorers.filter(s => s.minute <= min).length;
-        const currentAS = awayScorers.filter(s => s.minute <= min).length;
+        // This side's lead *after* the goal. A goal that only draws the
+        // teams level is an equaliser and never "breathing room" -- judging
+        // by position in the match rather than by the score is how a 1-1
+        // equaliser came to be reported as doubling the lead.
+        const leadAfter =
+          scorer.team === 'home' ? currentHS - currentAS : currentAS - currentHS;
 
-        if (scorer.team === (homeWon ? 'home' : 'away') && idx === 1 && !isDraw) {
-          goalNarrative.push(`${name} ${pick(SECOND_GOAL)} for ${team} in the ${min}th minute, giving the ${homeWon ? 'hosts' : 'visitors'} breathing room.`);
+        if (leadAfter === 0) {
+          goalNarrative.push(`${name} levelled for ${team} in the ${ordinal(min)} minute, making it ${currentHS}-${currentAS}.`);
+        } else if (scorer.team === (homeWon ? 'home' : 'away') && idx === 1 && !isDraw && leadAfter >= 2) {
+          goalNarrative.push(`${name} ${pick(SECOND_GOAL)} for ${team} in the ${ordinal(min)} minute, giving the ${homeWon ? 'hosts' : 'visitors'} breathing room.`);
         } else if (min >= 85) {
-          goalNarrative.push(`Deep into the match, ${name} struck in the ${min}th minute to ${currentHS === currentAS ? 'level proceedings' : 'seal the result'} for ${team}.`);
+          // "Deep into the match, P. Esposito struck in the 90th minute to
+          // seal the result for Italy" -- Italy lost 4-1. A late goal seals
+          // nothing for a side that is still behind. And past 90 the clock
+          // reads as extra time, not as a minute of normal time; three such
+          // goals in one extra-time tie opened with the same four words each
+          // time, so the lead-in varies after the first.
+          const aheadAfter = scorer.team === 'home' ? currentHS - currentAS : currentAS - currentHS;
+          if (aheadAfter > 0) {
+            const opener = lateCount++ === 0 ? 'Deep into the match, ' : 'Later still, ';
+            goalNarrative.push(`${opener}${name} struck in the ${ordinal(min)} minute to seal the result for ${team}.`);
+          } else {
+            goalNarrative.push(`${name} struck in the ${ordinal(min)} minute to make it ${currentHS}-${currentAS}, too late for ${team} to alter the outcome.`);
+          }
         } else {
           goalNarrative.push(`${name} found the net for ${team} (${min}')${scorer.detail === 'Penalty' ? ' from the spot' : ''}, making it ${currentHS}-${currentAS}.`);
         }
@@ -293,30 +458,62 @@ export function generateMatchReport(match: Match): Article | null {
   }
 
   // STATS PARAGRAPH: Use specific numbers to tell the tactical story
+  // A missing statistics feed arrives as zeros rather than as nothing, and the
+  // old block printed them: "Possession was closely contested at 0%-0%, while
+  // Stade Plabennec created more shooting opportunities with a 0-0 advantage
+  // in total shots". Three further rules come out of published copy: the
+  // count is printed leader-first (a "12-29 advantage" was credited to the
+  // side with 29 while reading as 12), equal counts are not an advantage at
+  // all, and when one side leads both measures the clauses are joined rather
+  // than naming that team twice in one sentence.
   if (match.stats) {
-    const statsNarrative: string[] = [];
+    const homePoss = possession ? Number(possession[0]) : 0;
+    const awayPoss = possession ? Number(possession[1]) : 0;
+    const homeShots = shots ? Number(shots[0]) : 0;
+    const awayShots = shots ? Number(shots[1]) : 0;
+    const homeSOT = shotsOnTarget ? Number(shotsOnTarget[0]) : 0;
+    const awaySOT = shotsOnTarget ? Number(shotsOnTarget[1]) : 0;
 
-    if (possession) {
-      const domTeam = Number(possession[0]) > Number(possession[1]) ? home : away;
-      const domPct = Math.max(Number(possession[0]), Number(possession[1]));
-      if (domPct >= 60) {
-        statsNarrative.push(`${domTeam} dominated possession with ${domPct}% of the ball${domTeam === loser ? ', though it counted for little on the scoresheet' : ', controlling the tempo throughout'}`);
+    let possClause = '';
+    let possLeader: string | null = null;
+    if (homePoss + awayPoss > 0) {
+      const domPct = Math.max(homePoss, awayPoss);
+      possLeader = homePoss > awayPoss ? home : homePoss < awayPoss ? away : null;
+      if (possLeader && domPct >= 60) {
+        possClause = `${possLeader} dominated possession with ${domPct}% of the ball${possLeader === loser ? ', though it counted for little on the scoresheet' : ', controlling the tempo throughout'}`;
+      } else if (Math.abs(homePoss - awayPoss) <= 10) {
+        possClause = `possession was shared almost evenly at ${homePoss}%-${awayPoss}%`;
+        possLeader = null;
       } else {
-        statsNarrative.push(`Possession was closely contested at ${possession[0]}%-${possession[1]}%`);
+        possClause = `${possLeader} had the better of the ball at ${domPct}%`;
       }
     }
 
-    if (shots && shotsOnTarget) {
-      const homeShots = Number(shots[0]);
-      const awayShots = Number(shots[1]);
-      const homeSOT = Number(shotsOnTarget[0]);
-      const awaySOT = Number(shotsOnTarget[1]);
-      const shotLeader = homeShots > awayShots ? home : away;
-      statsNarrative.push(`${shotLeader} created more shooting opportunities with a ${homeShots}-${awayShots} advantage in total shots (${homeSOT}-${awaySOT} on target)`);
+    let shotsClause = '';
+    let shotsLeader: string | null = null;
+    if (homeShots + awayShots > 0) {
+      const lead = Math.max(homeShots, awayShots);
+      const trail = Math.min(homeShots, awayShots);
+      const sotLead = homeShots >= awayShots ? homeSOT : awaySOT;
+      const sotTrail = homeShots >= awayShots ? awaySOT : homeSOT;
+      const onTarget = homeSOT + awaySOT > 0 ? ` (${sotLead}-${sotTrail} on target)` : '';
+      shotsLeader = homeShots > awayShots ? home : homeShots < awayShots ? away : null;
+      shotsClause = shotsLeader
+        ? `${shotsLeader} created more shooting opportunities, leading ${lead}-${trail} on total shots${onTarget}`
+        : `the sides traded ${lead} shots apiece${onTarget}`;
     }
 
-    if (statsNarrative.length > 0) {
-      paragraphs.push(`The numbers told their own story. ${statsNarrative.join(', while ')}.`);
+    let statsSentence: string;
+    if (possClause && shotsClause && possLeader !== null && possLeader === shotsLeader) {
+      statsSentence = `${possClause}, and ${shotsClause.slice(shotsLeader.length + 1)}`;
+    } else if (possClause && shotsClause) {
+      statsSentence = `${possClause}, while ${shotsClause}`;
+    } else {
+      statsSentence = possClause || shotsClause;
+    }
+
+    if (statsSentence) {
+      paragraphs.push(`The numbers told their own story. ${statsSentence.charAt(0).toUpperCase()}${statsSentence.slice(1)}.`);
     }
   }
 
@@ -324,7 +521,7 @@ export function generateMatchReport(match: Match): Article | null {
   if (reds.length > 0) {
     const red = reds[0];
     paragraphs.push(
-      `The complexion of the match changed in the ${red.minute}th minute when ${red.playerName} received a red card for ${red.team === 'home' ? home : away}, leaving them to battle on with ten men for the remainder of the contest.`
+      `The complexion of the match changed in the ${ordinal(red.minute)} minute when ${shortName(red.playerName)} received a red card for ${red.team === 'home' ? home : away}, leaving them to battle on with ten men for the remainder of the contest.`
     );
   }
 
