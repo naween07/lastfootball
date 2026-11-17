@@ -3463,6 +3463,24 @@ function mdToHtmlServer(md) {
 }
 
 // Build a fully prerendered HTML page for a published article (match report etc.)
+
+/**
+ * The shell's no-JavaScript block, which carries its own <h1>.
+ *
+ * A prerendered page replaces the contents of #root, and this block sits
+ * outside it, so every article and hub page shipped two <h1> elements: the
+ * story's own, and "Last Football - Live Football Scores, Fixtures &
+ * Results". The block exists so a crawler without JavaScript sees something
+ * on a route that is NOT prerendered; on one that is, the page already has
+ * its heading and its content, and the site-wide marketing copy underneath
+ * only competes with them.
+ *
+ * Removed from the output only. index.html keeps it for every other route.
+ */
+function stripShellNoscript(html) {
+  return html.replace(/<noscript>\s*<div style="padding:20px[\s\S]*?<\/noscript>/, '');
+}
+
 /** Recursively restyle the old one-word brand inside a stored JSON-LD object. */
 function rebrandJsonLd(value) {
   if (typeof value === 'string') return value.split('LastFootball').join('Last Football');
@@ -3580,6 +3598,7 @@ async function prerenderArticle(slug) {
   html = html.replace('</head>', `  ${jsonLdScript}\n</head>`);
   // Inject content into #root (crawler sees it; React hydration replaces it)
   html = html.replace(/<div id="root">[\s\S]*?<\/div>/, `<div id="root">${contentBlock}</div>`);
+  html = stripShellNoscript(html);
 
   cacheSet(cacheKey, html, { fresh: 300, stale: 1800 });
   return html;
@@ -3716,6 +3735,7 @@ function buildHubHtml(kind, externalId, rows) {
     .replace(/<meta name="twitter:description"[^>]*>/, `<meta name="twitter:description" content="${escapeHtml(desc)}" />`);
   html = html.replace('</head>', `  <script type="application/ld+json">${JSON.stringify(jsonLd)}</script>\n</head>`);
   html = html.replace(/<div id="root">[\s\S]*?<\/div>/, `<div id="root">${contentBlock}</div>`);
+  html = stripShellNoscript(html);
 
   return html;
 }

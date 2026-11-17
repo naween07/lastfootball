@@ -37,17 +37,28 @@ export function postRowToArticle(p: any): Article {
     leagueLogo: undefined,
     // `teams` is filled by the sync; the entities carry the same two names
     // for rows written before it was.
-    homeTeam: { name: p.teams?.[0] || teamFromEntities(p, 0), logo: undefined },
-    awayTeam: { name: p.teams?.[1] || teamFromEntities(p, 1), logo: undefined },
+    //
+    // The badge is derived rather than stored: `posts` keeps the competition
+    // image as the article's picture and no team logos, so the card showed an
+    // empty "vs" between two blanks. The entity carries the team's own id,
+    // and the provider serves every club's badge at a fixed path from it.
+    homeTeam: { name: p.teams?.[0] || teamName(p, 0), logo: teamLogo(p, 0) },
+    awayTeam: { name: p.teams?.[1] || teamName(p, 1), logo: teamLogo(p, 1) },
     matchId: 0,
     publishedAt: p.published_at,
     isFeatured: isWorldCup,
   };
 }
 
-function teamFromEntities(p: any, index: number): string {
-  const teams = Array.isArray(p.entities)
-    ? p.entities.filter((e: any) => e?.kind === 'TEAM')
-    : [];
-  return teams[index]?.name ?? '';
+function teamEntities(p: any): any[] {
+  return Array.isArray(p.entities) ? p.entities.filter((e: any) => e?.kind === 'TEAM') : [];
+}
+
+function teamName(p: any, index: number): string {
+  return teamEntities(p)[index]?.name ?? '';
+}
+
+function teamLogo(p: any, index: number): string | undefined {
+  const id = teamEntities(p)[index]?.externalId;
+  return id ? `https://media.api-sports.io/football/teams/${id}.png` : undefined;
 }
