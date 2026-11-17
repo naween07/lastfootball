@@ -16,6 +16,13 @@ export interface MatchEvent {
   playerName: string;
   assistName?: string;
   detail?: string;
+  /**
+   * The provider's own note on the event. "Penalty Shootout" is how a
+   * shootout kick arrives -- as a goal event like any other, with a minute
+   * carrying on from the end of play -- and the match report has to tell
+   * those apart from goals.
+   */
+  comments?: string;
 }
 
 export interface MatchStats {

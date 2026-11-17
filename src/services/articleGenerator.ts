@@ -140,13 +140,30 @@ function pick<T>(arr: T[]): T {
 // on the website every one of those reads is `undefined` at runtime and the
 // comparisons silently take the wrong branch. Vite never type-checks, so
 // nothing surfaced it there; `tsc` here caught it immediately.
+/**
+ * A shootout kick, which the provider sends as an ordinary goal event.
+ *
+ * Reading them as goals published Liverpool 1-1 Chelsea as a 6-6 match with
+ * goals in the 91st, 92nd, 93rd and on to the 103rd minute, and Firminy 1-1
+ * Annecy with five goals all in the 120th. Guarding the SCORELINE against the
+ * provider's shootout arithmetic was not enough: the body narrates the events,
+ * and the events include every kick.
+ *
+ * The minute cannot separate them -- a shootout numbered from the 91st is
+ * indistinguishable from extra-time goals -- so this goes by the provider's
+ * own note on the event.
+ */
+export function isShootoutKick(e: MatchEvent): boolean {
+  return /penalty\s*shoot\s*-?out/i.test(e.comments ?? '');
+}
+
 export function getScorers(
   events: MatchEvent[] | undefined,
   side: 'home' | 'away',
 ): { name: string; minute: number; detail?: string; team: 'home' | 'away' }[] {
   if (!events) return [];
   return events
-    .filter(e => e.type === 'goal' && e.team === side)
+    .filter(e => e.type === 'goal' && e.team === side && !isShootoutKick(e))
     .map(e => ({ name: e.playerName, minute: e.minute, detail: e.detail, team: e.team }));
 }
 
@@ -229,7 +246,7 @@ export function generateMatchReport(match: Match): Article | null {
   const penWinScore = hasPenScore ? Math.max(penH as number, penA as number) : null;
   const penLoseScore = hasPenScore ? Math.min(penH as number, penA as number) : null;
 
-  const goalEvents = (match.events || []).filter(e => e.type === 'goal');
+  const goalEvents = (match.events || []).filter(e => e.type === 'goal' && !isShootoutKick(e));
   const regHome = goalEvents.filter(e => e.team === 'home').length;
   const regAway = goalEvents.filter(e => e.team === 'away').length;
   const knowRegScore = isPEN && goalEvents.length > 0 && regHome === regAway;
@@ -473,7 +490,15 @@ export function generateMatchReport(match: Match): Article | null {
           const aheadAfter = scorer.team === 'home' ? currentHS - currentAS : currentAS - currentHS;
           if (aheadAfter > 0) {
             const opener = lateCount++ === 0 ? 'Deep into the match, ' : 'Later still, ';
-            goalNarrative.push(`${opener}${name} struck in the ${ordinal(min)} minute to seal the result for ${team}.`);
+            // A late goal in a match that finished level settled nothing; it
+            // put them ahead for a while. Only a match with a winner gets
+            // "sealed", and a shootout tie has no winner in normal play.
+            const sealed = !isDraw && !isPEN;
+            goalNarrative.push(
+              sealed
+                ? `${opener}${name} struck in the ${ordinal(min)} minute to seal the result for ${team}.`
+                : `${opener}${name} struck in the ${ordinal(min)} minute to put ${team} ahead.`,
+            );
           } else {
             goalNarrative.push(`${name} struck in the ${ordinal(min)} minute to make it ${currentHS}-${currentAS}, too late for ${team} to alter the outcome.`);
           }

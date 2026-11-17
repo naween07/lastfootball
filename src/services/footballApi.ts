@@ -261,6 +261,7 @@ export async function fetchMatchDetails(fixtureId: number): Promise<Match | null
             playerName: e.player?.name || "Unknown",
             assistName: e.assist?.name || undefined,
             detail: e.detail || undefined,
+            comments: e.comments || undefined,
           };
         })
         .filter((e): e is MatchEvent => e !== null);
