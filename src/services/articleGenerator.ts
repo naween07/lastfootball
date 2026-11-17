@@ -174,11 +174,30 @@ function titleCasePlayer(name: string): string {
   return name.replace(/([a-z])([a-z'\u2019-]*)/g, (_m, first: string, rest: string) => first.toUpperCase() + rest);
 }
 
+/**
+ * Surname particles that belong to the surname.
+ *
+ * Taking only the last whitespace-separated token turned "A. Al Dwehe" into
+ * "A. Dwehe" and would do the same to van Dijk, De Bruyne and dos Santos.
+ * The provider is inconsistent about hyphenating these, so the hyphenated
+ * spelling survived on its own and the spaced one did not.
+ */
+const SURNAME_PARTICLES = new Set([
+  'al', 'el', 'bin', 'ibn', 'van', 'von', 'de', 'del', 'della', 'der', 'den',
+  'da', 'das', 'dos', 'di', 'du', 'la', 'le', 'ter', 'ten',
+]);
+
 function shortName(name: string): string {
   const parts = titleCasePlayer((name || '').trim()).split(/\s+/).filter(Boolean);
   if (parts.length === 0) return '';
   if (parts.length === 1) return parts[0];
-  return `${parts[0].charAt(0)}. ${parts[parts.length - 1]}`;
+
+  let from = parts.length - 1;
+  // Walk back over particles, but never as far as the first token: a two-part
+  // name like "De Bruyne" keeps its initial rather than becoming the surname.
+  while (from > 1 && SURNAME_PARTICLES.has(parts[from - 1].toLowerCase())) from--;
+
+  return `${parts[0].charAt(0)}. ${parts.slice(from).join(' ')}`;
 }
 
 // ─── Main generator ─────────────────────────────────────────────────────────
