@@ -3,8 +3,7 @@ import { Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import SEOHead from '@/components/SEOHead';
 import { supabase } from '@/integrations/supabase/client';
-import { fetchMatchesByDate } from '@/services/footballApi';
-import { generateDailyReports, Article } from '@/services/articleGenerator';
+import { Article, postRowToArticle } from '@/types/article';
 import { fetchFootballNews, NewsItem } from '@/services/newsApi';
 import { Newspaper, FileText, Clock, Eye, Loader2, Globe, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -28,20 +27,23 @@ export default function NewsList() {
     })();
   }, []);
 
+  // Match reports come from the table, not from the browser. This tab used
+  // to regenerate the last three days of fixtures on every visit, from a
+  // copy of the generator that had drifted a week behind the backend's: it
+  // was still publishing "inspires Brighton beat Brentford" and crediting
+  // own goals to the side that conceded. The backend is the single producer,
+  // and these rows are the same ones the app reads.
   useEffect(() => {
     (async () => {
       try {
-        const today = new Date();
-        const dates = [0, 1, 2].map(d => { const date = new Date(today); date.setDate(date.getDate() - d); return date.toISOString().split('T')[0]; });
-        const results = await Promise.all(dates.map(date => fetchMatchesByDate(date)));
-        const allMatches = results.flat();
-        const reports = generateDailyReports(allMatches);
-        reports.sort((a, b) => {
-          if (a.isFeatured && !b.isFeatured) return -1;
-          if (!a.isFeatured && b.isFeatured) return 1;
-          return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
-        });
-        setMatchReports(reports);
+        const { data } = await supabase
+          .from('posts')
+          .select('id, title, slug, subtitle, excerpt, meta_description, body, league, teams, entities, published_at')
+          .eq('status', 'published')
+          .in('category', ['match-report', 'featured'])
+          .order('published_at', { ascending: false })
+          .limit(120);
+        if (data) setMatchReports(data.map(postRowToArticle));
       } catch {}
       setLoadingReports(false);
     })();

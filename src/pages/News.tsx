@@ -3,8 +3,7 @@ import { Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import SEOHead from '@/components/SEOHead';
 import OptimizedImage from '@/components/OptimizedImage';
-import { fetchMatchesByDate, fetchRecentWorldCupMatches } from '@/services/footballApi';
-import { generateDailyReports, Article } from '@/services/articleGenerator';
+import { Article } from '@/types/article';
 import { fetchFootballNews, NewsItem } from '@/services/newsApi';
 import { supabase } from '@/integrations/supabase/client';
 import { Flame, Clock, Loader2, Newspaper, FileText, ExternalLink, Globe } from 'lucide-react';
@@ -208,8 +207,6 @@ export default function News() {
     </div>
   );
 }
-
-export { generateDailyReports };
 
 function FeaturedReport({ article }: { article: Article }) {
   return (

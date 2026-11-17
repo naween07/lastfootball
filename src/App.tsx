@@ -20,7 +20,6 @@ const Favorites = lazy(() => import("./pages/Favorites"));
 const SearchPage = lazy(() => import("./pages/SearchPage"));
 const Stats = lazy(() => import("./pages/Stats"));
 const News = lazy(() => import("./pages/News"));
-const ArticleDetail = lazy(() => import("./pages/ArticleDetail"));
 const TeamProfile = lazy(() => import("./pages/TeamProfile"));
 const PlayerCompare = lazy(() => import("./pages/PlayerCompare"));
 const PlayerProfile = lazy(() => import("./pages/PlayerProfile"));

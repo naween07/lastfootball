@@ -583,7 +583,8 @@ function EmptyState({ text }: { text: string }) {
 }
 
 function GoalScorers({ events, side }: { events: MatchEvent[]; side: 'home' | 'away' }) {
-  // Own goals count for the other side -- see getScorers in articleGenerator.ts.
+  // Own goals count for the other side: the provider credits the event to
+  // the team the goal counts for, not to the player's own side.
   const goals = events.filter(e => e.type === 'goal' && (e.detail === 'Own Goal' ? e.team !== side : e.team === side));
   if (!goals.length) return null;
 

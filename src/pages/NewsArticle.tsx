@@ -23,9 +23,15 @@ export default function NewsArticle() {
 
   useEffect(() => {
     if (!slug) return;
-    // Generated match reports are passed via router state (not stored in the DB)
+    // A story opened from a list arrives in router state as well. That used to
+    // win outright, on the comment that generated reports were "not stored in
+    // the DB" -- true when the site generated them in the browser, false since
+    // the backend became their producer. It meant a reader clicking a report
+    // saw freshly generated prose while the stored, repaired copy sat under the
+    // same slug. The table wins now; the passed copy is only a fallback for a
+    // match that finished before the sync caught up.
     const passed = (location.state as any)?.article;
-    if (passed && passed.slug === slug) {
+    const usePassed = () => {
       setArticle({
         title: passed.title,
         subtitle: passed.summary,
@@ -43,13 +49,18 @@ export default function NewsArticle() {
         _generated: true,
       });
       setLoading(false);
-      return;
-    }
+    };
     (async () => {
-      const { data } = await supabase.from('posts').select('*').eq('slug', slug).eq('status', 'published').single();
+      const { data } = await supabase.from('posts').select('*').eq('slug', slug).eq('status', 'published').maybeSingle();
       if (data) {
         setArticle(data);
         await supabase.from('posts').update({ view_count: (data.view_count || 0) + 1 }).eq('id', data.id);
+        setLoading(false);
+        return;
+      }
+      if (passed && passed.slug === slug) {
+        usePassed();
+        return;
       }
       setLoading(false);
     })();
