@@ -153,7 +153,11 @@ export function getScorers(
 function formatScorerList(scorers: { name: string; minute: number; detail?: string }[]): string {
   if (!scorers.length) return '';
   return scorers.map(s => {
-    let str = `${shortName(s.name)} (${s.minute}')`;
+    // Casing only, not shortName. Routing this through shortName stopped
+    // "a. svanback" reaching the summary but abbreviated every other name
+    // with it, turning "Milan Iloski (49'), Bruno Damiani (55')" into
+    // initials. This is the meta description: full names belong here.
+    let str = `${titleCasePlayer(s.name.trim())} (${s.minute}')`;
     if (s.detail === 'Penalty') str += ' (pen)';
     if (s.detail === 'Own Goal') str += ' (og)';
     return str;
@@ -406,8 +410,14 @@ export function generateMatchReport(match: Match): Article | null {
       const team = scorer.team === 'home' ? home : away;
       const name = shortName(scorer.name);
       const min = scorer.minute;
-      const currentHS = homeScorers.filter(s => s.minute <= min).length;
-      const currentAS = awayScorers.filter(s => s.minute <= min).length;
+      // Counted in order rather than by minute. Filtering on `minute <= min`
+      // makes two goals in the same minute each count the other as already
+      // scored, which published "A. Mendy levelled ... making it 2-2"
+      // followed by "J. Domingues levelled ... making it 2-2" in a 3-2 match
+      // where the first of those was in fact a 2-1 lead.
+      const scoredSoFar = allScorers.slice(0, idx + 1);
+      const currentHS = scoredSoFar.filter(s => s.team === 'home').length;
+      const currentAS = scoredSoFar.filter(s => s.team === 'away').length;
 
       // The side credited with an own goal is the side it benefits, which is
       // right -- but the player is not one of theirs, and every verb in
