@@ -31,6 +31,30 @@ const API_KEY = process.env.API_FOOTBALL_KEY;
 const SUPABASE_URL = 'https://ehfyctoaudhyrjxbftty.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVoZnljdG9hdWRoeXJqeGJmdHR5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMjU4NjAsImV4cCI6MjA5MjYwMTg2MH0.0AoYP0nhrYWuLhSVGwRdHKSfNVQa-jJw0E4EZKWtTGU';
 
+/**
+ * The service key, with no fallback to the publishable one.
+ *
+ * Every write used to take the service key or, failing that, the
+ * publishable one -- in seventeen places. The variable was never set on the
+ * server, so all of them ran as `anon`, and the article sync only worked
+ * because a policy on `posts` let anyone insert a published match report.
+ * That policy was therefore load-bearing, and it also meant anybody holding
+ * the publishable key, which is compiled into the site's JavaScript, could
+ * publish an article here with any title, slug and body.
+ *
+ * Falling back turned a missing setting into a silent downgrade of
+ * authority, with no failure to notice. Without the key, writes now fail
+ * and the server says so on startup.
+ */
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || '';
+if (!SUPABASE_SERVICE_KEY) {
+  console.error(
+    '[CONFIG] SUPABASE_SERVICE_KEY is not set. Every write to Supabase will be ' +
+    'refused by row-level security: the article sync, push subscriptions and ' +
+    'fantasy scoring will all fail until it is added to .env.',
+  );
+}
+
 if (!API_KEY) {
   console.error('Missing API_FOOTBALL_KEY env var');
   process.exit(1);
@@ -263,7 +287,7 @@ async function detectLiveEventsAndNotify(liveData, todayData) {
 
 async function sendPushEvents(events) {
   try {
-    const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+    const SVC = SUPABASE_SERVICE_KEY;
     const allTeamIds = [...new Set(events.flatMap(e => e.teamIds))];
     if (!allTeamIds.length) return;
     // PostgREST array-overlap: subscriptions whose team_ids intersect the event teams.
@@ -982,7 +1006,7 @@ const server = http.createServer(async (req, res) => {
     // Open in a browser, click "Copy", paste into a Facebook Page post.
     if (path === '/api/share-kit') {
       try {
-        const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+        const SVC = SUPABASE_SERVICE_KEY;
         const posts = await supabaseQueryWithKey('posts',
           "category=eq.match-report&status=eq.published&select=title,slug,subtitle,league,teams,featured_image,published_at&order=published_at.desc&limit=25",
           'GET', null, SVC);
@@ -1160,7 +1184,7 @@ const server = http.createServer(async (req, res) => {
     // API quota status (no rate limit)
     if (path === '/api/leaderboard') {
       try {
-        const key = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+        const key = SUPABASE_SERVICE_KEY;
         const stats = await supabaseQueryWithKey('prediction_stats', 'select=*&order=total_points.desc&limit=50', 'GET', null, key);
         return json(req, res, { leaderboard: stats || [] });
       } catch (err) {
@@ -1192,7 +1216,7 @@ const server = http.createServer(async (req, res) => {
         const teamIds = Array.isArray(b.teamIds)
           ? [...new Set(b.teamIds.filter((n) => Number.isInteger(n)))].slice(0, 100)
           : [];
-        const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+        const SVC = SUPABASE_SERVICE_KEY;
         await supabaseQueryWithKey('push_subscriptions', 'on_conflict=endpoint', 'POST', {
           endpoint: sub.endpoint,
           keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
@@ -1210,7 +1234,7 @@ const server = http.createServer(async (req, res) => {
       try {
         const b = JSON.parse((await readBody(req)) || '{}');
         if (!b.endpoint) return error(req, res, 400, 'endpoint required');
-        const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+        const SVC = SUPABASE_SERVICE_KEY;
         await supabaseQueryWithKey('push_subscriptions', 'endpoint=eq.' + encodeURIComponent(b.endpoint), 'DELETE', null, SVC);
         return json(req, res, { ok: true });
       } catch {
@@ -1220,7 +1244,7 @@ const server = http.createServer(async (req, res) => {
 
     if (path === '/api/quota-history') {
       try {
-        const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+        const SVC = SUPABASE_SERVICE_KEY;
         const rows = await supabaseQueryWithKey('cache_snapshots',
           'key=like.quota_day:*&select=key,data,updated_at&order=key.desc&limit=14', 'GET', null, SVC);
         return json(req, res, { days: (rows || []).map(r => r.data) });
@@ -2158,7 +2182,7 @@ function saveSnapshot(key, data) {
   const now = Date.now();
   if (_snapshotDebounce[key] && now - _snapshotDebounce[key] < 60000) return;
   _snapshotDebounce[key] = now;
-  const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+  const SVC = SUPABASE_SERVICE_KEY;
   const body = { key, data, updated_at: new Date().toISOString() };
   supabaseQueryWithKey('cache_snapshots', 'on_conflict=key', 'POST', body, SVC)
     .catch(e => console.error('[SNAPSHOT] save error:', e.message));
@@ -2166,7 +2190,7 @@ function saveSnapshot(key, data) {
 
 async function loadSnapshotsIntoCache() {
   try {
-    const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+    const SVC = SUPABASE_SERVICE_KEY;
     const rows = await supabaseQueryWithKey('cache_snapshots', 'select=key,data,updated_at', 'GET', null, SVC);
     if (Array.isArray(rows)) {
       for (const r of rows) {
@@ -2204,7 +2228,7 @@ async function loadHomepageSnapshotOnce(cacheKey) {
   if (now - _homepageSnapLoadAt < 30000) return homepageAgg?.data || null;
   _homepageSnapLoadAt = now;
   try {
-    const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+    const SVC = SUPABASE_SERVICE_KEY;
     const rows = await supabaseQueryWithKey(
       'cache_snapshots',
       `select=data,updated_at&key=eq.${encodeURIComponent(cacheKey)}`,
@@ -2253,7 +2277,7 @@ async function warmWorldCupStats() {
 async function scoreFantasy() {
   if (!backgroundJobsAllowed()) return;
   try {
-    const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+    const SVC = SUPABASE_SERVICE_KEY;
 
     // 1. All finished WC 2026 fixtures
     const fx = await fetchUpstream('fixtures', { league: '1', season: '2026', status: 'FT-AET-PEN' });
@@ -2926,7 +2950,7 @@ async function generateMatchPreviews() {
   // when batch jobs are rightly paused (missed Spain-Portugal, 2026-07-06).
   if (!userFetchAllowed()) return;
   try {
-    const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+    const SVC = SUPABASE_SERVICE_KEY;
     // Season fixtures — reuse the WC hub's warm cache; one paced fetch at most.
     const seasonKey = 'fixtures?league=1&season=2026';
     let season = cacheGet(seasonKey)?.data || lastGood.get(seasonKey)?.data;
@@ -3171,7 +3195,7 @@ const ARTICLE_FIELDS = `
  *                        site); false = the most recent pages only.
  */
 async function syncArticlesFromBackend(full = false) {
-  const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+  const SVC = SUPABASE_SERVICE_KEY;
   syncState.lastAttemptAt = new Date().toISOString();
   const maxPages = full ? 40 : 2;
   const rows = [];
@@ -3259,7 +3283,7 @@ async function syncArticlesFromBackend(full = false) {
 async function generateMatchReports() {
   if (!backgroundJobsAllowed()) return;
   try {
-    const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+    const SVC = SUPABASE_SERVICE_KEY;
     // Gather recently finished matches from notable leagues
     const finished = [];
     // World Cup first
@@ -3512,7 +3536,7 @@ async function prerenderArticle(slug) {
 
   const rows = await supabaseQueryWithKey('posts',
     `slug=eq.${encodeURIComponent(slug)}&status=eq.published&select=title,subtitle,meta_description,body,league,teams,entities,featured_image,featured_image_alt,published_at,json_ld,author_name&limit=1`,
-    'GET', null, process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY);
+    'GET', null, SUPABASE_SERVICE_KEY);
   if (!Array.isArray(rows) || !rows.length) return null;
   const post = rows[0];
 
@@ -3777,7 +3801,7 @@ async function fetchHubArticles(kind, id) {
     `status=eq.published&entities=cs=${filter}` +
     '&select=slug,title,published_at,league,entities' +
     '&order=published_at.desc&limit=24',
-    'GET', null, process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY);
+    'GET', null, SUPABASE_SERVICE_KEY);
 
   // supabaseQueryWithKey resolves with the error body rather than throwing,
   // so a malformed filter arrives here as an object and an empty result
@@ -4220,7 +4244,7 @@ async function writePreviewCard({ slug, home, away, round, kickoffIso, homeLogo,
 async function backfillScoreCards() {
   if (!sharp) return;
   try {
-    const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+    const SVC = SUPABASE_SERVICE_KEY;
     const rows = await supabaseQueryWithKey('posts',
       "category=eq.match-report&status=eq.published&featured_image=is.null&select=id,slug,teams,league,title,published_at&limit=200",
       'GET', null, SVC);
@@ -4261,7 +4285,7 @@ async function backfillScoreCards() {
  * pages and be fetched twice or skipped entirely.
  */
 async function fetchAllPublishedPosts(select, { pageSize = 1000, maxPages = 20 } = {}) {
-  const SVC = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+  const SVC = SUPABASE_SERVICE_KEY;
   const all = [];
 
   for (let page = 0; page < maxPages; page++) {
