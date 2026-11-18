@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import SEOHead from '@/components/SEOHead';
@@ -136,8 +136,20 @@ export default function LeagueProfile() {
                   </tr>
                 </thead>
                 <tbody>
-                  {standings.map((row) => (
-                    <tr key={`${row.group ?? ''}-${row.team.id}`} className="border-b border-border/50 last:border-0">
+                  {standings.map((row, i) => (
+                    <Fragment key={`${row.group ?? ''}-${row.team.id}`}>
+                      {/* A group competition comes back as one list with the
+                          ranks restarting, so without this the Nations League
+                          read "1 France ... 4 Turkey, 1 Germany" as a single
+                          table. */}
+                      {row.group && row.group !== standings[i - 1]?.group && (
+                        <tr className="bg-secondary/40">
+                          <td colSpan={8} className="py-1.5 px-3 text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+                            {row.group}
+                          </td>
+                        </tr>
+                      )}
+                    <tr className="border-b border-border/50 last:border-0">
                       <td className="py-2 pl-3 text-muted-foreground">{row.rank}</td>
                       <td className="py-2">
                         <Link to={`/team/${row.team.id}`} className="flex items-center gap-2 hover:text-primary transition-colors">
@@ -154,6 +166,7 @@ export default function LeagueProfile() {
                       </td>
                       <td className="py-2 text-center pr-3 font-black text-foreground">{row.points}</td>
                     </tr>
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
