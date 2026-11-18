@@ -1025,10 +1025,10 @@ const server = http.createServer(async (req, res) => {
     // The other end of the links the article pages now carry. Without this
     // a crawler following "Manchester United" off a match report lands on an
     // empty shell, and the internal linking counts for nothing.
-    const hubMatch = path.replace(/\/$/, '').match(/^\/(team|player)\/(\d+)$/);
+    const hubMatch = path.replace(/\/$/, '').match(/^\/(team|player|league)\/(\d+)$/);
     if (hubMatch) {
       try {
-        const html = await prerenderHub(hubMatch[1] === 'team' ? 'TEAM' : 'PLAYER', hubMatch[2]);
+        const html = await prerenderHub(HUB_KINDS[hubMatch[1]], hubMatch[2]);
         if (html) {
           res.writeHead(200, {
             ...getCorsHeaders(req),
@@ -3465,6 +3465,17 @@ function mdToHtmlServer(md) {
 // Build a fully prerendered HTML page for a published article (match report etc.)
 
 /**
+ * Where each kind of entity has a page.
+ *
+ * LEAGUE was absent from every one of these lists until the site had a
+ * /league/:id route: the competition was named on every match report and
+ * linked from none of them, which left the one entity tying a whole season
+ * of reports together doing no work at all.
+ */
+const HUB_SEGMENTS = { TEAM: 'team', PLAYER: 'player', LEAGUE: 'league' };
+const HUB_KINDS = Object.fromEntries(Object.entries(HUB_SEGMENTS).map(([k, v]) => [v, k]));
+
+/**
  * The shell's no-JavaScript block, which carries its own <h1>.
  *
  * A prerendered page replaces the contents of #root, and this block sits
@@ -3530,12 +3541,9 @@ async function prerenderArticle(slug) {
   // the entities column existed.
   const entityLinks = Array.isArray(post.entities)
     ? post.entities
-        .filter((e) => e && e.externalId && e.name && (e.kind === 'TEAM' || e.kind === 'PLAYER'))
+        .filter((e) => e && e.externalId && e.name && HUB_SEGMENTS[e.kind])
         .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
-        .map((e) => {
-          const path = e.kind === 'TEAM' ? 'team' : 'player';
-          return `<a href="/${path}/${e.externalId}">${escapeHtml(e.name)}</a>`;
-        })
+        .map((e) => `<a href="/${HUB_SEGMENTS[e.kind]}/${e.externalId}">${escapeHtml(e.name)}</a>`)
     : [];
 
   const teamsLine = entityLinks.length
@@ -3641,19 +3649,23 @@ function buildHubHtml(kind, externalId, rows) {
   if (!shell) return null;
 
   const BASE = 'https://lastfootball.com';
-  const segment = kind === 'TEAM' ? 'team' : 'player';
+  const segment = HUB_SEGMENTS[kind];
   const url = `${BASE}/${segment}/${id}`;
   const safeName = escapeHtml(name);
 
   const pageTitle = kind === 'TEAM'
     ? `${name} news, match reports and results | Last Football`
-    : `${name} news and match reports | Last Football`;
+    : kind === 'LEAGUE'
+      ? `${name} match reports and results | Last Football`
+      : `${name} news and match reports | Last Football`;
   // No article count in the description: it would change under the page on
   // every sync, and a meta description that moves is one a search engine
   // learns to ignore.
   const desc = kind === 'TEAM'
     ? `Match reports, results and the latest news for ${name}.`
-    : `Match reports and news featuring ${name}.`;
+    : kind === 'LEAGUE'
+      ? `Match reports and results from the ${name}.`
+      : `Match reports and news featuring ${name}.`;
 
   const fmtDate = (value) => {
     if (!value) return null;
@@ -3687,7 +3699,11 @@ function buildHubHtml(kind, externalId, rows) {
   }
   if (!listItems.length) return null;
 
-  const heading = kind === 'TEAM' ? `${safeName} news and match reports` : `${safeName} news`;
+  const heading = kind === 'TEAM'
+    ? `${safeName} news and match reports`
+    : kind === 'LEAGUE'
+      ? `${safeName} match reports`
+      : `${safeName} news`;
   const contentBlock = `
     <section class="prerendered-hub">
       <h1>${heading}</h1>
@@ -3707,11 +3723,18 @@ function buildHubHtml(kind, externalId, rows) {
     '@type': 'CollectionPage',
     '@id': url,
     url,
-    name: kind === 'TEAM' ? `${name} news and match reports` : `${name} news`,
+    name: kind === 'TEAM'
+      ? `${name} news and match reports`
+      : kind === 'LEAGUE'
+        ? `${name} match reports`
+        : `${name} news`,
     description: desc,
     isPartOf: { '@type': 'WebSite', '@id': `${BASE}/#website`, name: 'Last Football', url: BASE },
     about: {
-      '@type': kind === 'TEAM' ? 'SportsTeam' : 'Person',
+      // A competition is an organisation, not a club and not a person. The
+      // two-way branch here would have published every league page as a
+      // Person named "Coupe de France".
+      '@type': kind === 'TEAM' ? 'SportsTeam' : kind === 'LEAGUE' ? 'SportsOrganization' : 'Person',
       '@id': `${url}#entity`,
       name,
     },
@@ -3821,7 +3844,7 @@ async function writeHubFiles() {
       if (!post.slug || !post.title || !Array.isArray(post.entities)) continue;
       for (const e of post.entities) {
         if (!e || !e.externalId || !e.name) continue;
-        if (e.kind !== 'TEAM' && e.kind !== 'PLAYER') continue;
+        if (!HUB_SEGMENTS[e.kind]) continue;
         const key = `${e.kind}:${Number(e.externalId)}`;
         let list = byHub.get(key);
         if (!list) { list = []; byHub.set(key, list); }
@@ -3840,7 +3863,8 @@ async function writeHubFiles() {
       // Nothing is written for a hub with no name: buildHubHtml refuses it,
       // and a file is a louder way to be wrong than a live page.
       if (!html) { skipped++; continue; }
-      const segment = kind === 'TEAM' ? 'team' : 'player';
+      const segment = HUB_SEGMENTS[kind];
+      if (!segment) { skipped++; continue; }
       const dir = path.join(distRoot, segment, String(id));
       try {
         fs.mkdirSync(dir, { recursive: true });
@@ -3892,10 +3916,9 @@ async function buildSitemapXml() {
         if (!Array.isArray(p.entities)) continue;
         for (const e of p.entities) {
           if (!e || !e.externalId || !e.name) continue;
-          const segment = e.kind === 'TEAM' ? 'team' : e.kind === 'PLAYER' ? 'player' : null;
-          // LEAGUE is skipped on purpose: there is no /league/:id route on
-          // the site yet, so listing one would be a sitemap entry pointing
-          // at a 404.
+          // LEAGUE joined these once /league/:id existed. Before that a
+          // sitemap entry for one would have pointed at a 404.
+          const segment = HUB_SEGMENTS[e.kind];
           if (!segment) continue;
           const key = `${segment}/${e.externalId}`;
           // Posts come back newest first, so the first sighting of a hub is

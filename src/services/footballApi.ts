@@ -460,6 +460,46 @@ export interface StandingTeam {
   group?: string;
 }
 
+export interface LeagueInfo {
+  id: number;
+  name: string;
+  type: string;
+  logo: string;
+  country: string;
+  countryFlag: string | null;
+  seasons: number[];
+}
+
+/**
+ * A competition's own details.
+ *
+ * Standings carry the table and nothing about the competition itself, and the
+ * hard-coded list in LeagueFilter covers a dozen leagues out of the hundreds
+ * a match report can mention. A league page for the Coupe de France has to be
+ * able to name it.
+ */
+export async function fetchLeagueInfo(leagueId: number): Promise<LeagueInfo | null> {
+  try {
+    const data = await callApi("leagues", { id: String(leagueId) });
+    const row = data?.[0];
+    if (!row?.league?.id) return null;
+    const seasons = Array.isArray(row.seasons)
+      ? row.seasons.map((s: any) => Number(s?.year)).filter((y: number) => Number.isFinite(y))
+      : [];
+    return {
+      id: row.league.id,
+      name: row.league.name,
+      type: row.league.type ?? '',
+      logo: row.league.logo ?? `https://media.api-sports.io/football/leagues/${leagueId}.png`,
+      country: row.country?.name ?? '',
+      countryFlag: row.country?.flag ?? null,
+      seasons: seasons.sort((a: number, b: number) => b - a),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchStandings(leagueId: number, season: number): Promise<StandingTeam[]> {
   try {
     const data = await callApi("standings", { league: String(leagueId), season: String(season) });

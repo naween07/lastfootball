@@ -11,6 +11,17 @@ import { cn } from '@/lib/utils';
  * appends the site name itself. Without stripping, article titles compounded
  * to "Headline | LastFootball | LastFootball | Last Football".
  */
+/**
+ * Where each kind of entity has a page. A competition is named in every match
+ * report and, until it had one, was the only one of the three a reader could
+ * not follow.
+ */
+const ENTITY_PATHS: Record<string, string> = {
+  TEAM: 'team',
+  PLAYER: 'player',
+  LEAGUE: 'league',
+};
+
 function stripBrandSuffix(title: string): string {
   return title.replace(/\s*\|\s*Last\s?Football\s*$/i, '').trim();
 }
@@ -154,11 +165,11 @@ export default function NewsArticle() {
         {Array.isArray(article.entities) && article.entities.length > 0 ? (
           <div className="flex flex-wrap gap-2 mt-3">
             {article.entities
-              .filter((e: any) => e?.externalId && e?.name && (e.kind === 'TEAM' || e.kind === 'PLAYER'))
+              .filter((e: any) => e?.externalId && e?.name && ENTITY_PATHS[e.kind])
               .map((e: any) => (
                 <Link
                   key={`${e.kind}-${e.externalId}`}
-                  to={`/${e.kind === 'TEAM' ? 'team' : 'player'}/${e.externalId}`}
+                  to={`/${ENTITY_PATHS[e.kind]}/${e.externalId}`}
                   className="text-[10px] text-[#00ff87] bg-[#00ff87]/5 border border-[#00ff87]/20 px-2 py-0.5 rounded-full hover:bg-[#00ff87]/15 transition-colors"
                 >
                   {e.name}

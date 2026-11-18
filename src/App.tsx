@@ -23,6 +23,7 @@ const News = lazy(() => import("./pages/News"));
 const TeamProfile = lazy(() => import("./pages/TeamProfile"));
 const PlayerCompare = lazy(() => import("./pages/PlayerCompare"));
 const PlayerProfile = lazy(() => import("./pages/PlayerProfile"));
+const LeagueProfile = lazy(() => import("./pages/LeagueProfile"));
 const PredictPage = lazy(() => import("./pages/PredictPage"));
 const Leaderboard = lazy(() => import("./pages/Leaderboard"));
 const WCFixtures = lazy(() => import("./pages/WCFixtures"));
@@ -90,6 +91,7 @@ function AppRoutes() {
             <Route path="/team/:teamId" element={<TeamProfile />} />
             <Route path="/compare" element={<PlayerCompare />} />
             <Route path="/player/:playerId" element={<PlayerProfile />} />
+            <Route path="/league/:leagueId" element={<LeagueProfile />} />
             <Route path="/predict" element={<PredictPage />} />
             <Route path="/leaderboard" element={<Leaderboard />} />
             <Route path="/worldcup/fixtures" element={<WCFixtures />} />
