@@ -970,6 +970,22 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
   const ip = req.headers['x-real-ip'] || req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+  // A request that originated on this box rather than reaching us through nginx.
+  //
+  // The socket address alone cannot tell the two apart: nginx proxies to
+  // 127.0.0.1 as well, so EVERY public request also arrives from loopback. What
+  // separates them is the forwarding headers nginx adds -- a caller on the
+  // public side cannot strip those, so their absence (together with a loopback
+  // socket) means nothing proxied this. Used to exempt the app backend from the
+  // per-IP rate limit and to keep the quota endpoints off the public internet.
+  //
+  // If nginx were ever configured not to set X-Real-IP, this would read every
+  // request as internal. That is the same exposure these endpoints have today,
+  // so it fails no worse than the status quo -- but it is worth knowing.
+  const sock = req.socket.remoteAddress || '';
+  const isInternal = !req.headers['x-real-ip']
+    && !req.headers['x-forwarded-for']
+    && (sock === '127.0.0.1' || sock === '::1' || sock === '::ffff:127.0.0.1');
 
   try {
     // Health check (no rate limit)
@@ -1242,6 +1258,14 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    // Quota and cache internals: usage figures, cache composition and live
+    // fixture ids. Harmless to a visitor, useful to someone probing, and there
+    // is no reason for them to answer the public internet -- they are read from
+    // the box itself. Served to internal callers only.
+    if (path === '/api/quota' || path === '/api/quota-history') {
+      if (!isInternal) return error(req, res, 404, 'Not found');
+    }
+
     if (path === '/api/quota-history') {
       try {
         const SVC = SUPABASE_SERVICE_KEY;
@@ -1294,7 +1318,13 @@ const server = http.createServer(async (req, res) => {
     }
 
     // Rate limit check for API and news routes
-    if (path === '/api/football' || path === '/api/news') {
+    // The app backend calls /api/football from this same box. Without the
+    // exemption all of its traffic shares one bucket keyed on 127.0.0.1 and
+    // starts taking 429s the moment the app has any real load -- the limit is
+    // there to stop one PUBLIC client hammering the proxy, which an internal
+    // caller is not. Internal traffic is bounded by the pacing ceiling and the
+    // circuit breaker instead, which is the right control for it.
+    if ((path === '/api/football' || path === '/api/news') && !isInternal) {
       const rate = checkRate(ip, 'api', RATE_MAX_API);
       if (!rate.allowed) {
         res.writeHead(429, { ...getCorsHeaders(req), 'Content-Type': 'application/json', 'Retry-After': String(rate.resetIn) });
@@ -1528,88 +1558,19 @@ const server = http.createServer(async (req, res) => {
       return json(req, res, { ...post, assets: assets || [] });
     }
 
-    // POST /api/admin/articles — create new article (auth required)
-    if (path === '/api/admin/articles' && req.method === 'POST') {
-      const body = await readBody(req);
-      const authHeader = req.headers['authorization'];
-      if (!authHeader) return error(req, res, 401, 'Unauthorized');
-      
-      const { title, type, body: content, subtitle, excerpt, meta_description, category, league, tags, teams, featured_image, featured_image_alt, author_name, assets } = JSON.parse(body);
-      
-      if (!title || !content) return error(req, res, 400, 'Title and body required');
-      
-      // Generate slug
-      const slug = sanitize(title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''));
-      
-      // Generate JSON-LD structured data
-      const jsonLd = generateJsonLd({
-        type: type || 'NewsArticle',
-        title: sanitize(title),
-        description: sanitize(meta_description || excerpt || title),
-        slug,
-        author: sanitize(author_name || 'LastFootball Editorial'),
-        image: featured_image,
-        published: new Date().toISOString(),
-      });
-      
-      // Calculate reading time
-      const wordCount = content.split(/\s+/).length;
-      const readingTime = Math.max(1, Math.ceil(wordCount / 200));
-      
-      const insertQuery = `
-        insert into posts (type, status, title, slug, subtitle, body, excerpt, meta_title, meta_description, 
-          category, league, tags, teams, featured_image, featured_image_alt, author_name, 
-          json_ld, reading_time_mins, published_at)
-        values (
-          '${sanitize(type || 'NewsArticle')}', 'published', 
-          '${sanitize(title)}', '${slug}', 
-          ${subtitle ? `'${sanitize(subtitle)}'` : 'null'},
-          '${sanitize(content)}',
-          ${excerpt ? `'${sanitize(excerpt)}'` : 'null'},
-          '${sanitize(title)} | LastFootball',
-          '${sanitize(meta_description || excerpt || title).substring(0, 155)}',
-          '${sanitize(category || 'Football')}',
-          ${league ? `'${sanitize(league)}'` : 'null'},
-          ${tags ? `ARRAY[${tags.map(t => `'${sanitize(t)}'`).join(',')}]` : 'null'},
-          ${teams ? `ARRAY[${teams.map(t => `'${sanitize(t)}'`).join(',')}]` : 'null'},
-          ${featured_image ? `'${sanitize(featured_image)}'` : 'null'},
-          ${featured_image_alt ? `'${sanitize(featured_image_alt)}'` : 'null'},
-          '${sanitize(author_name || 'LastFootball Editorial')}',
-          '${JSON.stringify(jsonLd).replace(/'/g, "''")}',
-          ${readingTime},
-          now()
-        ) returning id, slug`;
-      
-      const result = await supabaseQuery(insertQuery);
-      
-      // Insert assets if provided
-      if (result?.[0]?.id && assets?.length) {
-        for (let i = 0; i < assets.length; i++) {
-          const a = assets[i];
-          await supabaseQuery(`
-            insert into post_assets (post_id, type, url, alt_text, caption, embed_code, position)
-            values ('${result[0].id}', '${sanitize(a.type || 'image')}', '${sanitize(a.url)}', 
-              ${a.alt_text ? `'${sanitize(a.alt_text)}'` : 'null'},
-              ${a.caption ? `'${sanitize(a.caption)}'` : 'null'},
-              ${a.embed_code ? `'${sanitize(a.embed_code)}'` : 'null'},
-              ${i})
-          `);
-        }
-      }
-      
-      console.log(`[PUBLISH] Article "${title}" → /news/${slug}`);
-      return json(req, res, { success: true, slug, id: result?.[0]?.id, url: `/news/${slug}` });
-    }
-
-    if (url.pathname === '/api/fantasy/rescore') {
-      scoreFantasy();
-      return json(req, res, { started: true, note: 'Fantasy scoring run started in background' });
-    }
-
-    if (url.pathname === '/api/reports/generate') {
-      generateMatchReports();
-      return json(req, res, { started: true, note: 'Report generation started in background' });
-    }
+    // Removed 2026-11-19: POST /api/admin/articles, /api/fantasy/rescore and
+    // /api/reports/generate.
+    //
+    // The first published a live article to anyone who sent ANY Authorization
+    // header -- the value was never checked -- and the other two were
+    // unauthenticated triggers for background jobs that spend API quota.
+    // Nothing in the website, the app or the admin panel called any of them;
+    // articles reach this site through syncArticlesFromBackend, and the backend
+    // is the single producer of match reports. Deleted rather than gated: a
+    // locked door on a room nobody uses is still a room to maintain. The
+    // pattern to copy if an HTTP job trigger is ever needed again is the
+    // backend's /jobs/generate-reports -- a shared key compared against ENV,
+    // not a test for the header's presence.
 
     error(req, res, 404, 'Not found');
   } catch (err) {
@@ -1698,10 +1659,10 @@ server.listen(PORT, '127.0.0.1', async () => {
   setTimeout(scoreFantasy, 20 * 1000);
   setInterval(scoreFantasy, 30 * 60 * 1000); // Every 30 minutes
   // Match reports are produced by the app backend now, and pulled in here.
-  // `generateMatchReports` is left in the file but no longer scheduled: two
-  // generators writing the same reports into two stores is what this
-  // replaces. Previews below are NOT affected -- the backend does not make
-  // those, so this server still does.
+  // This server's own generator was deleted on 2026-11-19: two generators
+  // writing the same reports into two stores is what this replaces. Previews
+  // below are NOT affected -- the backend does not make those, so this server
+  // still does.
   setTimeout(() => syncArticlesFromBackend(false), 35 * 1000);
   setInterval(() => syncArticlesFromBackend(false), 20 * 60 * 1000);
   // Once a night, every article -- so an edit made in the admin portal to an
@@ -3280,85 +3241,10 @@ async function syncArticlesFromBackend(full = false) {
   }
 }
 
-async function generateMatchReports() {
-  if (!backgroundJobsAllowed()) return;
-  try {
-    const SVC = SUPABASE_SERVICE_KEY;
-    // Gather recently finished matches from notable leagues
-    const finished = [];
-    // World Cup first
-    const wc = await fetchUpstream('fixtures', { league: '1', season: '2026', status: 'FT-AET-PEN', timezone: 'America/New_York' }, { essential: true });
-    for (const f of (wc?.response || [])) finished.push(f);
-    // Today + yesterday across all leagues, keep only notable ones
-    const today = new Date();
-    for (let d = 0; d <= 1; d++) {
-      const date = new Date(today); date.setDate(date.getDate() - d);
-      const ds = date.toISOString().split('T')[0];
-      const day = await fetchUpstream('fixtures', { date: ds });
-      for (const f of (day?.response || [])) {
-        const st = f.fixture?.status?.short;
-        if (['FT', 'AET', 'PEN'].includes(st) && REPORT_LEAGUE_IDS.has(f.league?.id) && f.league?.id !== 1) finished.push(f);
-      }
-    }
-    if (!finished.length) return;
-
-    // Process NEWEST matches first — otherwise the 20-item cap is permanently
-    // filled by the oldest matches (which already have reports), and newly
-    // finished matches never get one.
-    finished.sort((a, b) => {
-      const da = new Date(a.fixture?.date || 0).getTime();
-      const db = new Date(b.fixture?.date || 0).getTime();
-      return db - da;
-    });
-
-    let created = 0;
-    const reportPaths = [];
-    let checked = 0;
-    for (const f of finished) {
-      if (created >= 15) break;      // cap new reports created per run
-      if (checked >= 40) break;       // cap existence-probes per run (quota safety)
-      checked++;
-      // Skip if a post with this slug already exists (cheap check before fetching stats)
-      const home = f.teams?.home?.name, away = f.teams?.away?.name;
-      const hs = f.goals?.home, as_ = f.goals?.away;
-      if (hs == null || as_ == null || !home || !away) continue;
-      const date = f.fixture?.date ? new Date(f.fixture.date).toISOString() : new Date().toISOString();
-      const probeSlug = reportSlugify(`${home}-${hs}-${as_}-${away}-${date.slice(0, 10)}`);
-      const existing = await supabaseQueryWithKey('posts', `slug=eq.${encodeURIComponent(probeSlug)}&select=id`, 'GET', null, SVC);
-      if (Array.isArray(existing) && existing.length) continue;
-
-      const r = await buildPremiumReport(f);
-      if (!r) continue;
-      // Generate a branded score-card OG image for social sharing
-      const cardPath = await writeScoreCard({ slug: r.slug, home: r.home, away: r.away, hs: r.hs, as_: r.as_, league: r.league, date: r.date, homeLogo: r.homeLogo, awayLogo: r.awayLogo, statusShort: r.statusShort, penHome: r.penHome, penAway: r.penAway, winnerSide: r.winnerSide });
-      const ogImage = cardPath ? `https://lastfootball.com${cardPath}` : null;
-      const jsonLd = generateJsonLd({ type: 'NewsArticle', title: r.title, description: r.subtitle, slug: r.slug, author: 'LastFootball', image: ogImage, published: r.date });
-      const row = {
-        type: 'NewsArticle', status: 'published',
-        title: r.title, slug: r.slug, subtitle: r.subtitle, body: r.body,
-        excerpt: r.subtitle, meta_title: `${r.title} | LastFootball`,
-        meta_description: r.metaDesc,
-        category: 'match-report', league: r.league,
-        teams: [r.home, r.away], tags: r.tags,
-        featured_image: ogImage,
-        featured_image_alt: r.imageAlt,
-        author_name: 'LastFootball', json_ld: jsonLd,
-        reading_time_mins: Math.max(1, Math.round(r.body.split(/\s+/).length / 200)),
-        published_at: r.date,
-      };
-      const res = await supabaseQueryWithKey('posts', '', 'POST', row, SVC);
-      if (Array.isArray(res) || res) { created++; reportPaths.push(`/news/${r.slug}`); }
-    }
-    if (created > 0) {
-      console.log(`[REPORTS] Generated ${created} premium match reports`);
-      pingIndexNow(reportPaths);
-      writeSitemapFile(); // keep sitemap fresh with the new reports
-      writeArticleFiles(); // prerender the new reports to static HTML for SEO
-    }
-  } catch (e) {
-    console.error('[REPORTS] error:', e.message);
-  }
-}
+// generateMatchReports() was removed on 2026-11-19 along with the route that
+// was its only caller. The backend is the single producer of match reports and
+// this site receives them through syncArticlesFromBackend; keeping a second
+// generator here is what produced two stores of the same article.
 
 // ─── Sitemap builder (used by endpoint + static file writer) ────────────────
 // ─── Share kit HTML (copy-paste social posting helper) ──────────────────────
