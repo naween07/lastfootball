@@ -1676,8 +1676,10 @@ server.listen(PORT, '127.0.0.1', async () => {
   setTimeout(writeSitemapFile, 50 * 1000);
   setInterval(writeSitemapFile, 30 * 60 * 1000);
   // Prerender article HTML files to dist/news/ (served directly by nginx via try_files)
-  setTimeout(writeArticleFiles, 60 * 1000);
-  setInterval(writeArticleFiles, 30 * 60 * 1000);
+  // Full on startup (a deploy empties `dist`, and a template change moves no row);
+  // incremental thereafter, which is what keeps the egress bounded.
+  setTimeout(() => writeArticleFiles(true), 60 * 1000);
+  setInterval(() => writeArticleFiles(false), 30 * 60 * 1000);
   // The hub pages, after the articles: both are rebuilt from scratch because
   // a deploy replaces `dist` and takes every prerendered file with it.
   setTimeout(writeHubFiles, 110 * 1000);
@@ -4197,7 +4199,13 @@ async function fetchAllPublishedPosts(select, { pageSize = 1000, maxPages = 20 }
   return all;
 }
 
-async function writeArticleFiles() {
+// `full` forces every article to be re-rendered. Pass it on startup and after
+// anything that changes the TEMPLATE below rather than the articles: a template
+// edit changes no row, so the freshness check would otherwise leave every file
+// on disk as it was and the change would never appear. A deploy restarts this
+// service, so a full pass follows every deploy for free -- which also rebuilds
+// the files a deploy wiped along with `dist`.
+async function writeArticleFiles(full = false) {
   try {
     const here = path.dirname(new URL(import.meta.url).pathname);
     const distRoots = [
@@ -4211,22 +4219,50 @@ async function writeArticleFiles() {
     const newsDir = path.join(distRoot, 'news');
     if (!fs.existsSync(newsDir)) fs.mkdirSync(newsDir, { recursive: true });
 
-    const posts = await fetchAllPublishedPosts('slug');
+    // `updated_at` comes along so an article whose file is already current can be
+    // skipped WITHOUT fetching it.
+    //
+    // This pass used to fetch every article's full body and json_ld on every run,
+    // 48 times a day: one `prerenderArticle` query per article, ~2,600 bytes a row
+    // across 2,064 articles, about 5.9 MB a pass and 281 MB a day. That was roughly
+    // three quarters of the Supabase egress that put this project over its Free
+    // plan quota (9.67 GB against a 5 GB allowance) on 19 November 2026. Almost all
+    // of it rewrote files byte-for-byte identical to the ones already on disk.
+    //
+    // The list query itself is cheap -- slug and a timestamp, no bodies -- so the
+    // cost of a pass is now proportional to what actually changed.
+    const posts = await fetchAllPublishedPosts('slug,updated_at,published_at');
     if (!Array.isArray(posts)) return;
 
-    let written = 0;
+    let written = 0, skipped = 0;
     for (const p of posts) {
       if (!p.slug) continue;
+      const target = path.join(newsDir, `${p.slug}.html`);
+
+      if (!full) {
+        // Render when the file is missing, or when the row changed after the file
+        // was written. With no timestamp at all there is no change signal, so an
+        // existing file is left alone rather than rebuilt on every pass forever;
+        // `full` still catches it.
+        let current = false;
+        try {
+          const stat = fs.statSync(target);
+          const stamp = Date.parse(p.updated_at || p.published_at || '');
+          current = Number.isFinite(stamp) ? stat.mtimeMs > stamp : true;
+        } catch { /* no file -> render */ }
+        if (current) { skipped++; continue; }
+      }
+
       try {
         const html = await prerenderArticle(p.slug);
         if (!html) continue;
         // Write both /news/<slug>.html and /news/<slug>/index.html so try_files matches
         // either "$uri" (with .html) or "$uri/" patterns.
-        fs.writeFileSync(path.join(newsDir, `${p.slug}.html`), html, 'utf8');
+        fs.writeFileSync(target, html, 'utf8');
         written++;
       } catch (e) { /* skip this one */ }
     }
-    console.log(`[PRERENDER] Wrote ${written}/${posts.length} article HTML files to ${newsDir}`);
+    console.log(`[PRERENDER] Wrote ${written}, skipped ${skipped} (already current) of ${posts.length} articles${full ? ' [full]' : ''} to ${newsDir}`);
   } catch (e) {
     console.error('[PRERENDER] writeArticleFiles error:', e.message);
   }
