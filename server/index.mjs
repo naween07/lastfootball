@@ -1297,7 +1297,13 @@ const server = http.createServer(async (req, res) => {
 
       // Compared on the fields the writers actually read. `league` is left out:
       // the hub pass groups by entity, not by league name.
-      const fields = ['title', 'published_at', 'updated_at', 'category', 'entities'];
+      // ?fields=entities narrows the comparison. Without it one noisy field
+      // fills every example slot and hides the others -- `updated_at` differs
+      // on all 2,066 rows for reasons that have nothing to do with the move.
+      const fieldsParam = url.searchParams.get('fields');
+      const fields = fieldsParam
+        ? fieldsParam.split(',').map((f) => f.trim()).filter(Boolean)
+        : ['title', 'published_at', 'updated_at', 'category', 'entities'];
       const byField = {};
       const examples = [];
       for (const [slug, a] of supBySlug) {
