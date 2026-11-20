@@ -1273,6 +1273,75 @@ const server = http.createServer(async (req, res) => {
     // N. The newest articles are all generated match reports with the same
     // field set; the old ones are hand-written imports with a different one,
     // and they are precisely the rows where a mapping gap would hide.
+    // The list pass equivalent of /api/_compare-articles. Internal only.
+    //
+    // Three writers depend on this list -- articles, hubs, sitemap -- and each
+    // uses it differently: the article pass compares updated_at against file
+    // mtimes, the hub pass takes the first 24 per entity, the sitemap writes
+    // every slug. So membership, per-field values AND ORDER all matter, and
+    // order is the one a field-by-field diff would miss.
+    if (path === '/api/_compare-list') {
+      if (!isInternal) return error(req, res, 404, 'Not found');
+
+      const [sup, back] = await Promise.all([
+        fetchAllPublishedPosts('slug,title,published_at,updated_at,category,entities'),
+        fetchAllPublishedFromBackend(),
+      ]);
+      if (!Array.isArray(sup)) return json(req, res, { error: 'supabase list failed' }, 500);
+
+      const supBySlug = new Map(sup.map((r) => [r.slug, r]));
+      const backBySlug = new Map(back.map((r) => [r.slug, r]));
+
+      const onlyInSupabase = sup.filter((r) => !backBySlug.has(r.slug)).map((r) => r.slug);
+      const onlyInBackend = back.filter((r) => !supBySlug.has(r.slug)).map((r) => r.slug);
+
+      // Compared on the fields the writers actually read. `league` is left out:
+      // the hub pass groups by entity, not by league name.
+      const fields = ['title', 'published_at', 'updated_at', 'category', 'entities'];
+      const byField = {};
+      const examples = [];
+      for (const [slug, a] of supBySlug) {
+        const b = backBySlug.get(slug);
+        if (!b) continue;
+        for (const f of fields) {
+          if (normaliseField(f, a[f]) !== normaliseField(f, b[f])) {
+            byField[f] = (byField[f] || 0) + 1;
+            if (examples.length < 10) {
+              examples.push({
+                slug, field: f,
+                supabase: String(normaliseField(f, a[f])).slice(0, 120),
+                backend: String(normaliseField(f, b[f])).slice(0, 120),
+              });
+            }
+          }
+        }
+      }
+
+      // Order, over the slugs both sides hold.
+      const supOrder = sup.map((r) => r.slug).filter((x) => backBySlug.has(x));
+      const backOrder = back.map((r) => r.slug).filter((x) => supBySlug.has(x));
+      let firstOrderMismatch = null;
+      for (let i = 0; i < supOrder.length; i++) {
+        if (supOrder[i] !== backOrder[i]) {
+          firstOrderMismatch = { index: i, supabase: supOrder[i], backend: backOrder[i] };
+          break;
+        }
+      }
+
+      return json(req, res, {
+        supabaseCount: sup.length,
+        backendCount: back.length,
+        onlyInSupabase: onlyInSupabase.slice(0, 20),
+        onlyInSupabaseTotal: onlyInSupabase.length,
+        onlyInBackend: onlyInBackend.slice(0, 20),
+        onlyInBackendTotal: onlyInBackend.length,
+        differencesByField: byField,
+        orderIdentical: firstOrderMismatch === null,
+        firstOrderMismatch,
+        examples,
+      });
+    }
+
     if (path === '/api/_compare-articles') {
       if (!isInternal) return error(req, res, 404, 'Not found');
       const limit = Math.min(Number(url.searchParams.get('limit')) || 20, 200);
@@ -3294,6 +3363,59 @@ function normaliseField(field, value) {
   }
   if (typeof value === 'object') return stableStringify(value);
   return String(value);
+}
+
+// Deliberately NOT ARTICLE_FIELDS. The three list passes -- articles, hubs,
+// sitemap -- need a handful of columns across every article, and pulling the
+// body and jsonLd with them would be ~5.9 MB a pass for data none of them
+// reads. ARTICLE_FIELDS is for one article at a time.
+const LIST_FIELDS = `
+  slug title publishedAt updatedAt category leagueName
+  entities { kind externalId name role position }
+`;
+
+/**
+ * Every published article, in the shape the writers already expect.
+ *
+ * `newss` is read-only -- checked, after newsBySlug turned out to increment
+ * viewCount on every read and quietly added 2,066 views to the catalogue.
+ */
+async function fetchAllPublishedFromBackend({ pageSize = 100, maxPages = 40 } = {}) {
+  const out = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const res = await backendQuery(
+      `{ newss(status: PUBLISHED, page: ${page}, limit: ${pageSize}) { results { ${LIST_FIELDS} } } }`
+    );
+    const batch = res?.data?.newss?.results || [];
+    if (!batch.length) break;
+    for (const a of batch) {
+      if (!a?.slug) continue;
+      out.push({
+        slug: a.slug,
+        title: a.title ?? null,
+        published_at: toIsoDate(a.publishedAt),
+        updated_at: toIsoDate(a.updatedAt),
+        category: CATEGORY_TO_POSTS[a.category] || 'Football',
+        league: a.leagueName ?? null,
+        entities: a.entities ?? [],
+      });
+    }
+    if (batch.length < pageSize) break;
+  }
+
+  // `newss` orders by createdAt desc; these callers want published_at desc,
+  // nulls last, then slug -- the order `posts` came back in. The two are not
+  // the same: a generated report carries the MATCH date as publishedAt and the
+  // run time as createdAt, so a report written at 23:00 for an earlier match
+  // sorts differently under each. Hub pages show the published date, so they
+  // must be ordered by it or they read as shuffled.
+  out.sort((a, b) => {
+    const ta = a.published_at ? Date.parse(a.published_at) : -Infinity;
+    const tb = b.published_at ? Date.parse(b.published_at) : -Infinity;
+    if (tb !== ta) return tb - ta;
+    return String(a.slug).localeCompare(String(b.slug));
+  });
+  return out;
 }
 
 /** Field names that differ between the two sources, for one slug. */
