@@ -1673,6 +1673,21 @@ const server = http.createServer(async (req, res) => {
       const category = url.searchParams.get('category');
       const league = url.searchParams.get('league');
       
+      // Backend first. `category` accepts a comma-separated list because two
+      // of the calling pages filter on several at once.
+      try {
+        const all = await fetchArticleListFromBackend();
+        if (all.length) {
+          const cats = category ? category.split(',').map((c) => c.trim()).filter(Boolean) : null;
+          let rows = all;
+          if (cats) rows = rows.filter((r) => cats.includes(r.category));
+          if (league) rows = rows.filter((r) => r.league === league);
+          return json(req, res, rows.slice(0, Math.min(parseInt(limit, 10) || 20, 200)));
+        }
+      } catch (e) {
+        console.warn(`[ARTICLES] backend list failed, falling back to Supabase: ${e.message}`);
+      }
+
       let query = `select id, type, title, slug, subtitle, excerpt, meta_description, author_name, featured_image, featured_image_alt, category, tags, league, teams, reading_time_mins, view_count, published_at, created_at from posts where status = 'published'`;
       if (category) query += ` and category = '${sanitize(category)}'`;
       if (league) query += ` and league = '${sanitize(league)}'`;
@@ -3375,6 +3390,49 @@ async function fetchArticleFromBackend(slug) {
  * mapper feeds the Supabase upsert, where `posts.id` is a generated uuid and
  * News.id is an integer.
  */
+// The whole published catalogue in `posts` shape, cached.
+//
+// Four pages -- NewsList, News, HomePage, Favorites -- each query Supabase
+// directly from the browser today with slightly different column sets and
+// category filters. One cached list serves all of them: the filtering is
+// cheap in memory and the alternative is a bespoke backend query per page.
+//
+// Bodies are included because two of those pages select them. That makes a
+// fill roughly 6 MB over localhost, which is why it is cached for minutes
+// rather than fetched per request.
+let _articleListCache = { rows: null, at: 0 };
+const ARTICLE_LIST_TTL = 5 * 60 * 1000;
+
+async function fetchArticleListFromBackend() {
+  if (_articleListCache.rows && Date.now() - _articleListCache.at < ARTICLE_LIST_TTL) {
+    return _articleListCache.rows;
+  }
+  const rows = [];
+  for (let page = 1; page <= 40; page++) {
+    const res = await backendQuery(
+      `{ newss(status: PUBLISHED, page: ${page}, limit: 100) { results { viewCount ${ARTICLE_FIELDS} } } }`
+    );
+    const batch = res?.data?.newss?.results || [];
+    if (!batch.length) break;
+    for (const a of batch) {
+      if (!a?.slug) continue;
+      rows.push({ id: a.id, ...toPostRow(a), view_count: a.viewCount ?? 0 });
+    }
+    if (batch.length < 100) break;
+  }
+  // `newss` orders by createdAt; these lists are shown by published date.
+  rows.sort((a, b) => {
+    const ta = a.published_at ? Date.parse(a.published_at) : -Infinity;
+    const tb = b.published_at ? Date.parse(b.published_at) : -Infinity;
+    if (tb !== ta) return tb - ta;
+    return String(a.slug).localeCompare(String(b.slug));
+  });
+  // An empty result is not cached: a backend blip would otherwise pin an
+  // empty catalogue in memory for five minutes.
+  if (rows.length) _articleListCache = { rows, at: Date.now() };
+  return rows;
+}
+
 async function fetchArticleForReader(slug) {
   // viewCount is asked for here rather than added to ARTICLE_FIELDS: the sync
   // shares that list, and `posts` keeps its own `view_count` column which must
