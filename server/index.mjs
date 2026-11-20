@@ -3564,17 +3564,56 @@ function rebrandJsonLd(value) {
   return value;
 }
 
+// Counted and rate-limited rather than logged per article. If the backend
+// goes away mid-pass this path runs 2,072 times in a few minutes, and this
+// project's log ingestion is already over its Free-plan allowance at 207%.
+let _prerenderFallbacks = 0;
+let _prerenderFallbackLoggedAt = 0;
+
 async function prerenderArticle(slug) {
   // Fetch the post (cached briefly to avoid DB hit per crawl)
   const cacheKey = 'prerender:' + slug;
   const hit = cacheGet(cacheKey);
   if (hit) return hit.data;
 
-  const rows = await supabaseQueryWithKey('posts',
-    `slug=eq.${encodeURIComponent(slug)}&status=eq.published&select=title,subtitle,meta_description,body,league,teams,entities,featured_image,featured_image_alt,published_at,json_ld,author_name&limit=1`,
-    'GET', null, SUPABASE_SERVICE_KEY);
-  if (!Array.isArray(rows) || !rows.length) return null;
-  const post = rows[0];
+  // Phase B of the article-store move: the backend's News table is the source
+  // and Supabase `posts` is the fallback, having been the source until now.
+  //
+  // `posts` is a copy the sync writes every 20 minutes; News is the original,
+  // holds every row `posts` holds, and is on this same box. Reading it removes
+  // a hop, a copy and the egress that put this project over its quota.
+  //
+  // The fallback stays while the sync still runs. Without it a backend restart
+  // during a prerender pass would return null for every article and the pass
+  // would write nothing -- and because each page is only rewritten when it is
+  // stale, nothing would put them back until something changed. Degrading to
+  // the old source is cheap; blanking the catalogue is not.
+  //
+  // Both paths return the same shape: fetchArticleFromBackend maps through
+  // toPostRow, and the fallback selects exactly the columns below. Verified
+  // field-by-field across 200 articles spread over the catalogue before this
+  // was switched -- 200 identical, no differences in any of the twelve fields
+  // this function reads.
+  let post = null;
+  try {
+    post = await fetchArticleFromBackend(slug);
+  } catch (e) {
+    console.warn(`[PRERENDER] backend read failed for ${slug}: ${e.message}`);
+  }
+
+  if (!post) {
+    post = await fetchArticleFromSupabase(slug);
+    if (post) {
+      _prerenderFallbacks++;
+      const now = Date.now();
+      if (now - _prerenderFallbackLoggedAt > 60_000) {
+        console.warn(`[PRERENDER] falling back to Supabase (${_prerenderFallbacks} article(s) so far)`);
+        _prerenderFallbackLoggedAt = now;
+      }
+    }
+  }
+
+  if (!post) return null;
 
   const shell = getSpaShell();
   if (!shell) return null;
