@@ -1266,6 +1266,72 @@ const server = http.createServer(async (req, res) => {
       if (!isInternal) return error(req, res, 404, 'Not found');
     }
 
+    // Compares the article store the site reads today against the one it is
+    // moving to. Internal only -- it is a migration instrument, not a feature.
+    //
+    // Samples EVENLY across the whole catalogue rather than taking the newest
+    // N. The newest articles are all generated match reports with the same
+    // field set; the old ones are hand-written imports with a different one,
+    // and they are precisely the rows where a mapping gap would hide.
+    if (path === '/api/_compare-articles') {
+      if (!isInternal) return error(req, res, 404, 'Not found');
+      const limit = Math.min(Number(url.searchParams.get('limit')) || 20, 200);
+      const verbose = url.searchParams.get('verbose') === '1';
+
+      const all = await fetchAllPublishedPosts('slug');
+      const slugs = (all || []).map((r) => r.slug).filter(Boolean);
+      if (!slugs.length) return json(req, res, { error: 'no published slugs' }, 500);
+
+      const step = Math.max(1, Math.floor(slugs.length / limit));
+      const sample = [];
+      for (let i = 0; i < slugs.length && sample.length < limit; i += step) sample.push(slugs[i]);
+
+      const byField = {};
+      const examples = [];
+      let identical = 0, missingFromBackend = 0, failed = 0;
+
+      for (const slug of sample) {
+        try {
+          const [sup, back] = await Promise.all([
+            fetchArticleFromSupabase(slug),
+            fetchArticleFromBackend(slug),
+          ]);
+          if (!back) { missingFromBackend++; examples.push({ slug, missing: 'backend' }); continue; }
+          if (!sup) { examples.push({ slug, missing: 'supabase' }); continue; }
+
+          const diffs = diffArticleRows(sup, back);
+          if (!diffs.length) { identical++; continue; }
+          for (const d of diffs) byField[d.field] = (byField[d.field] || 0) + 1;
+          if (examples.length < 10) {
+            examples.push({
+              slug,
+              diffs: diffs.map((d) => verbose ? d : {
+                field: d.field,
+                // Enough to recognise the shape of a difference without
+                // returning whole article bodies.
+                supabase: d.supabase === null ? null : String(d.supabase).slice(0, 120),
+                backend: d.backend === null ? null : String(d.backend).slice(0, 120),
+              }),
+            });
+          }
+        } catch (e) {
+          failed++;
+          if (examples.length < 10) examples.push({ slug, error: e.message });
+        }
+      }
+
+      return json(req, res, {
+        catalogue: slugs.length,
+        sampled: sample.length,
+        identical,
+        differing: sample.length - identical - missingFromBackend - failed,
+        missingFromBackend,
+        failed,
+        differencesByField: byField,
+        examples,
+      });
+    }
+
     if (path === '/api/quota-history') {
       try {
         const SVC = SUPABASE_SERVICE_KEY;
@@ -3022,7 +3088,15 @@ async function generateMatchPreviews() {
 // `view_count` is deliberately never written. This server counts real
 // readers; the backend's number is near zero, and syncing it would wipe the
 // traffic figures every twenty minutes.
-const BACKEND_GRAPHQL = 'https://api.lastfootball.com/graphql/';
+// Defaults to the public URL so nothing changes until the variable is set --
+// the same shape as FOOTBALL_PROXY_URL on the other side of this convergence.
+//
+// Worth setting to http://127.0.0.1:4000/graphql on the VPS: the backend runs
+// on this same box, so the public URL sends every request out through
+// Cloudflare and back in through nginx. For the 20-minute sync that is two
+// round trips an hour and nobody notices. For the prerenderer it would be one
+// per article per pass -- 2,072 external requests to our own machine.
+const BACKEND_GRAPHQL = process.env.BACKEND_GRAPHQL || 'https://api.lastfootball.com/graphql/';
 
 // What happened on the last sync, so a failure is visible without reading
 // journald.
@@ -3053,7 +3127,10 @@ function backendQuery(query) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({ query });
     const url = new URL(BACKEND_GRAPHQL);
-    const req = https.request(
+    // http for localhost, https for anything else. `https.request` against an
+    // http:// URL does not fall back, it fails the TLS handshake.
+    const transport = url.protocol === 'http:' ? http : https;
+    const req = transport.request(
       url,
       { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } },
       (res) => {
@@ -3151,6 +3228,77 @@ const ARTICLE_FIELDS = `
   category readingTimeMins publishedAt
   entities { kind externalId name role position }
 `;
+
+// ---------------------------------------------------------------------------
+// Reading an article from the backend instead of Supabase.
+//
+// Phase A of moving the article store: this exists alongside the Supabase read
+// and is compared against it, rather than replacing it. `posts` is a derived
+// copy -- the backend's News table holds every one of its 2,064 rows and 8
+// more besides -- so the website can read the original and the sync can go.
+// But the schema comment on News warns that a careless migration "would
+// quietly drop the metadata those pages rank on", and a field that is null on
+// the articles you happen to spot-check looks exactly like a field that works.
+// Hence a diff over every field the renderer uses, across a spread of
+// articles, before anything is switched.
+//
+// toPostRow is reused deliberately: it already resolves the epoch-millisecond
+// dates, the relative image paths and the category enum, and it returns the
+// exact shape prerenderArticle consumes. A second mapper would be a second
+// thing to keep in step.
+
+/** The columns prerenderArticle selects; nothing else can affect a page. */
+const ARTICLE_COMPARE_FIELDS = [
+  'title', 'subtitle', 'meta_description', 'body', 'league', 'teams',
+  'entities', 'featured_image', 'featured_image_alt', 'published_at',
+  'json_ld', 'author_name',
+];
+
+async function fetchArticleFromBackend(slug) {
+  const res = await backendQuery(
+    `{ newsBySlug(slug: ${JSON.stringify(slug)}) { ${ARTICLE_FIELDS} } }`
+  );
+  // newsBySlug throws rather than returning null for a missing slug, so an
+  // error here is ordinary and not worth raising.
+  const a = res?.data?.newsBySlug;
+  return a ? toPostRow(a) : null;
+}
+
+async function fetchArticleFromSupabase(slug) {
+  const rows = await supabaseQueryWithKey('posts',
+    `slug=eq.${encodeURIComponent(slug)}&status=eq.published&select=${ARTICLE_COMPARE_FIELDS.join(',')}&limit=1`,
+    'GET', null, SUPABASE_SERVICE_KEY);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+/** Key order and array order are representation, not meaning. */
+function stableStringify(v) {
+  if (v === null || typeof v !== 'object') return JSON.stringify(v ?? null);
+  if (Array.isArray(v)) return '[' + v.map(stableStringify).sort().join(',') + ']';
+  return '{' + Object.keys(v).sort()
+    .map((k) => JSON.stringify(k) + ':' + stableStringify(v[k])).join(',') + '}';
+}
+
+function normaliseField(field, value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (field === 'published_at') {
+    const t = Date.parse(value);
+    return Number.isNaN(t) ? String(value) : new Date(t).toISOString();
+  }
+  if (typeof value === 'object') return stableStringify(value);
+  return String(value);
+}
+
+/** Field names that differ between the two sources, for one slug. */
+function diffArticleRows(fromSupabase, fromBackend) {
+  const out = [];
+  for (const f of ARTICLE_COMPARE_FIELDS) {
+    const a = normaliseField(f, fromSupabase?.[f]);
+    const b = normaliseField(f, fromBackend?.[f]);
+    if (a !== b) out.push({ field: f, supabase: a, backend: b });
+  }
+  return out;
+}
 
 /**
  * @param {boolean} full  true = every published article (the nightly pass,
