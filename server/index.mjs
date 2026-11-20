@@ -3376,11 +3376,14 @@ async function fetchArticleFromBackend(slug) {
  * News.id is an integer.
  */
 async function fetchArticleForReader(slug) {
+  // viewCount is asked for here rather than added to ARTICLE_FIELDS: the sync
+  // shares that list, and `posts` keeps its own `view_count` column which must
+  // not be overwritten by the backend's while both still exist.
   const res = await backendQuery(
-    `{ newsBySlug(slug: ${JSON.stringify(slug)}) { ${ARTICLE_FIELDS} } }`
+    `{ newsBySlug(slug: ${JSON.stringify(slug)}) { viewCount ${ARTICLE_FIELDS} } }`
   );
   const a = res?.data?.newsBySlug;
-  return a ? { id: a.id, ...toPostRow(a) } : null;
+  return a ? { id: a.id, ...toPostRow(a), view_count: a.viewCount ?? 0 } : null;
 }
 
 async function fetchArticleFromSupabase(slug) {
