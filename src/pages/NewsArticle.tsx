@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import Header from '@/components/Header';
 import SEOHead from '@/components/SEOHead';
-import { supabase } from '@/integrations/supabase/client';
 import { Calendar, Clock, Eye, User, ArrowLeft, Tag } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -62,10 +61,31 @@ export default function NewsArticle() {
       setLoading(false);
     };
     (async () => {
-      const { data } = await supabase.from('posts').select('*').eq('slug', slug).eq('status', 'published').maybeSingle();
+      // Read through the server, not from Supabase in the browser.
+      //
+      // Two reasons. The site's prerendered HTML has been built from the app
+      // backend since 20 November, while this fetch still read the `posts`
+      // copy the sync maintains -- so an article the backend had and the sync
+      // had not yet copied rendered correctly for a crawler and then replaced
+      // itself with "Article not found" for a person. That is how six real
+      // articles looked on the day they were given slugs.
+      //
+      // The view count is the second reason. `supabase.from('posts').update()`
+      // ran from the browser under the anon key, and the RLS policy on `posts`
+      // permits UPDATE only to two named admin uids -- so for every ordinary
+      // visitor it was rejected and the count never moved. The server route
+      // counts the view in the backend, where the app counts its own, which
+      // also makes it one number instead of two.
+      let data: any = null;
+      try {
+        const res = await fetch(`/api/articles/${encodeURIComponent(slug || '')}`);
+        if (res.ok) data = await res.json();
+      } catch {
+        // Fall through to the passed-in article below rather than showing an
+        // error: a story navigated to from a list already has its content.
+      }
       if (data) {
         setArticle(data);
-        await supabase.from('posts').update({ view_count: (data.view_count || 0) + 1 }).eq('id', data.id);
         setLoading(false);
         return;
       }

@@ -1687,6 +1687,23 @@ const server = http.createServer(async (req, res) => {
       const slug = sanitize(path.split('/api/articles/')[1]);
       if (!slug) return error(req, res, 400, 'Slug required');
       
+      // Backend first, as the prerenderer already is.
+      //
+      // Until this changed, the two halves of an article page came from
+      // different stores: nginx served prerendered HTML built from the backend
+      // while the React app, once hydrated, fetched the article from Supabase.
+      // For the 2,066 articles both stores hold, invisible. For the six given
+      // slugs on 20 November -- which the backend had and the sync had not yet
+      // copied -- the page rendered correctly for a crawler and then replaced
+      // itself with "Article not found" for a person. Every check made that
+      // day compared PRERENDERED output, so none of them could see it.
+      try {
+        const fromBackend = await fetchArticleForReader(slug);
+        if (fromBackend) return json(req, res, { ...fromBackend, assets: [] });
+      } catch (e) {
+        console.warn(`[ARTICLE] backend read failed for ${slug}: ${e.message}`);
+      }
+
       const posts = await supabaseQuery(`select * from posts where slug = '${slug}' and status = 'published' limit 1`);
       if (!posts?.length) return error(req, res, 404, 'Article not found');
       
@@ -3344,6 +3361,26 @@ async function fetchArticleFromBackend(slug) {
   // error here is ordinary and not worth raising.
   const a = res?.data?.newsBySlug;
   return a ? toPostRow(a) : null;
+}
+
+/**
+ * One article for a HUMAN reading the page, as opposed to the prerenderer.
+ *
+ * Counts the view -- the default -- because this time someone really did open
+ * the article. That also makes News.viewCount the single tally for both
+ * surfaces: `posts.view_count` was a second counter the app never saw and the
+ * backend never knew about.
+ *
+ * `id` is added here rather than in toPostRow, which must not carry it: that
+ * mapper feeds the Supabase upsert, where `posts.id` is a generated uuid and
+ * News.id is an integer.
+ */
+async function fetchArticleForReader(slug) {
+  const res = await backendQuery(
+    `{ newsBySlug(slug: ${JSON.stringify(slug)}) { ${ARTICLE_FIELDS} } }`
+  );
+  const a = res?.data?.newsBySlug;
+  return a ? { id: a.id, ...toPostRow(a) } : null;
 }
 
 async function fetchArticleFromSupabase(slug) {
