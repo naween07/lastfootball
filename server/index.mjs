@@ -3363,6 +3363,10 @@ function stableStringify(v) {
 
 function normaliseField(field, value) {
   if (value === null || value === undefined || value === '') return null;
+  // `posts` stores no entities as NULL, the backend returns []. Both writers
+  // treat them identically, so reporting them as a difference is noise -- it
+  // flagged 7 articles as differing when nothing about them differed.
+  if (Array.isArray(value) && value.length === 0) return null;
   if (field === 'published_at') {
     const t = Date.parse(value);
     return Number.isNaN(t) ? String(value) : new Date(t).toISOString();
@@ -3386,6 +3390,18 @@ const LIST_FIELDS = `
  * `newss` is read-only -- checked, after newsBySlug turned out to increment
  * viewCount on every read and quietly added 2,066 views to the catalogue.
  */
+async function fetchPublishedList() {
+  try {
+    const rows = await fetchAllPublishedFromBackend();
+    if (Array.isArray(rows) && rows.length) return rows;
+    console.warn('[LIST] backend returned no articles; falling back to Supabase');
+  } catch (e) {
+    console.warn(`[LIST] backend list failed, falling back to Supabase: ${e.message}`);
+  }
+  // The union of what the three writers read, so any of them can run on it.
+  return fetchAllPublishedPosts('slug,title,updated_at,published_at,category,league,entities');
+}
+
 async function fetchAllPublishedFromBackend({ pageSize = 100, maxPages = 40 } = {}) {
   const out = [];
   for (let page = 1; page <= maxPages; page++) {
@@ -4066,7 +4082,7 @@ async function writeHubFiles() {
     for (const d of distRoots) { if (fs.existsSync(d)) { distRoot = d; break; } }
     if (!distRoot) { console.error('[PRERENDER] no dist dir found for hubs'); return; }
 
-    const posts = await fetchAllPublishedPosts('slug,title,published_at,league,entities');
+    const posts = await fetchPublishedList();
     if (!Array.isArray(posts)) {
       console.error('[PRERENDER] hub pass: no posts returned');
       return;
@@ -4133,7 +4149,7 @@ async function buildSitemapXml() {
     `  <url><loc>${BASE}${p.loc}</loc><changefreq>${p.freq}</changefreq><priority>${p.pri}</priority></url>`
   );
   try {
-    const posts = await fetchAllPublishedPosts('slug,updated_at,published_at,category,entities');
+    const posts = await fetchPublishedList();
     if (Array.isArray(posts)) {
       // Club and player pages, collected from the articles that mention them
       // in the same pass. A hub that no article links to is left out: it has
@@ -4553,7 +4569,12 @@ async function writeArticleFiles(full = false) {
     //
     // The list query itself is cheap -- slug and a timestamp, no bodies -- so the
     // cost of a pass is now proportional to what actually changed.
-    const posts = await fetchAllPublishedPosts('slug,updated_at,published_at');
+    // Backend-sourced since 20 Nov. Besides removing the last Supabase read on
+    // this path, it makes the freshness check mean something: `posts.updated_at`
+    // is rewritten by every sync, so all 2,064 rows were restamped nightly and
+    // a full re-render followed. News.updatedAt changes when an article is
+    // actually edited.
+    const posts = await fetchPublishedList();
     if (!Array.isArray(posts)) return;
 
     let written = 0, skipped = 0;
