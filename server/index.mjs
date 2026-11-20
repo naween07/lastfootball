@@ -3255,8 +3255,15 @@ const ARTICLE_COMPARE_FIELDS = [
 ];
 
 async function fetchArticleFromBackend(slug) {
+  // countView: false, and it matters.
+  //
+  // newsBySlug increments viewCount on every read. Pointing the prerenderer at
+  // it without this added a view to all 2,066 articles on each full pass, and
+  // bumped `updatedAt` on each at the same time, because Prisma's @updatedAt
+  // fires on any update. A renderer producing HTML for a crawler is not a
+  // reader; counting it corrupts the only view figures the product has.
   const res = await backendQuery(
-    `{ newsBySlug(slug: ${JSON.stringify(slug)}) { ${ARTICLE_FIELDS} } }`
+    `{ newsBySlug(slug: ${JSON.stringify(slug)}, countView: false) { ${ARTICLE_FIELDS} } }`
   );
   // newsBySlug throws rather than returning null for a missing slug, so an
   // error here is ordinary and not worth raising.
