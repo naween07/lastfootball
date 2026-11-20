@@ -5,6 +5,7 @@ import SEOHead from '@/components/SEOHead';
 import OptimizedImage from '@/components/OptimizedImage';
 import { Article } from '@/types/article';
 import { fetchFootballNews, NewsItem } from '@/services/newsApi';
+import { fetchArticles } from '@/services/articlesApi';
 import { supabase } from '@/integrations/supabase/client';
 import { Flame, Clock, Loader2, Newspaper, FileText, ExternalLink, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -36,7 +37,8 @@ export default function News() {
       try {
         const [reportsResult, news, externalNewsResult] = await Promise.allSettled([
           // Match reports are saved server-side to the posts table (clickable, persistent)
-          supabase.from('posts').select('*').eq('status', 'published').eq('category', 'match-report').order('published_at', { ascending: false }).limit(120),
+          // Wrapped as { data } so the result handling below is unchanged.
+          fetchArticles({ limit: 120, category: 'match-report' }).then((data) => ({ data })),
           fetchFootballNews(),
           supabase.from('external_news').select('*').eq('is_archived', false).order('published_at', { ascending: false }).limit(50),
         ]);

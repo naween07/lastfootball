@@ -6,7 +6,7 @@ import OptimizedImage from '@/components/OptimizedImage';
 import { useFavorites } from '@/hooks/useFavorites';
 import { searchTeamsAndLeagues, fetchTeamFixtures, Match } from '@/services/footballApi';
 import { Article, postRowToArticle } from '@/types/article';
-import { supabase } from '@/integrations/supabase/client';
+import { fetchArticles } from '@/services/articlesApi';
 import { Star, Search, X, Loader2, Trophy, Calendar, Swords, Newspaper, ChevronRight, Plus, Bell, BellOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { pushSupported, pushPermission, getPushSubscription, enablePush, disablePush, syncPushTeams } from '@/lib/push';
@@ -125,13 +125,7 @@ export default function Favorites() {
       // different prose from everyone else and none of the repairs made to
       // the stored copy.
       try {
-        const { data } = await supabase
-          .from('posts')
-          .select('id, title, slug, subtitle, excerpt, meta_description, body, league, teams, entities, published_at')
-          .eq('status', 'published')
-          .in('category', ['match-report', 'featured'])
-          .order('published_at', { ascending: false })
-          .limit(120);
+        const data = await fetchArticles({ limit: 120, category: 'match-report,featured' });
         const mine = (data ?? []).filter((p: any) =>
           Array.isArray(p.entities) &&
           p.entities.some(

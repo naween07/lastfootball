@@ -4,7 +4,7 @@ import Header from '@/components/Header';
 import SEOHead, { buildWebsiteJsonLd } from '@/components/SEOHead';
 import OptimizedImage from '@/components/OptimizedImage';
 import { fetchHomepageData, PlayerStat } from '@/services/footballApi';
-import { supabase } from '@/integrations/supabase/client';
+import { fetchArticles } from '@/services/articlesApi';
 import { useAuth } from '@/hooks/useAuth';
 import { useFavorites } from '@/hooks/useFavorites';
 import { Match } from '@/types/football';
@@ -53,11 +53,7 @@ export default function HomePage() {
       try {
         const [homeData, newsData] = await Promise.allSettled([
           fetchHomepageData(),
-          supabase.from('posts')
-            .select('id, title, slug, featured_image, featured_image_alt, category, published_at')
-            .eq('status', 'published')
-            .order('published_at', { ascending: false })
-            .limit(4),
+          fetchArticles({ limit: 4 }).then((data) => ({ data })),
         ]);
 
         if (cancelled) return;

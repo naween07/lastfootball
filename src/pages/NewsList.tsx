@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import SEOHead from '@/components/SEOHead';
-import { supabase } from '@/integrations/supabase/client';
+import { fetchArticles } from '@/services/articlesApi';
 import { Article, postRowToArticle } from '@/types/article';
 import { fetchFootballNews, NewsItem } from '@/services/newsApi';
 import { Newspaper, FileText, Clock, Eye, Loader2, Globe, ExternalLink } from 'lucide-react';
@@ -21,7 +21,10 @@ export default function NewsList() {
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.from('posts').select('id, title, slug, subtitle, excerpt, meta_description, author_name, featured_image, featured_image_alt, category, league, tags, reading_time_mins, view_count, published_at, type').eq('status', 'published').order('published_at', { ascending: false }).limit(50);
+      // Through the server rather than Supabase from the browser: the site's
+      // articles live in the app backend now and `posts` is a copy the sync
+      // maintains, so anything published since the last sync is missing here.
+      const data = await fetchArticles({ limit: 50 });
       if (data) setArticles(data);
       setLoadingNews(false);
     })();
@@ -36,13 +39,7 @@ export default function NewsList() {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await supabase
-          .from('posts')
-          .select('id, title, slug, subtitle, excerpt, meta_description, body, league, teams, entities, published_at')
-          .eq('status', 'published')
-          .in('category', ['match-report', 'featured'])
-          .order('published_at', { ascending: false })
-          .limit(120);
+        const data = await fetchArticles({ limit: 120, category: 'match-report,featured' });
         if (data) setMatchReports(data.map(postRowToArticle));
       } catch {}
       setLoadingReports(false);
