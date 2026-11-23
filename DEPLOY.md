@@ -55,10 +55,28 @@ pages are prerendered" -- only a restart, or the next half-hourly pass, puts
 the files back.
 
 A fresh build contains none of these, so swapping a new `dist` into place
-removes all of them. The service rewrites them on startup. Until it is
-restarted, the sitemap is missing and every article URL falls back to the
-client-rendered page, which is worse for search engines and was missed
-for about twenty minutes on a previous deploy.
+removes all of them. The service writes them back **on a timer, not
+instantly**:
+
+| What | When, measured from the restart |
+|---|---|
+| `sitemap.xml` and the IndexNow key | within seconds |
+| `news/<slug>.html`, all ~2,100 | pass starts at 60s, runs 4-5 minutes |
+| `team/<id>/` and `player/<id>/` | pass starts at 110s |
+
+So the article files are absent for the first minute and incomplete for
+several more. **Checking the count a few seconds after the restart returns 0,
+which looks exactly like a failed deploy and is not one.** Verified on
+23 November 2026: 0 articles at 100 seconds became 2,143 articles and 1,104
+team pages by the four-minute mark.
+
+Nor does an absent `[PRERENDER]` line in the log mean anything mid-pass --
+each pass logs only once, after it finishes.
+
+Until the article pass completes, every article URL falls back to the
+client-rendered page, which is worse for search engines and was missed for
+about twenty minutes on a previous deploy. The window cannot be removed, only
+waited out, so do not deploy and walk away without the check in step 8.
 
 ## The deploy
 
@@ -84,18 +102,25 @@ test -f dist.new/index.html && echo "index.html OK" || echo "STOP: no index.html
 mv dist "dist.old.$(date +%F-%H%M)"
 mv dist.new dist
 
-# 6. Let the API rewrite the sitemap, the IndexNow key and the articles
+# 6. Let the API rewrite the sitemap, the IndexNow key and the articles.
+#    The service is up in seconds. The prerendered files are not -- see above.
 systemctl restart lastfootball-api
 sleep 5
 systemctl is-active lastfootball-api
 
-# 7. Verify the website
+# 7. Verify the website responds
 curl -sS -o /dev/null -w "home      %{http_code}\n" https://lastfootball.com/
 curl -sS -o /dev/null -w "privacy   %{http_code}\n" https://lastfootball.com/privacy
 curl -sS -o /dev/null -w "sitemap   %{http_code}\n" https://lastfootball.com/sitemap.xml
-ls dist/news/*.html 2>/dev/null | wc -l    # expect hundreds, not 0
 
-# 8. Verify the app backend was not touched
+# 8. Wait for the prerender, THEN count the files. Not before: at eight
+#    seconds this is legitimately 0 and tells you nothing.
+sleep 300
+ls dist/news/*.html 2>/dev/null | wc -l    # expect ~2,100, not 0
+ls -d dist/team/*/ 2>/dev/null | wc -l     # expect ~1,100
+journalctl -u lastfootball-api --since "10 minutes ago" --no-pager | grep PRERENDER
+
+# 9. Verify the app backend was not touched
 pm2 list
 curl -sS -o /dev/null -w "app api   %{http_code}\n" https://api.lastfootball.com/graphql/
 ```
