@@ -990,15 +990,16 @@ const server = http.createServer(async (req, res) => {
   try {
     // Health check (no rate limit)
     if (path === '/api/health') {
-      // Articles reach this site only through the backend sync now, so its
-      // state belongs in the health check: "ok: true" while no article has
-      // arrived for a day would be a lie.
+      // Articles reach this site by reading the backend directly, so the
+      // freshness of that read belongs in the health check: "ok: true" while
+      // no article has arrived for a day would be a lie.
       const ageMins = syncState.lastSuccessAt
         ? Math.round((Date.now() - Date.parse(syncState.lastSuccessAt)) / 60000)
         : null;
-      // The job runs every 20 minutes; an hour without a success means
-      // several have failed or the process is not running them at all.
-      const syncHealthy = ageMins !== null && ageMins < 60 && syncState.consecutiveFailures === 0;
+      // The list is read on every prerender pass, every 30 minutes, and
+      // cached for 5. Ninety minutes without a success means several passes
+      // have failed or the process is not running them at all.
+      const syncHealthy = ageMins !== null && ageMins < 90 && syncState.consecutiveFailures === 0;
 
       return json(req, res, {
         ok: true,
@@ -1022,11 +1023,11 @@ const server = http.createServer(async (req, res) => {
     // Open in a browser, click "Copy", paste into a Facebook Page post.
     if (path === '/api/share-kit') {
       try {
-        const SVC = SUPABASE_SERVICE_KEY;
-        const posts = await supabaseQueryWithKey('posts',
-          "category=eq.match-report&status=eq.published&select=title,slug,subtitle,league,teams,featured_image,published_at&order=published_at.desc&limit=25",
-          'GET', null, SVC);
-        const html = buildShareKitHtml(Array.isArray(posts) ? posts : []);
+        // From the backend, like everything else since 23 November. Reading
+        // Supabase here would have kept working and kept showing July.
+        const all = await fetchArticleListFromBackend();
+        const posts = all.filter((p) => p.category === 'match-report').slice(0, 25);
+        const html = buildShareKitHtml(posts);
         res.writeHead(200, { ...getCorsHeaders(req), 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
         return res.end(html);
       } catch (e) {
@@ -1264,147 +1265,6 @@ const server = http.createServer(async (req, res) => {
     // the box itself. Served to internal callers only.
     if (path === '/api/quota' || path === '/api/quota-history') {
       if (!isInternal) return error(req, res, 404, 'Not found');
-    }
-
-    // Compares the article store the site reads today against the one it is
-    // moving to. Internal only -- it is a migration instrument, not a feature.
-    //
-    // Samples EVENLY across the whole catalogue rather than taking the newest
-    // N. The newest articles are all generated match reports with the same
-    // field set; the old ones are hand-written imports with a different one,
-    // and they are precisely the rows where a mapping gap would hide.
-    // The list pass equivalent of /api/_compare-articles. Internal only.
-    //
-    // Three writers depend on this list -- articles, hubs, sitemap -- and each
-    // uses it differently: the article pass compares updated_at against file
-    // mtimes, the hub pass takes the first 24 per entity, the sitemap writes
-    // every slug. So membership, per-field values AND ORDER all matter, and
-    // order is the one a field-by-field diff would miss.
-    if (path === '/api/_compare-list') {
-      if (!isInternal) return error(req, res, 404, 'Not found');
-
-      const [sup, back] = await Promise.all([
-        fetchAllPublishedPosts('slug,title,published_at,updated_at,category,entities'),
-        fetchAllPublishedFromBackend(),
-      ]);
-      if (!Array.isArray(sup)) return json(req, res, { error: 'supabase list failed' }, 500);
-
-      const supBySlug = new Map(sup.map((r) => [r.slug, r]));
-      const backBySlug = new Map(back.map((r) => [r.slug, r]));
-
-      const onlyInSupabase = sup.filter((r) => !backBySlug.has(r.slug)).map((r) => r.slug);
-      const onlyInBackend = back.filter((r) => !supBySlug.has(r.slug)).map((r) => r.slug);
-
-      // Compared on the fields the writers actually read. `league` is left out:
-      // the hub pass groups by entity, not by league name.
-      // ?fields=entities narrows the comparison. Without it one noisy field
-      // fills every example slot and hides the others -- `updated_at` differs
-      // on all 2,066 rows for reasons that have nothing to do with the move.
-      const fieldsParam = url.searchParams.get('fields');
-      const fields = fieldsParam
-        ? fieldsParam.split(',').map((f) => f.trim()).filter(Boolean)
-        : ['title', 'published_at', 'updated_at', 'category', 'entities'];
-      const byField = {};
-      const examples = [];
-      for (const [slug, a] of supBySlug) {
-        const b = backBySlug.get(slug);
-        if (!b) continue;
-        for (const f of fields) {
-          if (normaliseField(f, a[f]) !== normaliseField(f, b[f])) {
-            byField[f] = (byField[f] || 0) + 1;
-            if (examples.length < 10) {
-              examples.push({
-                slug, field: f,
-                supabase: String(normaliseField(f, a[f])).slice(0, 120),
-                backend: String(normaliseField(f, b[f])).slice(0, 120),
-              });
-            }
-          }
-        }
-      }
-
-      // Order, over the slugs both sides hold.
-      const supOrder = sup.map((r) => r.slug).filter((x) => backBySlug.has(x));
-      const backOrder = back.map((r) => r.slug).filter((x) => supBySlug.has(x));
-      let firstOrderMismatch = null;
-      for (let i = 0; i < supOrder.length; i++) {
-        if (supOrder[i] !== backOrder[i]) {
-          firstOrderMismatch = { index: i, supabase: supOrder[i], backend: backOrder[i] };
-          break;
-        }
-      }
-
-      return json(req, res, {
-        supabaseCount: sup.length,
-        backendCount: back.length,
-        onlyInSupabase: onlyInSupabase.slice(0, 20),
-        onlyInSupabaseTotal: onlyInSupabase.length,
-        onlyInBackend: onlyInBackend.slice(0, 20),
-        onlyInBackendTotal: onlyInBackend.length,
-        differencesByField: byField,
-        orderIdentical: firstOrderMismatch === null,
-        firstOrderMismatch,
-        examples,
-      });
-    }
-
-    if (path === '/api/_compare-articles') {
-      if (!isInternal) return error(req, res, 404, 'Not found');
-      const limit = Math.min(Number(url.searchParams.get('limit')) || 20, 200);
-      const verbose = url.searchParams.get('verbose') === '1';
-
-      const all = await fetchAllPublishedPosts('slug');
-      const slugs = (all || []).map((r) => r.slug).filter(Boolean);
-      if (!slugs.length) return json(req, res, { error: 'no published slugs' }, 500);
-
-      const step = Math.max(1, Math.floor(slugs.length / limit));
-      const sample = [];
-      for (let i = 0; i < slugs.length && sample.length < limit; i += step) sample.push(slugs[i]);
-
-      const byField = {};
-      const examples = [];
-      let identical = 0, missingFromBackend = 0, failed = 0;
-
-      for (const slug of sample) {
-        try {
-          const [sup, back] = await Promise.all([
-            fetchArticleFromSupabase(slug),
-            fetchArticleFromBackend(slug),
-          ]);
-          if (!back) { missingFromBackend++; examples.push({ slug, missing: 'backend' }); continue; }
-          if (!sup) { examples.push({ slug, missing: 'supabase' }); continue; }
-
-          const diffs = diffArticleRows(sup, back);
-          if (!diffs.length) { identical++; continue; }
-          for (const d of diffs) byField[d.field] = (byField[d.field] || 0) + 1;
-          if (examples.length < 10) {
-            examples.push({
-              slug,
-              diffs: diffs.map((d) => verbose ? d : {
-                field: d.field,
-                // Enough to recognise the shape of a difference without
-                // returning whole article bodies.
-                supabase: d.supabase === null ? null : String(d.supabase).slice(0, 120),
-                backend: d.backend === null ? null : String(d.backend).slice(0, 120),
-              }),
-            });
-          }
-        } catch (e) {
-          failed++;
-          if (examples.length < 10) examples.push({ slug, error: e.message });
-        }
-      }
-
-      return json(req, res, {
-        catalogue: slugs.length,
-        sampled: sample.length,
-        identical,
-        differing: sample.length - identical - missingFromBackend - failed,
-        missingFromBackend,
-        failed,
-        differencesByField: byField,
-        examples,
-      });
     }
 
     if (path === '/api/quota-history') {
@@ -1684,17 +1544,11 @@ const server = http.createServer(async (req, res) => {
           if (league) rows = rows.filter((r) => r.league === league);
           return json(req, res, rows.slice(0, Math.min(parseInt(limit, 10) || 20, 200)));
         }
+        return json(req, res, []);
       } catch (e) {
-        console.warn(`[ARTICLES] backend list failed, falling back to Supabase: ${e.message}`);
+        console.error(`[ARTICLES] backend list failed: ${e.message}`);
+        return error(req, res, 503, 'Articles temporarily unavailable');
       }
-
-      let query = `select id, type, title, slug, subtitle, excerpt, meta_description, author_name, featured_image, featured_image_alt, category, tags, league, teams, reading_time_mins, view_count, published_at, created_at from posts where status = 'published'`;
-      if (category) query += ` and category = '${sanitize(category)}'`;
-      if (league) query += ` and league = '${sanitize(league)}'`;
-      query += ` order by published_at desc limit ${parseInt(limit)}`;
-      
-      const data = await supabaseQuery(query);
-      return json(req, res, data || []);
     }
 
     // GET /api/articles/:slug — single article with assets
@@ -1719,16 +1573,7 @@ const server = http.createServer(async (req, res) => {
         console.warn(`[ARTICLE] backend read failed for ${slug}: ${e.message}`);
       }
 
-      const posts = await supabaseQuery(`select * from posts where slug = '${slug}' and status = 'published' limit 1`);
-      if (!posts?.length) return error(req, res, 404, 'Article not found');
-      
-      const post = posts[0];
-      const assets = await supabaseQuery(`select * from post_assets where post_id = '${post.id}' order by position`);
-      
-      // Increment view count
-      await supabaseQuery(`update posts set view_count = view_count + 1 where id = '${post.id}'`);
-      
-      return json(req, res, { ...post, assets: assets || [] });
+      return error(req, res, 404, 'Article not found');
     }
 
     // Removed 2026-11-19: POST /api/admin/articles, /api/fantasy/rescore and
@@ -1738,8 +1583,8 @@ const server = http.createServer(async (req, res) => {
     // header -- the value was never checked -- and the other two were
     // unauthenticated triggers for background jobs that spend API quota.
     // Nothing in the website, the app or the admin panel called any of them;
-    // articles reach this site through syncArticlesFromBackend, and the backend
-    // is the single producer of match reports. Deleted rather than gated: a
+    // the backend is the single producer of match reports and this site reads
+    // them from it directly. Deleted rather than gated: a
     // locked door on a room nobody uses is still a room to maintain. The
     // pattern to copy if an HTTP job trigger is ever needed again is the
     // backend's /jobs/generate-reports -- a shared key compared against ENV,
@@ -1831,18 +1676,13 @@ server.listen(PORT, '127.0.0.1', async () => {
   // Fantasy points job
   setTimeout(scoreFantasy, 20 * 1000);
   setInterval(scoreFantasy, 30 * 60 * 1000); // Every 30 minutes
-  // Match reports are produced by the app backend now, and pulled in here.
-  // This server's own generator was deleted on 2026-11-19: two generators
-  // writing the same reports into two stores is what this replaces. Previews
-  // below are NOT affected -- the backend does not make those, so this server
-  // still does.
-  setTimeout(() => syncArticlesFromBackend(false), 35 * 1000);
-  setInterval(() => syncArticlesFromBackend(false), 20 * 60 * 1000);
-  // Once a night, every article -- so an edit made in the admin portal to an
-  // older story reaches the site rather than silently never arriving.
-  setInterval(() => {
-    if (new Date().getUTCHours() === 2) syncArticlesFromBackend(true);
-  }, 60 * 60 * 1000);
+  // The article sync was removed on 2026-11-23. It copied every published
+  // article from the backend into Supabase `posts` every 20 minutes, with a
+  // full pass at 02:00, so that this server could read them back. Nothing
+  // reads `posts` any more -- articles, lists, hub pages and the sitemap all
+  // come from the backend directly -- so the copy was work done for nobody.
+  // Previews are NOT affected: the backend does not make those, so this
+  // server still does.
   setTimeout(generateMatchPreviews, 50 * 1000);
   setInterval(generateMatchPreviews, 20 * 60 * 1000); // Every 20 minutes — publishes ~5-6h before kickoff
   // Write the static sitemap file (nginx serves it directly) — on startup + every 30 min
@@ -3212,6 +3052,12 @@ const BACKEND_GRAPHQL = process.env.BACKEND_GRAPHQL || 'https://api.lastfootball
 // pulls them in. If that pull breaks, the site simply stops gaining articles
 // and nothing says so. The admin panel's deploy was broken for two months for
 // exactly that reason: the failure was silent and nobody was looking.
+// Health of the article pipeline.
+//
+// This used to track the Supabase sync. The sync is gone -- the site reads the
+// backend directly -- but the question it answered still matters: "ok: true"
+// while no article has reached this server for a day would be a lie. So the
+// same fields now describe the backend read that replaced it.
 const syncState = {
   lastAttemptAt: null,
   lastSuccessAt: null,
@@ -3354,12 +3200,6 @@ const ARTICLE_FIELDS = `
 // exact shape prerenderArticle consumes. A second mapper would be a second
 // thing to keep in step.
 
-/** The columns prerenderArticle selects; nothing else can affect a page. */
-const ARTICLE_COMPARE_FIELDS = [
-  'title', 'subtitle', 'meta_description', 'body', 'league', 'teams',
-  'entities', 'featured_image', 'featured_image_alt', 'published_at',
-  'json_ld', 'author_name',
-];
 
 async function fetchArticleFromBackend(slug) {
   // countView: false, and it matters.
@@ -3444,34 +3284,8 @@ async function fetchArticleForReader(slug) {
   return a ? { id: a.id, ...toPostRow(a), view_count: a.viewCount ?? 0 } : null;
 }
 
-async function fetchArticleFromSupabase(slug) {
-  const rows = await supabaseQueryWithKey('posts',
-    `slug=eq.${encodeURIComponent(slug)}&status=eq.published&select=${ARTICLE_COMPARE_FIELDS.join(',')}&limit=1`,
-    'GET', null, SUPABASE_SERVICE_KEY);
-  return Array.isArray(rows) && rows.length ? rows[0] : null;
-}
 
-/** Key order and array order are representation, not meaning. */
-function stableStringify(v) {
-  if (v === null || typeof v !== 'object') return JSON.stringify(v ?? null);
-  if (Array.isArray(v)) return '[' + v.map(stableStringify).sort().join(',') + ']';
-  return '{' + Object.keys(v).sort()
-    .map((k) => JSON.stringify(k) + ':' + stableStringify(v[k])).join(',') + '}';
-}
 
-function normaliseField(field, value) {
-  if (value === null || value === undefined || value === '') return null;
-  // `posts` stores no entities as NULL, the backend returns []. Both writers
-  // treat them identically, so reporting them as a difference is noise -- it
-  // flagged 7 articles as differing when nothing about them differed.
-  if (Array.isArray(value) && value.length === 0) return null;
-  if (field === 'published_at') {
-    const t = Date.parse(value);
-    return Number.isNaN(t) ? String(value) : new Date(t).toISOString();
-  }
-  if (typeof value === 'object') return stableStringify(value);
-  return String(value);
-}
 
 // Deliberately NOT ARTICLE_FIELDS. The three list passes -- articles, hubs,
 // sitemap -- need a handful of columns across every article, and pulling the
@@ -3488,19 +3302,30 @@ const LIST_FIELDS = `
  * `newss` is read-only -- checked, after newsBySlug turned out to increment
  * viewCount on every read and quietly added 2,066 views to the catalogue.
  */
+// There is no second source any more, and that is deliberate.
+//
+// Until 23 November this fell back to Supabase `posts`. That made sense while
+// a sync kept the copy current. With the sync gone the copy is frozen, and a
+// fallback to a frozen store is worse than no fallback: instead of an error
+// somebody notices, the site would quietly serve articles from whenever the
+// sync last ran, for as long as the backend stayed down.
+//
+// Failing honestly is safe here because the realistic outage is covered
+// elsewhere: article pages are prerendered files on disk and nginx serves
+// them without touching any database. Only the lists would break, visibly.
 async function fetchPublishedList() {
   try {
-    const rows = await fetchAllPublishedFromBackend();
-    if (Array.isArray(rows) && rows.length) return rows;
-    console.warn('[LIST] backend returned no articles; falling back to Supabase');
+    return await fetchAllPublishedFromBackend();
   } catch (e) {
-    console.warn(`[LIST] backend list failed, falling back to Supabase: ${e.message}`);
+    console.error(`[LIST] backend list failed: ${e.message}`);
+    syncState.lastError = e.message;
+    syncState.consecutiveFailures++;
+    return [];
   }
-  // The union of what the three writers read, so any of them can run on it.
-  return fetchAllPublishedPosts('slug,title,updated_at,published_at,category,league,entities');
 }
 
 async function fetchAllPublishedFromBackend({ pageSize = 100, maxPages = 40 } = {}) {
+  syncState.lastAttemptAt = new Date().toISOString();
   const out = [];
   for (let page = 1; page <= maxPages; page++) {
     const res = await backendQuery(
@@ -3535,115 +3360,33 @@ async function fetchAllPublishedFromBackend({ pageSize = 100, maxPages = 40 } = 
     if (tb !== ta) return tb - ta;
     return String(a.slug).localeCompare(String(b.slug));
   });
-  return out;
-}
 
-/** Field names that differ between the two sources, for one slug. */
-function diffArticleRows(fromSupabase, fromBackend) {
-  const out = [];
-  for (const f of ARTICLE_COMPARE_FIELDS) {
-    const a = normaliseField(f, fromSupabase?.[f]);
-    const b = normaliseField(f, fromBackend?.[f]);
-    if (a !== b) out.push({ field: f, supabase: a, backend: b });
+  // An empty catalogue is a failure, not a success: the backend answering with
+  // nothing looks exactly like the backend being wrong, and reporting "healthy"
+  // for it is how a broken pipeline stays invisible.
+  if (out.length) {
+    syncState.lastSuccessAt = new Date().toISOString();
+    syncState.lastCount = out.length;
+    syncState.lastError = null;
+    syncState.consecutiveFailures = 0;
+  } else {
+    syncState.lastError = 'backend returned no published articles';
+    syncState.consecutiveFailures++;
   }
   return out;
 }
+
 
 /**
  * @param {boolean} full  true = every published article (the nightly pass,
  *                        which is how an edit to an older article reaches the
  *                        site); false = the most recent pages only.
  */
-async function syncArticlesFromBackend(full = false) {
-  const SVC = SUPABASE_SERVICE_KEY;
-  syncState.lastAttemptAt = new Date().toISOString();
-  const maxPages = full ? 40 : 2;
-  const rows = [];
-
-  try {
-    for (let page = 1; page <= maxPages; page++) {
-      const res = await backendQuery(
-        `{ newss(status: PUBLISHED, page: ${page}, limit: 100) { results { ${ARTICLE_FIELDS} } } }`
-      );
-      const batch = res?.data?.newss?.results || [];
-      if (!batch.length) break;
-      for (const a of batch) {
-        // No slug means no address on this site; it cannot be rendered here.
-        if (a?.slug && a?.title) rows.push(toPostRow(a));
-      }
-      if (batch.length < 100) break;
-    }
-  } catch (e) {
-    console.error('[SYNC] backend fetch failed:', e.message);
-    syncState.lastError = `backend fetch failed: ${e.message}`;
-    syncState.consecutiveFailures++;
-    return;
-  }
-
-  if (!rows.length) {
-    console.warn('[SYNC] backend returned no articles — nothing written');
-    syncState.lastError = 'backend returned no articles';
-    syncState.consecutiveFailures++;
-    return;
-  }
-
-  // Set SYNC_DRY_RUN=1 in .env to see exactly what the first pass would write
-  // before letting it write anything. This table is behind every indexed
-  // article URL on the site; it is worth one restart to look first.
-  console.log(`[SYNC] ${rows.length} row(s) prepared; dry run ${process.env.SYNC_DRY_RUN ? 'ON' : 'OFF'}`);
-  if (process.env.SYNC_DRY_RUN) {
-    const sample = rows[0];
-    console.log(`[SYNC] DRY RUN — would upsert ${rows.length} article(s). First row:`);
-    console.log(JSON.stringify({ ...sample, body: (sample.body || '').slice(0, 120) + '…' }, null, 2));
-    const missing = rows.filter((r) => !r.title || !r.slug || !r.body || !r.author_name || !r.category);
-    console.log(`[SYNC] DRY RUN — ${missing.length} row(s) missing a NOT NULL column`);
-    return;
-  }
-
-  let written = 0;
-  for (let i = 0; i < rows.length; i += 100) {
-    const chunk = rows.slice(i, i + 100);
-    try {
-      const res = await supabaseQueryWithKey('posts', 'on_conflict=slug', 'POST', chunk, SVC);
-      // supabaseQueryWithKey resolves rather than throwing on an HTTP error,
-      // so a failed write looks exactly like a successful one unless the
-      // response is inspected. PostgREST answers an error as an object with
-      // `message`; a successful minimal upsert answers with an empty array.
-      if (res && !Array.isArray(res) && (res.message || res.code)) {
-        console.error(`[SYNC] upsert rejected for ${chunk.length} row(s):`, res.message || res.code);
-        continue;
-      }
-      written += chunk.length;
-    } catch (e) {
-      console.error(`[SYNC] upsert failed for ${chunk.length} row(s):`, e.message);
-    }
-  }
-  console.log(`[SYNC] ${written}/${rows.length} article(s) upserted from the backend${full ? ' (full pass)' : ''}`);
-
-  if (written) {
-    syncState.lastSuccessAt = new Date().toISOString();
-    syncState.lastCount = written;
-    syncState.lastError = null;
-    syncState.consecutiveFailures = 0;
-  } else {
-    // Every batch was rejected. Reporting this as a success because the
-    // function ran to the end is how a broken sync stays invisible.
-    syncState.lastError = `all ${rows.length} row(s) rejected`;
-    syncState.consecutiveFailures++;
-  }
-
-  // Regenerate the crawler-visible HTML for anything new. The hub pages go
-  // with it: a new match report changes what both clubs' pages list.
-  if (written) {
-    writeArticleFiles();
-    writeHubFiles();
-  }
-}
 
 // generateMatchReports() was removed on 2026-11-19 along with the route that
 // was its only caller. The backend is the single producer of match reports and
-// this site receives them through syncArticlesFromBackend; keeping a second
-// generator here is what produced two stores of the same article.
+// this site reads them from the backend directly; keeping a second generator
+// here is what produced two stores of the same article.
 
 // ─── Sitemap builder (used by endpoint + static file writer) ────────────────
 // ─── Share kit HTML (copy-paste social posting helper) ──────────────────────
@@ -3813,12 +3556,6 @@ function rebrandJsonLd(value) {
   return value;
 }
 
-// Counted and rate-limited rather than logged per article. If the backend
-// goes away mid-pass this path runs 2,072 times in a few minutes, and this
-// project's log ingestion is already over its Free-plan allowance at 207%.
-let _prerenderFallbacks = 0;
-let _prerenderFallbackLoggedAt = 0;
-
 async function prerenderArticle(slug) {
   // Fetch the post (cached briefly to avoid DB hit per crawl)
   const cacheKey = 'prerender:' + slug;
@@ -3832,34 +3569,14 @@ async function prerenderArticle(slug) {
   // holds every row `posts` holds, and is on this same box. Reading it removes
   // a hop, a copy and the egress that put this project over its quota.
   //
-  // The fallback stays while the sync still runs. Without it a backend restart
-  // during a prerender pass would return null for every article and the pass
-  // would write nothing -- and because each page is only rewritten when it is
-  // stale, nothing would put them back until something changed. Degrading to
-  // the old source is cheap; blanking the catalogue is not.
-  //
-  // Both paths return the same shape: fetchArticleFromBackend maps through
-  // toPostRow, and the fallback selects exactly the columns below. Verified
-  // field-by-field across 200 articles spread over the catalogue before this
-  // was switched -- 200 identical, no differences in any of the twelve fields
-  // this function reads.
+  // A failed read writes no file, and that is the safe outcome: each page is
+  // only rewritten when it is stale, so the existing file stays on disk and
+  // nginx keeps serving it. Nothing is blanked by a backend hiccup.
   let post = null;
   try {
     post = await fetchArticleFromBackend(slug);
   } catch (e) {
     console.warn(`[PRERENDER] backend read failed for ${slug}: ${e.message}`);
-  }
-
-  if (!post) {
-    post = await fetchArticleFromSupabase(slug);
-    if (post) {
-      _prerenderFallbacks++;
-      const now = Date.now();
-      if (now - _prerenderFallbackLoggedAt > 60_000) {
-        console.warn(`[PRERENDER] falling back to Supabase (${_prerenderFallbacks} article(s) so far)`);
-        _prerenderFallbackLoggedAt = now;
-      }
-    }
   }
 
   if (!post) return null;
@@ -4120,26 +3837,29 @@ function buildHubHtml(kind, externalId, rows) {
  * apart.
  */
 async function fetchHubArticles(kind, id) {
-  const filter = encodeURIComponent(JSON.stringify([{ kind, externalId: Number(id) }]));
-  const rows = await supabaseQueryWithKey('posts',
-    `status=eq.published&entities=cs=${filter}` +
-    '&select=slug,title,published_at,league,entities' +
-    '&order=published_at.desc&limit=24',
-    'GET', null, SUPABASE_SERVICE_KEY);
-
-  // supabaseQueryWithKey resolves with the error body rather than throwing,
-  // so a malformed filter arrives here as an object and an empty result
-  // arrives as an empty array. They are told apart because they mean
-  // opposite things: no articles is normal and silent, a rejected query is a
-  // bug that would otherwise hide forever as "that club has no news".
-  if (!Array.isArray(rows)) {
-    console.error(
-      `[PRERENDER] hub query rejected for ${kind} ${id}:`,
-      (rows && (rows.message || rows.code)) || 'unexpected response',
-    );
+  // Filtered in memory from the cached backend list, the same way
+  // writeHubFiles groups its 1,126 pages -- so the live render and the
+  // prerendered file agree by construction rather than by two queries
+  // happening to behave the same way.
+  //
+  // This used to be a jsonb containment query against Supabase `posts`. That
+  // store stopped being written on 23 November when the sync was removed, so
+  // the query would have gone on working while quietly returning a frozen
+  // catalogue -- the worst way for this to fail, since "that club has no
+  // recent news" looks exactly like a club with no recent news.
+  const wanted = Number(id);
+  try {
+    const all = await fetchPublishedList();
+    return all
+      .filter((p) =>
+        Array.isArray(p.entities) &&
+        p.entities.some((e) => e?.kind === kind && Number(e.externalId) === wanted))
+      // Same cap as the prerendered file.
+      .slice(0, 24);
+  } catch (e) {
+    console.error(`[PRERENDER] hub read failed for ${kind} ${id}: ${e.message}`);
     return null;
   }
-  return rows;
 }
 
 async function prerenderHub(kind, externalId) {
@@ -4608,32 +4328,6 @@ async function backfillScoreCards() {
  * ordering by it alone is not a total order, so rows could shift between
  * pages and be fetched twice or skipped entirely.
  */
-async function fetchAllPublishedPosts(select, { pageSize = 1000, maxPages = 20 } = {}) {
-  const SVC = SUPABASE_SERVICE_KEY;
-  const all = [];
-
-  for (let page = 0; page < maxPages; page++) {
-    const rows = await supabaseQueryWithKey('posts',
-      `status=eq.published&select=${select}` +
-      '&order=published_at.desc.nullslast,slug.asc' +
-      `&limit=${pageSize}&offset=${page * pageSize}`,
-      'GET', null, SVC);
-
-    if (!Array.isArray(rows)) {
-      console.error('[POSTS] page query rejected:',
-        (rows && (rows.message || rows.code)) || 'unexpected response');
-      // Partial beats nothing for a prerender pass, but never silently: the
-      // caller's count would otherwise look like a complete run.
-      return all.length ? all : null;
-    }
-
-    all.push(...rows);
-    if (rows.length < pageSize) return all;
-  }
-
-  console.warn(`[POSTS] stopped at ${maxPages} pages (${all.length} rows) -- there may be more`);
-  return all;
-}
 
 // `full` forces every article to be re-rendered. Pass it on startup and after
 // anything that changes the TEMPLATE below rather than the articles: a template
