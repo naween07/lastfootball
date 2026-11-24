@@ -41,3 +41,4 @@ yarn-error.log*
 coverage/
 .vapid.json
 .indexnow.json
+.env.template
