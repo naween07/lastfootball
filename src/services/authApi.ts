@@ -122,6 +122,7 @@ const PASS_THROUGH = [
   "Too many requests. Try again later.",
   "User not found",
   "Unauthorized",
+  "Could not send the code. Try again shortly.",
 ];
 
 const GENERIC = "Something went wrong. Please try again.";
