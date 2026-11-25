@@ -122,7 +122,13 @@ journalctl -u lastfootball-api --since "10 minutes ago" --no-pager | grep PREREN
 
 # 9. Verify the app backend was not touched
 pm2 list
-curl -sS -o /dev/null -w "app api   %{http_code}\n" https://api.lastfootball.com/graphql/
+
+# A bare GET has no query, so Apollo answers 400 whether it is healthy or not.
+# Post a real one: a dead backend gives 502 or a refused connection instead.
+curl -sS -X POST https://api.lastfootball.com/graphql/ \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"{ __typename }"}'
+# expect {"data":{"__typename":"RootQueryType"}}
 ```
 
 ## Rollback
