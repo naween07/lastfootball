@@ -34,6 +34,7 @@ const WorldCup = lazy(() => import("./pages/WorldCup"));
 const WCTeamPage = lazy(() => import("./pages/WCTeamPage"));
 const WCStadiumPage = lazy(() => import("./pages/WCStadiumPage"));
 const Auth = lazy(() => import("./pages/Auth"));
+const AuthNext = lazy(() => import("./pages/AuthNext"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Terms = lazy(() => import("./pages/Terms"));
@@ -106,6 +107,8 @@ function AppRoutes() {
             <Route path="/worldcup/stadium/:slug" element={<WCStadiumPage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/auth" element={<Auth />} />
+            {/* Phase 1b: backend accounts, under test. Linked from nowhere. */}
+            <Route path="/auth-next" element={<AuthNext />} />
             <Route path="/onboarding" element={<Onboarding />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />
