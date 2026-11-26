@@ -14,6 +14,7 @@ import OptimizedImage from '@/components/OptimizedImage';
 import LFMomentum, { MomentumSample } from '@/components/LFMomentum';
 import { fetchMatchDetails, fetchMatchPlayers } from '@/services/footballApi';
 import { useAuth } from '@/hooks/useAuth';
+import { FEATURES } from '@/config/features';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useState, useEffect, useMemo } from 'react';
@@ -490,7 +491,7 @@ function OverviewTab({ match, momentum, onJumpTo }: { match: Match; momentum: Mo
   return (
     <div className="space-y-4">
       {!isFuture && <LFMomentum samples={momentum} match={match} />}
-      {isFuture && <PredictInline match={match} />}
+      {isFuture && FEATURES.predictions && <PredictInline match={match} />}
 
       <Card padded>
         <SectionTitle>Match info</SectionTitle>

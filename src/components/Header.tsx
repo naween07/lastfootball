@@ -3,6 +3,7 @@ import { Search, Star, BarChart3, Flame, Menu, X as XIcon, ChevronRight } from '
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useFavorites } from '@/hooks/useFavorites';
+import { FEATURES } from '@/config/features';
 import NotificationBell from './NotificationBell';
 import UserMenu from './UserMenu';
 import ThemeToggle from './ThemeToggle';
@@ -107,9 +108,9 @@ export default function Header() {
             <MobileNavItem to="/stats" label="Standings & Stats" icon="📊" pathname={pathname} onClick={() => setMenuOpen(false)} />
             <MobileNavItem to="/search" label="Search Teams" icon="🔍" pathname={pathname} onClick={() => setMenuOpen(false)} />
             <MobileNavItem to="/compare" label="Player Comparison" icon="⚔️" pathname={pathname} onClick={() => setMenuOpen(false)} />
-            <MobileNavItem to="/predict" label="Predict & Win" icon="🎯" pathname={pathname} onClick={() => setMenuOpen(false)} highlight />
-            <MobileNavItem to="/leaderboard" label="Leaderboard" icon="🏅" pathname={pathname} onClick={() => setMenuOpen(false)} />
-            <MobileNavItem to="/fantasy" label="Fantasy WC" icon="⚽" pathname={pathname} onClick={() => setMenuOpen(false)} />
+            {FEATURES.predictions && <MobileNavItem to="/predict" label="Predict & Win" icon="🎯" pathname={pathname} onClick={() => setMenuOpen(false)} highlight />}
+            {FEATURES.predictions && <MobileNavItem to="/leaderboard" label="Leaderboard" icon="🏅" pathname={pathname} onClick={() => setMenuOpen(false)} />}
+            {FEATURES.fantasy && <MobileNavItem to="/fantasy" label="Fantasy WC" icon="⚽" pathname={pathname} onClick={() => setMenuOpen(false)} />}
             <MobileNavItem to="/news" label="News" icon="📰" pathname={pathname} onClick={() => setMenuOpen(false)} />
             <MobileNavItem to="/reports" label="Match Reports" icon="📊" pathname={pathname} onClick={() => setMenuOpen(false)} />
 

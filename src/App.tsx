@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { FEATURES } from "./config/features";
 import { HelmetProvider } from "react-helmet-async";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -35,6 +36,7 @@ const WCTeamPage = lazy(() => import("./pages/WCTeamPage"));
 const WCStadiumPage = lazy(() => import("./pages/WCStadiumPage"));
 const Auth = lazy(() => import("./pages/Auth"));
 const AuthNext = lazy(() => import("./pages/AuthNext"));
+
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Terms = lazy(() => import("./pages/Terms"));
@@ -92,10 +94,13 @@ function AppRoutes() {
             <Route path="/compare" element={<PlayerCompare />} />
             <Route path="/player/:playerId" element={<PlayerProfile />} />
             <Route path="/league/:leagueId" element={<LeagueProfile />} />
-            <Route path="/predict" element={<PredictPage />} />
-            <Route path="/leaderboard" element={<Leaderboard />} />
+            {/* Hidden during the account cutover; see src/config/features.ts.
+                Routed to NotFound rather than removed, so a stale link or an
+                old bookmark gets the normal 404 instead of a blank screen. */}
+            {FEATURES.predictions && <Route path="/predict" element={<PredictPage />} />}
+            {FEATURES.predictions && <Route path="/leaderboard" element={<Leaderboard />} />}
             <Route path="/worldcup/fixtures" element={<WCFixtures />} />
-            <Route path="/fantasy" element={<FantasyWC />} />
+            {FEATURES.fantasy && <Route path="/fantasy" element={<FantasyWC />} />}
             <Route path="/news" element={<NewsList />} />
             <Route path="/news/:slug" element={<NewsArticle />} />
             <Route path="/reports" element={<News />} />

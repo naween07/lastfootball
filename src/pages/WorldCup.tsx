@@ -4,6 +4,7 @@ import Header from '@/components/Header';
 import SEOHead from '@/components/SEOHead';
 import OptimizedImage from '@/components/OptimizedImage';
 import { useAuth } from '@/hooks/useAuth';
+import { FEATURES } from '@/config/features';
 import { supabase } from '@/integrations/supabase/client';
 import { Trophy, Calendar, MapPin, Users, Clock, ChevronRight, Check, Zap, Swords } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -215,6 +216,8 @@ export default function WorldCup() {
 
   // Load user's enrollment
   useEffect(() => {
+    // Retired in the account cutover; see src/config/features.ts.
+    if (!FEATURES.worldCupEnrolment) return;
     if (!user) return;
     const load = async () => {
       try {
@@ -234,6 +237,7 @@ export default function WorldCup() {
 
   // Get total enrollment count
   useEffect(() => {
+    if (!FEATURES.worldCupEnrolment) return;
     const load = async () => {
       try {
         const { count } = await supabase
@@ -246,6 +250,7 @@ export default function WorldCup() {
   }, [enrolled]);
 
   const handleEnroll = async () => {
+    if (!FEATURES.worldCupEnrolment) return;
     if (!user) {
       toast.error('Please sign in to pick your team!');
       return;
