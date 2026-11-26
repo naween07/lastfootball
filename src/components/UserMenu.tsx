@@ -19,8 +19,11 @@ export default function UserMenu() {
 
   if (!user) return null;
 
-  const avatar = user.user_metadata?.avatar_url || user.user_metadata?.picture;
-  const name = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0];
+  // Supabase kept these under user_metadata, whose contents depended on the
+  // provider -- avatar_url from one, picture from another. The backend's user
+  // has them as first-class columns, so there is one place to read each.
+  const avatar = user.avatar;
+  const name = user.username || user.email?.split('@')[0];
   const initials = (name || 'U').charAt(0).toUpperCase();
 
   return (

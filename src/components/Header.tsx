@@ -3,7 +3,6 @@ import { Search, Star, BarChart3, Flame, Menu, X as XIcon, ChevronRight } from '
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useFavorites } from '@/hooks/useFavorites';
-import { supabase } from '@/integrations/supabase/client';
 import NotificationBell from './NotificationBell';
 import UserMenu from './UserMenu';
 import ThemeToggle from './ThemeToggle';
@@ -12,9 +11,8 @@ import { cn } from '@/lib/utils';
 export default function Header() {
   const { user } = useAuth();
   const { pathname } = useLocation();
-  const { favoriteTeamIds } = useFavorites();
+  const { favoriteTeamIds, primaryTeamLogo } = useFavorites();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [favLogo, setFavLogo] = useState<string | null>(null);
 
   // Close menu on route change
   useEffect(() => { setMenuOpen(false); }, [pathname]);
@@ -26,19 +24,10 @@ export default function Header() {
     return () => { document.body.style.overflow = ''; };
   }, [menuOpen]);
 
-  // Load primary team logo
-  useEffect(() => {
-    if (favoriteTeamIds.length === 0) { setFavLogo(null); return; }
-    const loadLogo = async () => {
-      try {
-        const { data: { user: u } } = await supabase.auth.getUser();
-        if (!u) return;
-        const { data } = await supabase.from('user_favorites').select('team_logo').eq('user_id', u.id).limit(1);
-        if (data?.[0]?.team_logo) setFavLogo(data[0].team_logo);
-      } catch {}
-    };
-    loadLogo();
-  }, [favoriteTeamIds]);
+  // The crest used to come from a Supabase query run on every mount. It now
+  // comes from the favourites hook, which already holds it -- no round trip,
+  // and one fewer place reading a Supabase session that no longer exists.
+  const favLogo = primaryTeamLogo;
 
   return (
     <>

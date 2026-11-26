@@ -1,35 +1,14 @@
 import { Link, useLocation } from 'react-router-dom';
 import { Zap, CalendarDays, Flame, Star, BarChart3, Trophy } from 'lucide-react';
 import { useFavorites } from '@/hooks/useFavorites';
-import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 
 export default function BottomTabBar() {
   const { pathname } = useLocation();
-  const { favoriteTeamIds } = useFavorites();
-  const [favLogo, setFavLogo] = useState<string | null>(null);
+  const { favoriteTeamIds, primaryTeamLogo } = useFavorites();
 
-  useEffect(() => {
-    if (favoriteTeamIds.length === 0) {
-      setFavLogo(null);
-      return;
-    }
-    const loadLogo = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-        const { data } = await supabase
-          .from('user_favorites')
-          .select('team_logo')
-          .eq('user_id', user.id)
-          .limit(1);
-        if (data && data.length > 0 && data[0].team_logo) {
-          setFavLogo(data[0].team_logo);
-        }
-      } catch {}
-    };
-    loadLogo();
-  }, [favoriteTeamIds]);
+  // Was a Supabase query on every mount just to show one crest; the favourites
+  // hook already holds it.
+  const favLogo = primaryTeamLogo;
 
   const TABS = [
     { to: '/live', label: 'Live', icon: Zap },

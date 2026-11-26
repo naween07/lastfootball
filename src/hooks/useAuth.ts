@@ -1,90 +1,113 @@
-import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import type { User, Session } from '@supabase/supabase-js';
+/**
+ * The signed-in user, from the app backend.
+ *
+ * Phase 1c. This replaced the Supabase version: the website and the app now
+ * authenticate against the same `User` table, so an account works on both.
+ *
+ * WHY THERE IS A STORE HERE. The Supabase client broadcast session changes
+ * through `onAuthStateChange`, so every component calling this hook shared one
+ * subscription and one source of truth. A hook that simply fetched `me()` in
+ * its own effect would issue one request per consumer -- twelve on a page that
+ * renders the header, the tab bar and a page component. So the user is held at
+ * module scope, fetched once, and every consumer subscribes to it.
+ *
+ * `refreshAuth()` is how the auth page tells the rest of the app that someone
+ * signed in: authApi has already stored the token, and this re-reads who it
+ * belongs to and notifies every consumer, so the header updates without a
+ * reload.
+ */
 
-export function useAuth() {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [onboardingCompleted, setOnboardingCompleted] = useState<boolean | null>(null);
+import { useState, useEffect, useCallback, useSyncExternalStore } from 'react';
+import { me, signOut as apiSignOut, currentToken, type BackendUser } from '@/services/authApi';
 
-  useEffect(() => {
-    let mounted = true;
+let cachedUser: BackendUser | null = null;
+let settled = false;
+let inflight: Promise<void> | null = null;
+const listeners = new Set<() => void>();
 
-    // Subscribe to auth changes. The client auto-initializes on construction and
-    // fires INITIAL_SESSION once the session is loaded from storage — handling it
-    // here (rather than a separate getSession race) makes the logged-in state appear
-    // as fast as the client allows, on first load, without needing a refresh.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (!mounted) return;
-
-        setSession(session);
-        setUser(session?.user ?? null);
-
-        if (session?.user) {
-          const completed = await checkProfile(session.user.id);
-          if (mounted) setOnboardingCompleted(completed);
-        } else {
-          setOnboardingCompleted(null);
-        }
-        if (mounted) setLoading(false);
-      }
-    );
-
-    // Fallback: also read the current session immediately in case the listener's
-    // INITIAL_SESSION is delayed. Whichever resolves first wins; both are idempotent.
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!mounted || !session) return;
-      setSession(session);
-      setUser(session.user ?? null);
-      checkProfile(session.user.id).then(completed => {
-        if (mounted) { setOnboardingCompleted(completed); setLoading(false); }
-      });
-    }).catch(() => { if (mounted) setLoading(false); });
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setSession(null);
-    setOnboardingCompleted(null);
-  }, []);
-
-  const completeOnboarding = useCallback(async () => {
-    if (!user) return;
-    try {
-      await supabase
-        .from('profiles')
-        .update({ onboarding_completed: true })
-        .eq('user_id', user.id);
-    } catch {}
-    setOnboardingCompleted(true);
-  }, [user]);
-
-  return { user, session, loading, onboardingCompleted, signOut, completeOnboarding };
+function emit(): void {
+  for (const l of listeners) l();
 }
 
-async function checkProfile(userId: string): Promise<boolean> {
-  try {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('onboarding_completed')
-      .eq('user_id', userId)
-      .maybeSingle();
+function subscribe(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => { listeners.delete(fn); };
+}
 
-    if (error) return true;
-    if (data) return data.onboarding_completed ?? true;
+/** Snapshot must be referentially stable between emits, or useSyncExternalStore
+ *  re-renders forever. Returning the cached object itself satisfies that. */
+function getUserSnapshot(): BackendUser | null {
+  return cachedUser;
+}
 
-    // No profile — create one (errors are swallowed by the surrounding try/catch)
-    await supabase.from('profiles').insert({ user_id: userId, onboarding_completed: true });
-    return true;
-  } catch {
-    return true;
+function getSettledSnapshot(): boolean {
+  return settled;
+}
+
+async function load(): Promise<void> {
+  // No token means signed out, and asking the server would be a wasted round
+  // trip on every first paint for the many readers who never sign in.
+  if (!currentToken()) {
+    cachedUser = null;
+    settled = true;
+    emit();
+    return;
   }
+  try {
+    cachedUser = await me();
+  } catch {
+    // me() already clears a token the server rejects; treat anything else as
+    // signed out rather than leaving a half-state on screen.
+    cachedUser = null;
+  }
+  settled = true;
+  emit();
+}
+
+function ensureLoaded(): void {
+  if (settled || inflight) return;
+  inflight = load().finally(() => { inflight = null; });
+}
+
+/** Re-read the signed-in user and notify every consumer. Call after a sign-in,
+ *  an activation, or anything else that changes the stored token. */
+export function refreshAuth(): Promise<void> {
+  settled = false;
+  inflight = load().finally(() => { inflight = null; });
+  return inflight;
+}
+
+export function useAuth() {
+  const user = useSyncExternalStore(subscribe, getUserSnapshot, getUserSnapshot);
+  const isSettled = useSyncExternalStore(subscribe, getSettledSnapshot, getSettledSnapshot);
+
+  useEffect(() => { ensureLoaded(); }, []);
+
+  const signOut = useCallback(async () => {
+    apiSignOut();
+    cachedUser = null;
+    settled = true;
+    emit();
+  }, []);
+
+  /**
+   * Onboarding is skipped for now, deliberately.
+   *
+   * Its only job was collecting favourite teams into the Supabase
+   * `user_favorites` table, which this cutover retires. Until favourites move
+   * to the backend's `Follow` model, forcing anyone through that flow would
+   * write to a table nothing reads. Reporting it complete keeps the route
+   * harmless -- Onboarding redirects home on `true` -- without pretending the
+   * step happened.
+   */
+  const onboardingCompleted = true;
+  const completeOnboarding = useCallback(async () => {}, []);
+
+  return {
+    user,
+    loading: !isSettled,
+    onboardingCompleted,
+    completeOnboarding,
+    signOut,
+  };
 }
